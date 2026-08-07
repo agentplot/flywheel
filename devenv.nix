@@ -19,8 +19,7 @@
     exec = ''
       set -euo pipefail
       cd ${config.devenv.root}
-      claude plugin validate ./.claude-plugin/plugin.json --strict
-      claude plugin validate ./.claude-plugin/marketplace.json --strict
+      sh scripts/validate-manifests.sh
       node scripts/check-paths.mjs
       node scripts/check-site.mjs
     '';

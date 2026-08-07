@@ -49,14 +49,17 @@ shell.** That is the whole reason this repo's gate scripts live in `scripts/`.
 devenv shell -- gates
 ```
 
-Four checks. The same four run in `.config/wt.toml` before a merge and in
+Three commands. The same three run in `.config/wt.toml` before a merge and in
 `.github/workflows/gates.yml` on every push, so a green claim means the same
 thing in all three places. Add a gate to all three or to none.
 
-- `claude plugin validate ./.claude-plugin/plugin.json --strict`
-- `claude plugin validate ./.claude-plugin/marketplace.json --strict` —
-  **both**, because passing a *directory* validates only the marketplace
-  manifest and the plugin manifest is then never read
+- `sh scripts/validate-manifests.sh` — `claude plugin validate --strict` on
+  **both** manifests. Two invocations, because passing a *directory* resolves
+  to the marketplace manifest and the plugin manifest is then never read. The
+  script also decides *which* `claude` to call: an install that wraps the
+  binary to append session flags (nix-darwin does) makes every `claude
+  <subcommand>` fail on an unknown option, so `CLAUDE_CODE_EXECPATH` is
+  preferred when set and PATH is the fallback.
 - `node scripts/check-paths.mjs`
 - `node scripts/check-site.mjs`
 

@@ -9,10 +9,12 @@
 # the change. All four are independent and seconds long, so they run
 # concurrently.
 #
-# plugin / market: `claude plugin validate --strict` is the shipped validator,
-#   and its own help names CI as the use case. Two invocations because passing
-#   a directory validates only the marketplace manifest — the plugin manifest
-#   has to be named directly or it is never read.
+# manifests: `claude plugin validate --strict` is the shipped validator, and
+#   its own help names CI as the use case. The script wraps it for two
+#   reasons: it must run twice, because passing a directory resolves to the
+#   marketplace manifest and the plugin manifest is then never read; and it
+#   resolves which `claude` to call, since a wrapper that appends session
+#   flags (nix-darwin does) makes every subcommand fail on an unknown option.
 # paths:  no absolute path may survive in shipped content. A plugin is
 #   installed into a cache directory the author never sees, so a hard-coded
 #   home directory resolves on one laptop and nowhere else, and it fails
@@ -22,7 +24,6 @@
 #   syntax error renders as a blank box rather than an error, so without this
 #   a broken diagram reaches production looking like a layout bug.
 [pre-commit]
-plugin = "claude plugin validate ./.claude-plugin/plugin.json --strict"
-market = "claude plugin validate ./.claude-plugin/marketplace.json --strict"
-paths  = "node scripts/check-paths.mjs"
-site   = "node scripts/check-site.mjs"
+manifests = "sh scripts/validate-manifests.sh"
+paths     = "node scripts/check-paths.mjs"
+site      = "node scripts/check-site.mjs"

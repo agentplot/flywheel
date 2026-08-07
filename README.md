@@ -154,7 +154,7 @@ then `/reload-plugins` in the session.
 
 ### Gates
 
-Four checks, defined once and run by three callers — `.config/wt.toml` before
+Three checks, defined once and run by three callers — `.config/wt.toml` before
 a merge, `devenv.nix` by hand, and `.github/workflows/gates.yml` on every push
 — so a green claim means the same thing everywhere:
 
@@ -162,9 +162,9 @@ a merge, `devenv.nix` by hand, and `.github/workflows/gates.yml` on every push
 devenv shell -- gates
 ```
 
-- **`claude plugin validate --strict`**, twice. Passing a directory validates
-  only the marketplace manifest, so the plugin manifest is named separately or
-  it is never read.
+- **`scripts/validate-manifests.sh`** — `claude plugin validate --strict` on
+  both manifests. Twice, because passing a directory resolves to the
+  marketplace manifest and the plugin manifest is then never read.
 - **`scripts/check-paths.mjs`** — no absolute path survives in shipped
   content. A plugin is installed into a cache directory the author never sees,
   so a hard-coded home directory resolves on one laptop and nowhere else, and

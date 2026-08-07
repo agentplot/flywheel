@@ -27,13 +27,10 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      - name: Plugin manifest
-        run: claude plugin validate ./.claude-plugin/plugin.json --strict
-
-      # Passing a directory validates only the marketplace manifest, so the
-      # two are named separately or one of them is never read.
-      - name: Marketplace manifest
-        run: claude plugin validate ./.claude-plugin/marketplace.json --strict
+      # Both manifests, named separately: passing a directory resolves to the
+      # marketplace manifest and the plugin manifest is then never read.
+      - name: Manifests
+        run: sh scripts/validate-manifests.sh
 
       - name: Shipped paths
         run: node scripts/check-paths.mjs
