@@ -1,0 +1,14 @@
+# agents/
+
+Empty on purpose. The five agent profiles land here when the split runs.
+
+They are `flywheel-dispatch`, `flywheel-intent-conductor`,
+`flywheel-bolt-conductor`, `flywheel-review-session` and
+`flywheel-interactive-session`.
+
+**The profiles keep their `flywheel-` prefix where the skills drop theirs, and
+the asymmetry is deliberate.** `claude --agent` resolves a plugin agent by its
+bare name as well as its namespaced one, so the bare name is the addressable
+one and has to stay globally unique. A skill invoked as `/flywheel:inception`
+carries its namespace in the invocation; an agent launched as
+`--agent flywheel-intent-conductor` does not.

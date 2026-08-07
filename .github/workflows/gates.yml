@@ -1,0 +1,55 @@
+name: gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# The same four checks .config/wt.toml runs before a merge, plus the eval suite
+# once there is one. Nothing here is CI-only: a green run means exactly what a
+# green `devenv shell -- gates` means locally.
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # `claude plugin validate` is the shipped manifest validator and needs no
+      # credentials — it reads the manifest and exits.
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Plugin manifest
+        run: claude plugin validate ./.claude-plugin/plugin.json --strict
+
+      # Passing a directory validates only the marketplace manifest, so the
+      # two are named separately or one of them is never read.
+      - name: Marketplace manifest
+        run: claude plugin validate ./.claude-plugin/marketplace.json --strict
+
+      - name: Shipped paths
+        run: node scripts/check-paths.mjs
+
+      - name: The site
+        run: node scripts/check-site.mjs
+
+      # The skills arrive carrying their own evals. This step is a no-op until
+      # they do, and starts biting on the commit that lands them — so nobody
+      # has to remember to add it at split time.
+      - name: Skill evals
+        run: |
+          set -euo pipefail
+          if compgen -G "skills/*/evals/**/case.yaml" > /dev/null \
+             || compgen -G "skills/*/evals/*/prompt.md" > /dev/null; then
+            claude plugin eval .
+          else
+            echo "no evals under skills/ yet — nothing to run"
+          fi

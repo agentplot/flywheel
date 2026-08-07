@@ -1,0 +1,20 @@
+{
+  "name": "flywheel",
+  "description": "Two coupled loops for turning intent into built code: a design loop that burns fog into decisions, and a construction loop that drives proposals to merged. They meet at one operator gate.",
+  "version": "0.0.1",
+  "author": {
+    "name": "agentplot",
+    "url": "https://github.com/agentplot"
+  },
+  "homepage": "https://agentplot.github.io/flywheel/",
+  "repository": "https://github.com/agentplot/flywheel",
+  "license": "MIT",
+  "keywords": [
+    "openspec",
+    "design-loop",
+    "construction-loop",
+    "orchestration",
+    "agents",
+    "spec-driven"
+  ]
+}

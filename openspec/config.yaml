@@ -1,0 +1,45 @@
+schema: spec-driven
+
+context: |
+  agentplot/flywheel is a Claude Code plugin and its own marketplace. It
+  ships the two loops — inception (design) and construction — as skills,
+  the agent profiles that give each actor its identity, the two OpenSpec
+  workflow schemas the loops track their work under, and the commands the
+  loops call.
+
+  This repo tracks its own work under the `spec-driven` schema. The two
+  flywheel schemas it publishes are for *consuming* repos to bind their
+  intents and bolts to; they are not this repo's own workflow, and no
+  project copy of them lives here.
+
+  What lands where:
+  - `skills/<name>/`   a skill, invoked as `/flywheel:<name>`. The
+                       `flywheel-` prefix is supplied by the plugin name and
+                       never appears in a directory name.
+  - `agents/<name>.md` an agent profile. These KEEP the `flywheel-` prefix:
+                       `claude --agent` resolves a plugin agent by its bare
+                       name, so that name has to stay globally unique.
+  - `schemas/<name>/`  an OpenSpec workflow schema, published as a user
+                       schema.
+  - `bin/`             commands. Claude Code puts an installed plugin's
+                       `bin/` on the user's PATH, so anything here becomes a
+                       command in their shell. Public commands only.
+  - `tools/<name>/`    the implementation behind a `bin/` entry point. Zero
+                       dependencies, so a bare `node` runs it.
+  - `scripts/`         this repo's own gates. Never shipped, never on PATH.
+  - `site/`            the GitHub Pages landing page. Plain static files.
+
+  Instructions for any agent working a change here:
+  - Reference files inside the plugin as ${CLAUDE_PLUGIN_ROOT}/<path>. A
+    plugin is installed into a cache directory the author never sees, so an
+    absolute path resolves on one machine and nowhere else — and it fails
+    silently. `node scripts/check-paths.mjs` is the gate.
+  - Every mermaid diagram must parse under the bundle the page ships.
+    Mermaid never parses at build time; a syntax error renders as a blank
+    box, not an error. `node scripts/check-site.mjs` is the gate.
+  - Commit after any artifact change, staging only the paths you wrote:
+    `git add <your paths>`, then `git commit -- <your paths>` so the commit
+    carries your paths whatever else is staged. Never `-a`, never `add -A`
+    or `add .`, never a pathspec-less commit. Anything tree-wide —
+    `git stash`, `git reset --hard`, `git checkout .` — reaches a sibling
+    agent's uncommitted work the same way.

@@ -1,0 +1,13 @@
+{
+  "name": "flywheel",
+  "private": true,
+  "type": "module",
+  "description": "Gate dependencies only. jsdom runs the site's own vendored mermaid bundle outside a browser so scripts/check-site.mjs parses the exact diagrams a reader renders; mermaid is here to be vendored into site/vendor/, never loaded from it at runtime.",
+  "scripts": {
+    "vendor-mermaid": "cp node_modules/mermaid/dist/mermaid.min.js site/vendor/mermaid.min.js"
+  },
+  "devDependencies": {
+    "jsdom": "^28.0.0",
+    "mermaid": "^11.12.0"
+  }
+}

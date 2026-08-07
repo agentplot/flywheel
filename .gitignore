@@ -1,0 +1,10 @@
+# jsdom, for scripts/check-site.mjs. package.json and the lockfile are committed.
+node_modules/
+
+.devenv/
+.devenv.flake.nix
+.direnv/
+
+# Local IDE / shell state
+.claude/settings.local.json
+.DS_Store

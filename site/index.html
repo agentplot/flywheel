@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The flywheel — two loops for turning intent into built code</title>
+<meta name="description" content="A design loop that burns fog into decisions, and a construction loop that drives proposals to merged. They meet at one operator gate. A Claude Code plugin.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='11' cy='16' r='8' fill='none' stroke='%236aa9ff' stroke-width='2.5'/%3E%3Ccircle cx='23' cy='16' r='5.5' fill='none' stroke='%23f0a24a' stroke-width='2.5'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#fbfbfa; --panel:#ffffff; --line:#e2e0dc;
+  --ink:#1c1b19; --ink2:#4e4b46; --ink3:#807b73;
+  --design:#2f6fd0; --design-soft:#e6efff;
+  --build:#c2762a;  --build-soft:#fdf1e2;
+  --gate:#6b4fbb;   --gate-soft:#efeaff;
+  --code:#f4f3f0;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14141a; --panel:#1b1b22; --line:#2e2e38;
+    --ink:#eceaf3; --ink2:#b6b2c2; --ink3:#83808f;
+    --design:#7aacff; --design-soft:#1a2438;
+    --build:#f0a24a;  --build-soft:#332413;
+    --gate:#a992f5;   --gate-soft:#241d3a;
+    --code:#22222b;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:16px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+code,.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;font-size:.92em}
+code{background:var(--code);padding:.12em .38em;border-radius:4px}
+pre code{background:none;padding:0}
+
+/* ---------------------------------------------------------------- hero -- */
+header{padding:72px 0 56px;border-bottom:1px solid var(--line)}
+.eyebrow{
+  font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink3);margin:0 0 14px;font-weight:600;
+}
+h1{
+  font-size:clamp(34px,5.5vw,54px);line-height:1.08;margin:0 0 18px;
+  letter-spacing:-.022em;font-weight:680;
+}
+h1 .accent{color:var(--design)}
+.lede{font-size:clamp(17px,2.1vw,20px);color:var(--ink2);max-width:44ch;margin:0 0 34px}
+.hero{display:block;width:100%;max-width:760px;margin:0 auto;height:auto}
+
+/* -------------------------------------------------------------- layout -- */
+section{padding:56px 0;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:none}
+h2{font-size:clamp(23px,3vw,29px);line-height:1.2;margin:0 0 6px;letter-spacing:-.014em;font-weight:660}
+.sub{color:var(--ink3);margin:0 0 30px;font-size:15px}
+h3{font-size:17px;margin:34px 0 8px;font-weight:640}
+p{margin:0 0 16px;max-width:70ch}
+ul{margin:0 0 16px;padding-left:22px;max-width:70ch}
+li{margin:0 0 7px}
+a{color:var(--design);text-decoration-thickness:1px;text-underline-offset:2px}
+
+.figure{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:22px 18px 14px;margin:0 0 8px;overflow-x:auto;
+}
+.figure pre.mermaid{margin:0;text-align:center;min-width:min-content}
+.figure svg{max-width:100%;height:auto}
+
+/* Mermaid's classDef takes literal colours, which cannot follow a media
+   query — so the classDef exists only to attach the class name, and the
+   colours come from here, where the custom properties already know which
+   theme is on. */
+.mermaid g.node.d  rect,.mermaid g.node.d  polygon,.mermaid g.node.d  path{fill:var(--design-soft)!important;stroke:var(--design)!important}
+.mermaid g.node.b  rect,.mermaid g.node.b  polygon,.mermaid g.node.b  path{fill:var(--build-soft)!important;stroke:var(--build)!important}
+.mermaid g.node.g  rect,.mermaid g.node.g  polygon,.mermaid g.node.g  path{fill:var(--gate-soft)!important;stroke:var(--gate)!important;stroke-width:2px!important}
+.mermaid g.node.w  rect,.mermaid g.node.w  polygon,.mermaid g.node.w  path{fill:var(--code)!important;stroke:var(--ink3)!important}
+.mermaid g.node.hu rect,.mermaid g.node.hu polygon,.mermaid g.node.hu path{fill:var(--gate-soft)!important;stroke:var(--gate)!important}
+.mermaid g.node.fb rect,.mermaid g.node.fb polygon,.mermaid g.node.fb path{fill:none!important;stroke:var(--ink3)!important}
+.mermaid g.node small{color:var(--ink3);font-size:.86em;line-height:1.4}
+.mermaid g.node .nodeLabel,.mermaid g.node .nodeLabel *{color:var(--ink)!important;fill:var(--ink)!important}
+.mermaid .cluster rect{fill:none!important;stroke:var(--line)!important;stroke-width:1.5px!important}
+.mermaid .cluster .nodeLabel,.mermaid .cluster-label .nodeLabel{color:var(--ink3)!important;fill:var(--ink3)!important}
+.mermaid .edgeLabel,.mermaid .edgeLabel *{color:var(--ink3)!important;fill:var(--ink3)!important;background:var(--panel)!important}
+.mermaid .edgeLabel p{background:var(--panel)!important}
+.mermaid .flowchart-link{stroke:var(--ink3)!important}
+.mermaid .marker{fill:var(--ink3)!important;stroke:var(--ink3)!important}
+/* stateDiagram carries no user classes, so it is styled wholesale. */
+.mermaid g.stateGroup rect,.mermaid .statediagram-state rect{fill:var(--build-soft)!important;stroke:var(--build)!important}
+.mermaid .statediagram-state .nodeLabel,.mermaid g.stateGroup text{fill:var(--ink)!important;color:var(--ink)!important}
+.mermaid .statediagram-state circle,.mermaid .node circle{fill:var(--ink3)!important;stroke:var(--ink3)!important}
+.mermaid .transition{stroke:var(--ink3)!important}
+.caption{color:var(--ink3);font-size:14px;margin:0 0 30px;max-width:70ch}
+
+pre.block{
+  background:var(--code);border:1px solid var(--line);border-radius:10px;
+  padding:14px 16px;overflow-x:auto;margin:0 0 16px;line-height:1.55;
+}
+
+/* --------------------------------------------------------------- cards -- */
+.cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));margin:0 0 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+.card h4{margin:0 0 6px;font-size:15px;font-weight:660}
+.card p{margin:0;font-size:14.5px;color:var(--ink2)}
+.tag{
+  display:inline-block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  font-weight:660;padding:2px 8px;border-radius:20px;margin:0 0 9px;
+}
+.tag.design{background:var(--design-soft);color:var(--design)}
+.tag.build{background:var(--build-soft);color:var(--build)}
+.tag.gate{background:var(--gate-soft);color:var(--gate)}
+
+table{border-collapse:collapse;width:100%;margin:0 0 18px;font-size:14.5px;display:block;overflow-x:auto}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--ink3);font-weight:640;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+
+blockquote{
+  margin:0 0 18px;padding:2px 0 2px 18px;border-left:3px solid var(--gate);
+  color:var(--ink2);max-width:66ch;
+}
+footer{padding:40px 0 64px;color:var(--ink3);font-size:14px}
+footer a{color:var(--ink3)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">agentplot / flywheel</p>
+    <h1>Two loops that turn <span class="accent">intent</span> into built code.</h1>
+    <p class="lede">
+      A design loop burns fog into decisions. A construction loop drives
+      proposals to merged. They are coupled at exactly one point, and that
+      point is yours.
+    </p>
+
+    <svg class="hero" viewBox="0 0 760 300" role="img"
+         aria-label="Two meshing rings. The left ring is the design loop, running idea to intent to decision to handoff. The right ring is the construction loop, running spec to review to build to test to merge. A single vertical gate sits between them, and everything crossing from design to construction passes through it.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- design ring -->
+      <g color="var(--design)">
+        <circle cx="232" cy="150" r="104" fill="none" stroke="var(--design)"
+                stroke-width="2" stroke-opacity=".28"/>
+        <!-- three sweeps around the ring, arrowheads showing it turns -->
+        <path d="M 232 46 A 104 104 0 0 1 322 202" fill="none" stroke="var(--design)"
+              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
+        <path d="M 322 202 A 104 104 0 0 1 142 202" fill="none" stroke="var(--design)"
+              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
+        <path d="M 142 202 A 104 104 0 0 1 232 46" fill="none" stroke="var(--design)"
+              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
+        <circle cx="232" cy="46"  r="7" fill="var(--bg)" stroke="var(--design)" stroke-width="3"/>
+        <circle cx="322" cy="202" r="7" fill="var(--bg)" stroke="var(--design)" stroke-width="3"/>
+        <circle cx="142" cy="202" r="7" fill="var(--bg)" stroke="var(--design)" stroke-width="3"/>
+        <text x="232" y="30" text-anchor="middle" font-size="13" font-weight="620"
+              fill="var(--ink2)" font-family="inherit">idea</text>
+        <text x="345" y="228" text-anchor="start" font-size="13" font-weight="620"
+              fill="var(--ink2)" font-family="inherit">decision</text>
+        <text x="119" y="228" text-anchor="end" font-size="13" font-weight="620"
+              fill="var(--ink2)" font-family="inherit">intent</text>
+        <text x="232" y="145" text-anchor="middle" font-size="17" font-weight="680"
+              fill="var(--design)" font-family="inherit">design</text>
+        <text x="232" y="168" text-anchor="middle" font-size="12.5"
+              fill="var(--ink3)" font-family="inherit">fog → decisions</text>
+      </g>
+
+      <!-- construction ring: smaller and turning faster, which is the point -->
+      <g color="var(--build)">
+        <circle cx="580" cy="150" r="82" fill="none" stroke="var(--build)"
+                stroke-width="2" stroke-opacity=".28"/>
+        <path d="M 580 68 A 82 82 0 0 1 651 191" fill="none" stroke="var(--build)"
+              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
+        <path d="M 651 191 A 82 82 0 0 1 509 191" fill="none" stroke="var(--build)"
+              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
+        <path d="M 509 191 A 82 82 0 0 1 580 68" fill="none" stroke="var(--build)"
+              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
+        <circle cx="580" cy="68"  r="6.5" fill="var(--bg)" stroke="var(--build)" stroke-width="3"/>
+        <circle cx="651" cy="191" r="6.5" fill="var(--bg)" stroke="var(--build)" stroke-width="3"/>
+        <circle cx="509" cy="191" r="6.5" fill="var(--bg)" stroke="var(--build)" stroke-width="3"/>
+        <text x="580" y="52" text-anchor="middle" font-size="13" font-weight="620"
+              fill="var(--ink2)" font-family="inherit">spec</text>
+        <text x="676" y="216" text-anchor="start" font-size="13" font-weight="620"
+              fill="var(--ink2)" font-family="inherit">build</text>
+        <text x="484" y="216" text-anchor="end" font-size="13" font-weight="620"
+              fill="var(--ink2)" font-family="inherit">merge</text>
+        <text x="580" y="145" text-anchor="middle" font-size="17" font-weight="680"
+              fill="var(--build)" font-family="inherit">construction</text>
+        <text x="580" y="168" text-anchor="middle" font-size="12.5"
+              fill="var(--ink3)" font-family="inherit">proposals → merged</text>
+      </g>
+
+      <!-- the gate: the one coupling between them -->
+      <g>
+        <line x1="418" y1="58" x2="418" y2="242" stroke="var(--gate)"
+              stroke-width="2.5" stroke-dasharray="7 6" stroke-linecap="round"/>
+        <path d="M 340 150 L 405 150" fill="none" stroke="var(--gate)" stroke-width="3.5"
+              stroke-linecap="round" color="var(--gate)" marker-end="url(#ar)"/>
+        <path d="M 431 150 L 492 150" fill="none" stroke="var(--gate)" stroke-width="3.5"
+              stroke-linecap="round" color="var(--gate)" marker-end="url(#ar)"/>
+        <rect x="374" y="76" width="88" height="27" rx="13.5"
+              fill="var(--gate-soft)" stroke="var(--gate)" stroke-width="1.5"/>
+        <text x="418" y="94.5" text-anchor="middle" font-size="12.5" font-weight="680"
+              fill="var(--gate)" font-family="inherit">the gate</text>
+        <text x="418" y="266" text-anchor="middle" font-size="12.5"
+              fill="var(--ink3)" font-family="inherit">your word — the only one required</text>
+      </g>
+    </svg>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>What it is</h2>
+    <p class="sub">A Claude Code plugin, and its own marketplace.</p>
+
+    <p>
+      Most agent workflows collapse design and construction into one
+      conversation. The flywheel separates them, because they run at different
+      speeds and answer to different things. Design is slow, converging, and
+      full of open questions; construction is fast, parallel, and wants a
+      settled target. Fusing them means either designing under build pressure
+      or building against a design still moving.
+    </p>
+    <p>
+      So there are two loops, each with its own record and its own actors, and
+      one place where work crosses from the first into the second.
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <span class="tag design">outer loop</span>
+        <h4>Design — an intent</h4>
+        <p>One intent is one tracked change. Its task list is the frontier;
+          the loop's job is burning fog into decisions, writing the
+          destination into the design books, and handing settled slices on.</p>
+      </div>
+      <div class="card">
+        <span class="tag gate">the coupling</span>
+        <h4>The phase gate</h4>
+        <p>Nothing crosses without your word. It is one approval covering a
+          whole batch, taken on the cheapest channel that can carry it — not a
+          meeting, and not one question per item.</p>
+      </div>
+      <div class="card">
+        <span class="tag build">inner loop</span>
+        <h4>Construction — a bolt</h4>
+        <p>One bolt is one construction iteration, tracking a registry of
+          proposals from spec to merged across whatever repositories the work
+          touches. Past the gate it runs without you.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The two loops</h2>
+    <p class="sub">Where the work goes, and the single edge between them.</p>
+
+    <div class="figure">
+<pre class="mermaid">
+flowchart TB
+  subgraph DESIGN ["design loop — one intent, one tracked change"]
+    direction LR
+    idea["a raw idea"]
+    dispatch["dispatch<br/><small>routes it, files the intent</small>"]
+    intent["the intent<br/><small>its tasks are the frontier</small>"]
+    session["a design session<br/><small>own worktree, own directory</small>"]
+    decision["a decision<br/><small>+ the books + the context map</small>"]
+    handoff["a handoff<br/><small>batched, named, drafted</small>"]
+    idea --&gt; dispatch --&gt; intent --&gt; session --&gt; decision --&gt; handoff
+    decision -. "new fog<br/>appends tasks" .-&gt; intent
+  end
+
+  gate{{"the phase gate — your word"}}
+
+  subgraph BUILD ["construction loop — one bolt, one registry of proposals"]
+    direction LR
+    bolt["the bolt<br/><small>a registry of proposals</small>"]
+    spec["spec<br/><small>one agent per proposal</small>"]
+    review["review<br/><small>independent, one round</small>"]
+    apply["build<br/><small>apply agents, nested worktrees</small>"]
+    test["accept<br/><small>full reset, the named suites</small>"]
+    merged["merged<br/><small>through the release gate</small>"]
+    bolt --&gt; spec --&gt; review --&gt; apply --&gt; test --&gt; merged
+    review -. "bounced" .-&gt; spec
+  end
+
+  handoff --&gt; gate --&gt; bolt
+
+  finding["a design-level finding<br/><small>the design is wrong, not the build —<br/>back to dispatch, never fixed here</small>"]
+  landed["the handoff landed<br/><small>reported back, so the intent<br/>can check its task off</small>"]
+  test -.-&gt; finding
+  merged -.-&gt; landed
+
+  classDef d stroke-width:1.5px
+  classDef b stroke-width:1.5px
+  classDef g stroke-width:2px
+  classDef fb stroke-width:1.5px,stroke-dasharray:4 3
+  class idea,dispatch,intent,session,decision,handoff d
+  class bolt,spec,review,apply,test,merged b
+  class gate g
+  class finding,landed fb
+</pre>
+    </div>
+    <p class="caption">
+      Everything above the gate is design and produces records. Everything
+      below it is construction and produces commits. The dotted edges are the
+      only feedback paths: a finding that turns out to be a design problem goes
+      back to dispatch rather than being fixed in place, and a landed handoff
+      reports back so the intent can check its task off.
+    </p>
+
+    <h3>One rule does most of the work</h3>
+    <blockquote>
+      Every file edit that is not a design record is construction, and leaves
+      through the gate. Including edits to the repository the loop itself runs in.
+    </blockquote>
+    <p>
+      Without that rule the design loop quietly grows a habit of making small
+      fixes, and the record of why the code looks the way it does starts
+      going missing. With it there is exactly one path out of design, and a
+      handoff carrying a single proposal is a one-proposal bolt — the same
+      path at its smallest size, not a shortcut around it.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>The actors</h2>
+    <p class="sub">Five profiles. Each one owns a write scope, and the scopes do not overlap.</p>
+
+    <div class="figure">
+<pre class="mermaid">
+flowchart TD
+  op(["you"])
+
+  disp["dispatch<br/><small>standing singleton</small>"]
+  ic["intent conductor<br/><small>one per intent</small>"]
+  rs["review session<br/><small>review · prototype · research · writeback</small>"]
+  is["interactive session<br/><small>builds a surface you work</small>"]
+  bc["bolt conductor<br/><small>one per bolt</small>"]
+  agents["spec · apply · testing agents<br/><small>one-shot, dispatched</small>"]
+
+  wIntent["the intent's own records<br/>decisions · tasks · design"]
+  wSession["that session's own directory"]
+  wBooks["the design books<br/>and the context map"]
+  wBolt["the bolt's registry<br/>and its tasks"]
+  wCode["the built repositories"]
+
+  op --> disp
+  disp --> ic
+  ic --> rs
+  ic --> is
+  ic -- "at the gate" --> bc
+  bc --> agents
+
+  ic --> wIntent
+  ic --> wBooks
+  rs --> wSession
+  is --> wSession
+  rs --> wBooks
+  is --> wBooks
+  bc --> wBolt
+  agents --> wCode
+
+  classDef hu stroke-width:2px
+  classDef d stroke-width:1.5px
+  classDef b stroke-width:1.5px
+  classDef w stroke-width:1.5px,stroke-dasharray:4 3
+  class op hu
+  class disp,ic,rs,is d
+  class bc,agents b
+  class wIntent,wSession,wBooks,wBolt,wCode w
+</pre>
+    </div>
+    <p class="caption">
+      Grey boxes are write scopes. A design session never writes a decision
+      record and never checks its own task off — it reports, and the conductor
+      promotes. A conductor never edits inside a session's directory. The books
+      and the context map are the one scope two actors share, and that is
+      deliberate: they are the destination, and both loops read them.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Actor</th><th>Lives as long as</th><th>Writes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>dispatch</code></td><td>always — one per workspace</td><td>new intent changes, at the moment of triage, and nothing else</td></tr>
+        <tr><td><code>intent conductor</code></td><td>its intent</td><td>that intent's records; the books; the context map</td></tr>
+        <tr><td><code>design session</code></td><td>one task batch</td><td>its own session directory; the books; the context map</td></tr>
+        <tr><td><code>bolt conductor</code></td><td>its bolt</td><td>the bolt's proposal registry and tasks</td></tr>
+        <tr><td><code>spec / apply / testing</code></td><td>one job</td><td>the change and branch their registry row names</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      Dispatch is the only actor bridged to you. A question a bolt conductor
+      cannot answer travels out through dispatch and the answer comes back to
+      the conductor that raised it — never to a different actor, and never as
+      an edit to that conductor's change.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Inside a bolt</h2>
+    <p class="sub">Every row of the registry is in exactly one of these states.</p>
+
+    <div class="figure">
+<pre class="mermaid">
+stateDiagram-v2
+  direction TB
+  [*] --&gt; to_spec
+  to_spec : to-spec
+  in_review : in-review
+
+  to_spec --&gt; specced : spec agent, validated
+  specced --&gt; in_review : independent reviewer
+  in_review --&gt; approved : verdict
+  in_review --&gt; to_spec : bounced — one round only
+  approved --&gt; building : apply agent, nested worktree
+  building --&gt; built : commit stage + merge gate
+  built --&gt; verified : batched acceptance on the bolt branch
+  verified --&gt; merged : full release gate
+  merged --&gt; [*]
+</pre>
+    </div>
+    <p class="caption">
+      Spec review is bounded to one round. A bounce is followed by a fix or by
+      a re-spec from the decision record that settled it, and the result of
+      either is built rather than read again — because further rounds converge
+      on wording rather than on whether the thing can actually be built. What
+      is bounded is <em>reading</em>; the merge gate, the acceptance suites and
+      the release gate never relax.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="sub">The repository is its own marketplace, so it is two commands.</p>
+
+<pre class="block"><code>/plugin marketplace add agentplot/flywheel
+/plugin install flywheel@flywheel</code></pre>
+
+    <h3>Working on the flywheel itself</h3>
+    <p>
+      Both commands are bypassed while you are editing the plugin. Point Claude
+      Code at a checkout and reload in place — no publish, no reinstall, no
+      version bump between an edit and trying it.
+    </p>
+<pre class="block"><code>claude --plugin-dir /path/to/flywheel/main
+/reload-plugins</code></pre>
+
+    <p>
+      <a href="https://github.com/agentplot/flywheel">Source on GitHub</a> ·
+      MIT licensed
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>
+      <a href="https://github.com/agentplot/flywheel">agentplot/flywheel</a> —
+      the machinery lands here as it settles.
+    </p>
+  </div>
+</footer>
+
+<script src="vendor/mermaid.min.js"></script>
+<script>
+  // Rendered client-side against the same bundle scripts/check-site.mjs parses
+  // with, so a diagram that renders here parses in the gate and vice versa.
+  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    securityLevel: "strict",
+    fontFamily: 'ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
+    flowchart: { nodeSpacing: 34, rankSpacing: 46, padding: 10, useMaxWidth: true },
+    themeVariables: dark
+      ? { background:"#1b1b22", primaryColor:"#1a2438", primaryTextColor:"#eceaf3",
+          primaryBorderColor:"#7aacff", lineColor:"#83808f", textColor:"#b6b2c2",
+          mainBkg:"#1a2438", nodeBorder:"#7aacff" }
+      : { background:"#ffffff", primaryColor:"#e6efff", primaryTextColor:"#12305e",
+          primaryBorderColor:"#2f6fd0", lineColor:"#807b73", textColor:"#4e4b46",
+          mainBkg:"#e6efff", nodeBorder:"#2f6fd0" },
+  });
+</script>
+</body>
+</html>

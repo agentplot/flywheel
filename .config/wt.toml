@@ -1,0 +1,28 @@
+# Worktrunk project config for agentplot/flywheel (the `wt` CLI).
+#
+# First run needs a one-time `wt config approvals add` — approvals key on the
+# TEMPLATE text, so one approval covers every branch's expansion; agents must
+# never bypass with --yes.
+
+# Runs during `wt merge` before the commit, on the exact tree that lands — so
+# the green claim is produced by the tool rather than asserted by whoever wrote
+# the change. All four are independent and seconds long, so they run
+# concurrently.
+#
+# plugin / market: `claude plugin validate --strict` is the shipped validator,
+#   and its own help names CI as the use case. Two invocations because passing
+#   a directory validates only the marketplace manifest — the plugin manifest
+#   has to be named directly or it is never read.
+# paths:  no absolute path may survive in shipped content. A plugin is
+#   installed into a cache directory the author never sees, so a hard-coded
+#   home directory resolves on one laptop and nowhere else, and it fails
+#   silently — the skill reads fine and its reference is simply not there.
+# site:   every mermaid block parses under the very bundle the page ships, and
+#   every relative reference resolves. Mermaid never parses at build time; a
+#   syntax error renders as a blank box rather than an error, so without this
+#   a broken diagram reaches production looking like a layout bug.
+[pre-commit]
+plugin = "claude plugin validate ./.claude-plugin/plugin.json --strict"
+market = "claude plugin validate ./.claude-plugin/marketplace.json --strict"
+paths  = "node scripts/check-paths.mjs"
+site   = "node scripts/check-site.mjs"
