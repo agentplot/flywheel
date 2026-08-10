@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+"""flywheel — drive an org fleet from its manifest.
+
+  flywheel status [--host H] [--fleet PATH]
+  flywheel up     [--host H] [--fleet PATH]
+
+The manifest is `fleet.yaml` at the org folder root — the directory above
+the org's repos — found by walking up from the working directory (or
+named explicitly with --fleet). It is not checked into git: placement is
+machine-local. `cwd:` entries are relative to the manifest's directory.
+
+The fleet runs in its own named herdr session — the org's — so its
+roster, workspaces, and teardown are isolated from other work. The
+session name is the manifest's `session:` field, defaulting to the org
+folder's name. When that session is not running, this command says so
+and names the start command rather than starting agents into the wrong
+session.
+
+Placement only: this command starts and reports actors; it never decides
+what they own (a change's .openspec.yaml owner: does) and never tears
+one down (teardown is deliberate, not a sync step). Rows on other hosts
+are reported, not driven — herdr remote first, ssh + prompt as fallback,
+inbox + waker when neither reaches.
+
+The manifest is a constrained YAML subset parsed here without a YAML
+dependency: two-space indentation, top-level scalars, `actors:` a list
+of flat maps, `hosts:` a map of flat maps, scalar values only. Only
+FULL-LINE comments are recognized — a `#` inside a value is part of the
+value.
+"""
+
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+STATES = {"running", "parked"}
+
+
+def find_manifest(override: str | None) -> Path:
+    if override:
+        p = Path(override).expanduser().resolve()
+        if not p.is_file():
+            sys.exit(f"--fleet {override}: no such file")
+        return p
+    cur = Path.cwd().resolve()
+    for d in [cur, *cur.parents]:
+        candidate = d / "fleet.yaml"
+        if candidate.is_file():
+            return candidate
+    sys.exit("no fleet.yaml found walking up from here — the manifest lives "
+             "at the org folder root; pass --fleet to name one explicitly")
+
+
+def parse_manifest(path: Path) -> dict:
+    hosts: dict[str, dict] = {}
+    actors: list[dict] = []
+    top: dict[str, str] = {}
+    section = None
+    current: dict | None = None
+    current_host = None
+    for raw in path.read_text().splitlines():
+        if raw.lstrip().startswith("#") or not raw.strip():
+            continue
+        line = raw.rstrip()
+        if line == "hosts:":
+            section, current = "hosts", None
+        elif line == "actors:":
+            section, current = "actors", None
+        elif not line.startswith(" ") and section is None and ":" in line:
+            k, _, v = line.partition(":")
+            top[k.strip()] = v.strip().strip('"')
+        elif section == "hosts" and line.startswith("  ") and not line.startswith("    "):
+            current_host = line.strip().rstrip(":")
+            hosts[current_host] = {}
+        elif section == "hosts" and line.startswith("    ") and current_host:
+            k, _, v = line.strip().partition(":")
+            hosts[current_host][k] = v.strip()
+        elif section == "actors" and line.lstrip().startswith("- "):
+            current = {}
+            actors.append(current)
+            k, _, v = line.lstrip()[2:].partition(":")
+            current[k.strip()] = v.strip().strip('"')
+        elif section == "actors" and current is not None:
+            k, _, v = line.strip().partition(":")
+            current[k.strip()] = v.strip().strip('"')
+    manifest = {"top": top, "hosts": hosts, "actors": actors,
+                "root": path.parent}
+    validate(manifest)
+    return manifest
+
+
+def validate(manifest: dict) -> None:
+    problems = []
+    for a in manifest["actors"]:
+        name = a.get("name", "<unnamed>")
+        for field in ("name", "profile", "host", "state", "cwd"):
+            if not a.get(field):
+                problems.append(f"{name}: missing {field}")
+        if a.get("state") and a["state"] not in STATES:
+            problems.append(f"{name}: state '{a['state']}' is not one of {sorted(STATES)}")
+        if a.get("host") and a["host"] not in manifest["hosts"]:
+            problems.append(f"{name}: host '{a['host']}' is not in hosts:")
+        if a.get("cwd", "").startswith("/"):
+            problems.append(f"{name}: cwd is absolute — cwd: entries are "
+                            "relative to the manifest's directory")
+    if problems:
+        sys.exit("manifest invalid:\n  " + "\n  ".join(problems))
+
+
+def session_env(manifest: dict) -> tuple[str, dict]:
+    name = manifest["top"].get("session") or manifest["root"].name
+    # normalize an org folder like github_willdan to its plain org name
+    name = re.sub(r"^github_", "", name)
+    if shutil.which("herdr") is None:
+        sys.exit("herdr not on PATH — the fleet is not addressable from here")
+    out = subprocess.run(["herdr", "session", "list"], capture_output=True, text=True)
+    if out.returncode != 0:
+        sys.exit(f"herdr session list failed: {out.stderr.strip()}")
+    sock = None
+    for line in out.stdout.splitlines()[1:]:
+        cols = line.split()
+        if len(cols) >= 4 and cols[0] == name and cols[1] == "running":
+            sock = cols[-1]
+    if not sock:
+        sys.exit(f"the fleet's herdr session '{name}' is not running — start "
+                 f"it with:  herdr --session {name}\nthen re-run this command")
+    env = dict(os.environ, HERDR_SOCKET_PATH=sock)
+    return name, env
+
+
+def herdr_json(argv: list[str], env: dict) -> dict:
+    out = subprocess.run(argv, capture_output=True, text=True, env=env)
+    if out.returncode != 0:
+        raise RuntimeError(f"{' '.join(argv)} failed: {out.stderr.strip()}")
+    try:
+        return json.loads(out.stdout or "{}")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"{' '.join(argv)} returned unparseable output: {e}")
+
+
+def herdr_agents(env: dict) -> dict[str, dict]:
+    try:
+        data = herdr_json(["herdr", "agent", "list"], env)
+    except RuntimeError as e:
+        sys.exit(str(e))
+    rows = data.get("result", {}).get("agents", [])
+    return {
+        (a.get("name") or a.get("terminal_title_stripped", "")): a
+        for a in rows
+        if isinstance(a, dict)
+    }
+
+
+def this_host(manifest: dict, override: str | None) -> str:
+    if override:
+        if override not in manifest["hosts"]:
+            sys.exit(f"--host {override} is not in hosts:")
+        return override
+    hostname = socket.gethostname().split(".")[0].lower()
+    for name, cfg in manifest["hosts"].items():
+        if cfg.get("hostname", "").split(".")[0].lower() == hostname and hostname:
+            return name
+    for name, cfg in manifest["hosts"].items():
+        if str(cfg.get("default", "")).lower() == "true":
+            print(f"note: no hosts: entry matches hostname '{hostname}'; "
+                  f"assuming '{name}' (default: true)")
+            return name
+    sys.exit("no --host given, no hostname match, no default host in hosts:")
+
+
+def status(manifest: dict, host: str, session: str, env: dict) -> int:
+    alive = herdr_agents(env)
+    width = max((len(a.get("name", "")) for a in manifest["actors"]), default=4)
+    print(f"fleet: {manifest['root']}  ·  session: {session}  ·  this host: {host}")
+    print(f"{'actor':<{width}}  {'host':<12} {'state':<8} observed")
+    drift = 0
+    for a in manifest["actors"]:
+        name = a.get("name", "?")
+        observed = alive[name].get("agent_status", "alive") if name in alive else "absent"
+        want = a.get("state", "?")
+        mark = ""
+        if want == "running" and name not in alive:
+            mark, drift = "  ← wanted running", drift + 1
+        if want == "parked" and name in alive:
+            mark = "  ← running while parked"
+        print(f"{name:<{width}}  {a.get('host','?'):<12} {want:<8} {observed}{mark}")
+    return 1 if drift else 0
+
+
+def up(manifest: dict, host: str, session: str, env: dict) -> int:
+    alive = herdr_agents(env)
+    failures = 0
+    for a in manifest["actors"]:
+        name = a["name"]
+        if a.get("state") != "running" or name in alive:
+            continue
+        if a.get("host") != host:
+            print(f"{name}: on {a.get('host')} — not this host, reach it via "
+                  "herdr remote / ssh / inbox")
+            continue
+        cwd = (manifest["root"] / a["cwd"]).resolve()
+        if not cwd.is_dir():
+            print(f"{name}: cwd {a['cwd']} does not resolve under "
+                  f"{manifest['root']}"); failures += 1
+            continue
+        print(f"starting {name} ({a['profile']}, {a.get('model','default')}) in session {session}")
+        try:
+            tab = herdr_json(["herdr", "tab", "create", "--cwd", str(cwd),
+                              "--label", name, "--no-focus"], env)
+        except RuntimeError as e:
+            print(f"  {e}"); failures += 1
+            continue
+        result = tab.get("result", {})
+        tab_id = result.get("tab", {}).get("tab_id") or result.get("tab", {}).get("id")
+        pane = result.get("root_pane", {}).get("pane_id")
+        if not pane:
+            print(f"  tab create returned no root_pane.pane_id: "
+                  f"{json.dumps(result)[:200]}")
+            failures += 1
+            continue
+        # -n sets the session title at launch, so there is no rename to
+        # race and the agent is addressable by its manifest name at once.
+        # A fresh tab's shell can take a while to reach its prompt (devenv
+        # init), and herdr reports agent_pane_busy until it does — poll.
+        argv = ["herdr", "agent", "start", name, "--kind", "claude",
+                "--pane", str(pane), "--timeout", "120000",
+                "--", "--agent", a["profile"], "-n", name]
+        if a.get("model"):
+            argv += ["--model", a["model"]]
+        start = None
+        for _attempt in range(12):
+            start = subprocess.run(argv, capture_output=True, text=True, env=env)
+            if start.returncode == 0 or "pane_busy" not in start.stderr:
+                break
+            time.sleep(10)
+        if start.returncode != 0:
+            print(f"  agent start failed: {start.stderr.strip()}")
+            if tab_id:
+                subprocess.run(["herdr", "tab", "close", str(tab_id)],
+                               capture_output=True, text=True, env=env)
+                print(f"  closed the orphaned tab {tab_id}")
+            failures += 1
+            continue
+        if a.get("prompt"):
+            sent = subprocess.run(["herdr", "agent", "prompt", name, a["prompt"]],
+                                  capture_output=True, text=True, env=env)
+            if sent.returncode != 0:
+                print(f"  first prompt failed: {sent.stderr.strip()} — "
+                      f"{name} is alive but uncharged; prompt it by hand")
+                failures += 1
+    return 1 if failures else 0
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    overrides = {}
+    for flag in ("--host", "--fleet"):
+        if flag in args:
+            i = args.index(flag)
+            try:
+                overrides[flag] = args[i + 1]
+            except IndexError:
+                sys.exit(f"{flag} needs a value")
+            del args[i:i + 2]
+    if len(args) != 1 or args[0] not in {"up", "status"}:
+        print(__doc__.strip())
+        return 2
+    manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
+    session, env = session_env(manifest)
+    host = this_host(manifest, overrides.get("--host"))
+    if args[0] == "status":
+        return status(manifest, host, session, env)
+    return up(manifest, host, session, env)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

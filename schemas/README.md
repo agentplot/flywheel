@@ -1,12 +1,16 @@
 # schemas/
 
-Empty on purpose. The two OpenSpec workflow schemas land here when the split
-runs: `flywheel-intent` (one intent, its decisions, its design sessions, its
-typed tasks) and `flywheel-bolt` (one construction iteration and its proposals
-registry).
+The four OpenSpec workflow schemas the loops track their work under:
 
-They are distributed as **user schemas**, installed under
-`~/.local/share/openspec/schemas/` and resolved by name. `openspec schema which
---all` reports three sources — `project`, `user`, `package` — and a project copy
-shadows a user copy, so a repo that wants a working copy can still fork one
-without losing the published binding.
+- `flywheel-intent` — one design thread: decisions, questions,
+  assertions, sessions, typed tasks, and the intent loop's shape in
+  `apply.instruction`.
+- `bolt-default` · `bolt-quick` · `bolt-deep` — one construction
+  iteration each; the member picked at creation IS the review depth, and
+  only `apply.instruction` differs between them. (`bolt-no-spec` is
+  deliberately not a schema: plan mode replaces the spec step.)
+
+Install them machine-wide with `bin/install-schemas`, which copies them
+to `~/.local/share/openspec/schemas/` where `openspec` resolves them by
+name for any repo. A repo's own `openspec/schemas/` copy shadows the
+user copy when an in-place edit loop is wanted.

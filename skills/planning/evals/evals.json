@@ -1,0 +1,33 @@
+{
+  "skill_name": "planning",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "You are a flywheel design session and your conductor has just charged you. Read the work order in the attached file and work the batch. Report exactly which commands you will run and on which paths, what you will do with each of the two task lines, and what you will report back to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "expected_output": "The session opens a plannotator round on its own draft (tile-cache-owner.md), declines the round on intent.md because the conductor is that file's sole writer, and reports task 2.5 back to the conductor rather than working it. It appends nothing to tasks.md.",
+      "files": ["evals/files/charge-boundary-drafts.md"],
+      "expectations": [
+        "The response opens a plannotator round on sessions/2026-08-11-boundary-drafts/tile-cache-owner.md, naming that path.",
+        "The response explicitly declines to open a round on openspec/changes/geo-iq-boundaries/intent.md.",
+        "NEGATIVE: The response does not run, plan, or propose `plannotator annotate` (or any other review-surface command) against intent.md.",
+        "The response gives the reason as intent.md having a different sole writer — the conductor or dispatch — rather than as a formatting or convenience concern.",
+        "The response reports task 2.5 back to the conductor as something the conductor must run or re-file, rather than working it.",
+        "NEGATIVE: The response does not edit tasks.md and does not check off or append any task line."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "You are a flywheel design session working batch 3 of the intent change `geo-iq-boundaries`, from your session directory `sessions/2026-08-11-boundary-drafts/`. The round you opened on your decision draft has come back; the result is in the attached file. Say exactly what you do next: which files you change, what you write where, and what you report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "expected_output": "The session applies annotations 1 and 2 to its own draft, and reports annotation 3 to the conductor as proposed new work for the conductor to triage. It writes no task, no decision record, and nothing into another actor's directory.",
+      "files": ["evals/files/returned-annotations.md"],
+      "expectations": [
+        "The response applies annotations 1 and 2 to sessions/2026-08-11-boundary-drafts/tile-cache-owner.md, the draft the session wrote.",
+        "The response reports annotation 3 to the conductor as proposed new work for the conductor to decide on.",
+        "NEGATIVE: The response does not append a task to tasks.md, does not check off a task, and does not decide itself that annotation 3 becomes a Design task.",
+        "NEGATIVE: The response does not write a file into openspec/changes/geo-iq-boundaries/decisions/ or any directory outside sessions/2026-08-11-boundary-drafts/.",
+        "NEGATIVE: The response does not forward the raw annotation text to another agent, another session, or another actor's directory.",
+        "The response names which decision closed and what it delivers to the conductor."
+      ]
+    }
+  ]
+}

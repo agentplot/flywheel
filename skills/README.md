@@ -1,15 +1,24 @@
 # skills/
 
-Empty on purpose. The flywheel's skills are still under active edit in
-`willdan-blueprints`, and moving a tree that is about to churn is a merge
-problem. They land here when the split runs.
+The flywheel's skills. A plugin skill invokes as `/<plugin>:<skill>`, so
+the plugin name supplies the `flywheel` prefix and each directory sheds
+it: what developed as `flywheel-inception` invokes here as
+`flywheel:inception`, living at `skills/inception/`.
 
-Seven arrive: the two loop skills — `inception` and `construction` — and the
-five design-session type skills: `interactive`, `prototype`, `research`,
-`review`, `writeback`. Each brings its `evals/` directory with it, which is
-what `claude plugin eval` runs.
+Seventeen directories:
 
-The `flywheel-` prefix drops on the way in. A plugin skill invokes as
-`/<plugin>:<skill>`, so the plugin name supplies the prefix and the directory
-name sheds it: `flywheel-inception` becomes `flywheel:inception`, living at
-`skills/inception/`.
+- the two loop skills — `inception` (the design loop) and `construction`
+  (the bolt loop);
+- the thirteen session-type skills, one per type across both loops —
+  design: `interactive`, `planning`, `research`, `prototype`,
+  `writeback`, `handoff`; construction: `proposal-writing`,
+  `proposal-review`, `spec-writing`, `build`, `test`, `code-review`,
+  `human-code-review`;
+- `fleet` — wraps `bin/flywheel`, the per-org fleet command;
+- `_reference/` — the shared herdr/worktrunk invocation reference every
+  skill points at rather than bundling its own copy.
+
+Each skill that has an `evals/` directory brought it along; the suites
+are what `claude plugin eval` runs. The eight construction-side skills
+arrived without evals — writing them is an open task tracked in the
+source intent.

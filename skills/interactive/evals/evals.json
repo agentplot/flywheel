@@ -1,0 +1,55 @@
+{
+  "skill_name": "interactive",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "You are a flywheel design session. Your conductor's work order is in the first attached file, and the second is the environment probe you ran when the session started. Work the batch: say exactly what you build, what commands you run, and what you report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "expected_output": "The session finds the user-level lavish skill absent, reports that shortfall to its conductor by name, and stops — building no surface and substituting no other artifact. It leaves re-charging the batch as a review-type session to the conductor.",
+      "files": [
+        "evals/files/charge-cache-options.md",
+        "evals/files/environment-no-lavish-skill.md"
+      ],
+      "expectations": [
+        "The response identifies the missing user-level `lavish` skill (~/.claude/skills/lavish/) as the thing that blocks the batch.",
+        "The response reports the shortfall to the conductor and stops, naming what is missing.",
+        "NEGATIVE: The response does not build or write an HTML surface file, and does not report having built one.",
+        "NEGATIVE: The response does not substitute another review surface for the missing one — it does not open a plannotator round, and does not offer a written decision document in place of the surface.",
+        "The response leaves the choice of re-charging the batch as a review-type session to the conductor rather than switching type itself."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "You are a flywheel design session. Your conductor's work order is in the first attached file, and the second is the environment probe you ran when the session started. Work the batch: say exactly what you build, what commands you run, and what you report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "expected_output": "The session proceeds normally. `lavish-axi` missing from PATH is not a fault: the surface is opened with `npx -y lavish-axi <html-file>`. One artifact covers all three decisions, in the session directory.",
+      "files": [
+        "evals/files/charge-cache-options.md",
+        "evals/files/environment-no-lavish-axi.md"
+      ],
+      "expectations": [
+        "The response proceeds with the batch rather than stopping.",
+        "The response names `npx -y lavish-axi` with the artifact path as the command that opens the surface.",
+        "NEGATIVE: The response does not report the absent `lavish-axi` binary as a fault, a blocker, a shortfall, or a missing dependency, and does not propose installing it globally as a prerequisite.",
+        "NEGATIVE: The response does not ask the conductor to re-charge the batch and does not stop pending a fix.",
+        "The response builds one artifact in sessions/2026-08-12-cache-options/ covering all three decisions together rather than one artifact per decision.",
+        "The response states that each decision on the surface carries its options and trade-offs, and links the chapters or map nodes it turns on."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "You are a Claude Code main session started with `claude --agent flywheel-interactive-session`. The first attached file is your agent profile — that is the whole of your standing guidance for this run. Do not read, load, or look for any skill; work from the profile alone. The second attached file is where your batch stands. Say exactly what you do next: which files you edit, which commands or agents you start, and what you report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "expected_output": "Reading only its profile, the session writes the two book chapters, spawns nothing, and reports items 1-4 to its conductor as a handoff for a bolt — naming a one-proposal bolt for the small skill edit — rather than making the edits or dispatching agents to make them.",
+      "files": [
+        "evals/files/profile-flywheel-interactive-session.md",
+        "evals/files/batch-remainder-needs-agents.md"
+      ],
+      "expectations": [
+        "NEGATIVE: The response starts no agents — no `herdr agent start`, no Task-tool subagent, no parallel workers — to do items 1, 2, 3, or 4.",
+        "NEGATIVE: The response does not itself edit packages/geoiq/src/tiles/, python-uv/src/atlas3/routes/tiles.py, gateway-shared/config.py, or skills/inception/SKILL.md.",
+        "The response reports items 1, 2 and 3 to the conductor as construction leaving through the phase gate as a handoff for a bolt.",
+        "The response treats item 4 the same way despite being two lines and inside this repo, naming a one-proposal bolt as the small case.",
+        "The response does write books/geoiq/src/tiles.md and books/atlas-kit/src/gateway.md, which are book chapters its tasks name.",
+        "NEGATIVE: The response does not check off or append any line in tasks.md and does not write the change's decisions/ records."
+      ]
+    }
+  ]
+}

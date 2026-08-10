@@ -42,21 +42,21 @@ a raw idea
   → a handoff — batched, named, drafted to the point of one question
 ```
 
-Tasks come in four types, and the type decides what happens:
+A task is filed under the session type that will run it, so the line says
+both what the work is and who does it. The six design types, chosen by
+what you will actually do with the material:
 
-| type | what the conductor does |
+| type | the session it spawns |
 |---|---|
-| **Design** | spawns a design session on its own branch and worktree |
-| **Writeback** | spawns a session that rewrites chapters and moves the map — no approval sought, because the books are its own scope |
-| **Handoff** | prepares the batch, then asks you once, for the whole batch |
-| **Fog** | an open question that has not earned a task yet |
+| **design** | builds a page you work — options, trade-offs, coupled choices side by side |
+| **planning** | puts drafts the session wrote through plannotator for your annotations |
+| **research** | answers a factual question by reading code, docs, and behaviour |
+| **prototype** | settles a fact a throwaway can prove faster than an argument can |
+| **writeback** | rewrites chapters and moves the map — no approval sought, because the books are the loop's own scope |
+| **handoff** | composes the release request and carries the receipt — the one type behind your approval |
 
-A design session comes in five flavours, and the flavour is chosen by what you
-will actually do with the material: read a document that already exists
-(**review**), work a set of coupled choices side by side (**interactive**),
-settle a fact a throwaway can prove faster than an argument can settle
-(**prototype**), answer a factual question by reading (**research**), or carry
-a settled destination into the books and the map (**writeback**).
+Open questions live as records with state, not as a task type: a question
+closes into a decision, and the decision's consequences become tasks.
 
 ## The construction loop — a bolt
 
@@ -108,28 +108,35 @@ shortcut around it.
 
 ## The actors
 
-Five profiles. Each owns a write scope, and the scopes do not overlap.
+Nine profiles: six actors and three persona lenses. Each actor owns a
+write scope, and the scopes do not overlap.
 
 | actor | lives as long as | writes |
 |---|---|---|
-| `flywheel-dispatch` | always — one per workspace | new intent changes, at the moment of triage, and nothing else |
-| `flywheel-intent-conductor` | its intent | that intent's records; the books; the context map |
-| `flywheel-review-session` | one task batch | its own session directory; the books; the context map |
-| `flywheel-interactive-session` | one task batch | the same, and it builds a surface you work |
-| `flywheel-bolt-conductor` | its bolt | the bolt's proposal registry and its tasks |
+| `flywheel-dispatch` | always — one per fleet | new intent changes, at the moment of triage; inbox files; nothing else |
+| `flywheel-intent-conductor` | its intent | that intent's records on main; the books; the context map |
+| `flywheel-bolt-conductor` | its bolt | the bolt's proposal registry and its tasks, on main |
+| `flywheel-design-session` | one task batch | its session directory, its own task lines, its charged closures, the books and map — in its worktree |
+| `flywheel-interactive-session` | one task batch | the same, and it builds a page you work |
+| `flywheel-construction-session` | one task batch | the built repo and its own task lines — in its worktree |
 
-Plus the one-shot agents a bolt conductor dispatches — spec, apply, testing —
-which write the change and branch their registry row names, and nothing else.
+The `user-*` profiles — data scientist, DevOps engineer, app developer —
+are personas: lenses a review session reads built work through, never
+actors, never owners.
 
 Two consequences worth stating outright, because both are load-bearing:
 
-- **A session never writes a decision record and never checks its own task
-  off.** It reports; the conductor promotes. A conductor, symmetrically, never
+- **A session closes what it was charged with; the conductor opens what
+  it discovered.** In its own worktree a session checks off exactly its
+  assigned task lines and writes the decision records for questions it
+  closed firsthand; the conductor is sole writer on main, and its merge
+  is what admits a session's work. A conductor, symmetrically, never
   edits inside a session's directory.
-- **Dispatch is the only actor bridged to you.** A question a bolt conductor
-  cannot answer travels out through dispatch, and the answer comes back to the
-  conductor that raised it — never to a different actor, and never as an edit
-  to that conductor's change.
+- **Dispatch is the only actor bridged to a human.** A question a bolt
+  conductor cannot answer travels out through dispatch — resolved change
+  → owner → DM — and the answer comes back to the conductor that raised
+  it, never to a different actor, and never as an edit to that
+  conductor's change.
 
 ## Install
 
@@ -183,7 +190,7 @@ devenv shell -- gates
 ```
 .claude-plugin/   plugin.json and marketplace.json — this repo is both
 skills/           the loop skills and the session-type skills
-agents/           the five agent profiles
+agents/           the nine agent profiles — six actors, three personas
 schemas/          the OpenSpec workflow schemas, published as user schemas
 bin/              commands. An installed plugin's bin/ goes on your PATH
 tools/            the implementations behind bin/, zero-dependency
@@ -201,9 +208,9 @@ its prefix.
 
 ## Status
 
-The repository is standing up. The skills, the profiles and the schemas are
-still under active edit elsewhere and land here as they settle; each directory
-above says what arrives in it. The manifests, the gates, the site and the
-change tracking are live now.
+The machinery is landed: fifteen loop and session-type skills, the fleet
+skill and command, nine profiles, four schemas, and the OpenSpec record
+that built them. The eight construction-side skills owe eval suites, and
+the context-map tool arrives in a later change.
 
 MIT licensed.

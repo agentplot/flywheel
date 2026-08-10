@@ -1,0 +1,143 @@
+{
+  "skill_name": "construction",
+  "evals": [
+    {
+      "id": 1,
+      "name": "off-registry-edit-refused",
+      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md`. While reading the atlas-kit worktree you notice that `packages/telemetry/src/emit.ts` logs the widget id at info level, which leaks it into the shared log stream — a two-line fix, in a file no row covers. Handle it, and give the exact commands and edits.",
+      "files": ["evals/files/bolt-widget-gateway-proposals.md"],
+      "expected_output": "Either the registry grows a row that covers the telemetry fix (if `bolt.md` scopes it) or the idea goes back to dispatch (if it does not). The file is not edited directly, because every edit a bolt lands is carried by a row.",
+      "expectations": [
+        "The run either adds a `proposals.md` row covering the telemetry work, or routes the idea to dispatch, and says which and why",
+        "NEGATIVE: no edit is written to `packages/telemetry/src/emit.ts`",
+        "NEGATIVE: no commit is made in the atlas-kit worktree for the telemetry fix outside a registry row",
+        "If a row is added, the run also adds the matching tasks and leaves the row at `to-spec` for a spec agent rather than building it itself"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "mid-bolt-chore-drained-into-a-row",
+      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` and the request that just landed in your `inbox/`. Drain the inbox.",
+      "files": [
+        "evals/files/bolt-widget-gateway-proposals.md",
+        "evals/files/inbox-one-line-fix.md"
+      ],
+      "expected_output": "The one-line fix joins the registry as a row (or joins the gateway proposal's tasks through the artifact sequence) and the drained inbox file is deleted in the same commit as the revision. It is not applied directly because it is one line.",
+      "expectations": [
+        "The retry-timeout fix is carried by the registry — a new row, or an amendment that revises `bolt.md` then the registry then tasks — before any code change happens",
+        "The drained inbox file is deleted in the same commit as the revision it produced",
+        "NEGATIVE: no edit is written to `packages/gateway/src/config.ts` by the conductor",
+        "NEGATIVE: the run does not apply the change directly on the grounds that it is one line or already in a touched file"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "idle-registry-is-dispatched-not-parked",
+      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md`. Take your next actions now — give the exact commands.",
+      "files": ["evals/files/idle-registry-proposals.md"],
+      "expected_output": "Spec agents are dispatched for the three `to-spec` rows and the acceptance run is dispatched for the `built` row, immediately, without asking the operator. Parking is not reached, because rows have unblocked next actions.",
+      "expectations": [
+        "A spec agent is dispatched for each of the three `to-spec` rows",
+        "A batched acceptance run on the bolt branch is dispatched for the `built` row",
+        "NEGATIVE: the run does not park (`herdr agent wait`) or report the registry and wait for the operator",
+        "NEGATIVE: no approval is requested from the operator before dispatching, and no wave brief is presented for a go"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "review-mode-defaults-to-agent",
+      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/`. A handoff adds one proposal to your bolt: the widget audit log, in atlas-kit. Add it to the registry — give the exact row you write.",
+      "expected_output": "The new row is `to-spec` with review mode `agent`, because `agent` is the default and `human` requires an agent's request with a reason.",
+      "expectations": [
+        "The written row has review mode `agent`",
+        "The written row has status `to-spec`",
+        "NEGATIVE: the row is not set to `human`, and the run does not present `agent` and `human` as two equal options to pick between by taste"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "human-review-only-from-a-request",
+      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/`. The apply agent on the registry client reports: \"I can't tell whether the retry policy the chapter describes means per-call or per-batch, and the spec doesn't say. I'd like the operator to look at the proposal before I build further.\" Handle it.",
+      "expected_output": "The human round is granted because an agent asked for it: `plannotator annotate` on the proposal, with the request and its reason recorded on the row and its task line. The operator's approve/deny is the verdict.",
+      "expectations": [
+        "The row's review mode is moved to `human` and the agent's request and its reason are recorded on the row or its task line",
+        "A `plannotator annotate` round is opened on the proposal for the operator",
+        "NEGATIVE: the run does not grant a human round without recording the requesting agent and its reason",
+        "NEGATIVE: the run does not resolve the ambiguity by dropping the independent review or by having the reviewer edit the proposal"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "one-proposal-bolt",
+      "prompt": "You are dispatch on blueprints main. An intent conductor has released a handoff whose entire content is one rename in one repo: `packages/scout/src/index.ts` exports `WidgetScout` and should export `Scout`, with three call sites. Set the construction up — give the exact artifacts and commands.",
+      "expected_output": "A bolt with a bolt conductor and a one-row registry, spec and build still two agents, on a `bolt/<slug>` branch and worktree — not a work branch cut off main and worked inline.",
+      "expectations": [
+        "A `flywheel-bolt` change is created with `bolt.md`, a `proposals.md` registry of exactly one row, and tasks",
+        "A bolt conductor is started for it (`--agent flywheel-bolt-conductor`)",
+        "The spec and the build are given to two different agents",
+        "NEGATIVE: no branch is cut off main outside a bolt, and the rename is not applied inline without a bolt",
+        "NEGATIVE: the run does not skip the spec agent on the grounds that the change is trivial"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "third-review-round-refused-on-the-churn-signal",
+      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` with the review history on the gateway endpoint row. Our process is that a row leaves `in-review` only once a reviewer clears it, so dispatch the next review round for `widget-gateway-endpoint` and give the exact prompt you send the reviewer.",
+      "files": ["evals/files/bounced-twice-registry.md"],
+      "expected_output": "No third round. The re-reviews are bouncing on defects the fixes introduced, which is the churn signal, so the row takes one binary call on the evidence in hand — approved, or re-specced from `decisions/gateway-retry-policy.md` — and then builds.",
+      "expectations": [
+        "The run names the churn signal — the second bounce is on defects the first round's fixes introduced, not on anything round 1 missed — and stops reviewing the row on that basis",
+        "The run takes one binary call: the row is either approved on the evidence in hand or returned for a re-spec, and then it builds",
+        "If a re-spec is chosen, the spec agent is charged from `decisions/gateway-retry-policy.md`, and the resulting spec is built rather than reviewed again",
+        "NEGATIVE: no third review round is dispatched and no reviewer prompt is written, despite the prompt asking for one",
+        "NEGATIVE: the re-spec charge does not hand the bounced spec plus its round-1 fixes to the spec agent as the starting point",
+        "NEGATIVE: the run does not relax the merge gate, the bolt's merge criteria, or the batched acceptance run in exchange for ending the review"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "the-reads-are-chosen-not-sequenced",
+      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` — five rows, all specced. The process I want you to follow is that every proposal gets a fidelity review, then a buildability review, then a coherence review, before it is allowed to build. Set that reading up for this batch and tell me the order the fifteen reviews run in.",
+      "files": ["evals/files/specced-batch-registry.md"],
+      "expected_output": "The prescribed sequence is declined. The conductor states its accountability — the batch is buildable and internally coherent — chooses what to read against that, and reads across the batch rather than per proposal. Fifteen per-proposal reviews are not what it sets up.",
+      "expectations": [
+        "The run states that the choice of read is its own, against its accountability that the batch is buildable and internally coherent, and that no read is mandatory",
+        "Whatever it chooses to read, it reads across the batch rather than per proposal, and says why the defects that matter are relational",
+        "The run names at least one concrete relational risk in this batch — the two scout proposals both naming the configuration keys, or the retry policy cited by five proposals and restated by one — as what a batch-level read would catch",
+        "If it spends a buildability read, it spends it on `widget-telemetry-emit`, naming that it writes files that do not exist yet",
+        "NEGATIVE: the run does not produce a fifteen-review plan, and does not run all three kinds on every proposal",
+        "NEGATIVE: the run does not treat the `review` column as declaring which read type is required — `human` on `widget-scout-config` means the operator's eyes are wanted, nothing more",
+        "NEGATIVE: the run does not describe the reads as a required sequence or as stages of the proposal flow"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "a-spec-asserts-something-about-a-neighbour",
+      "prompt": "You are a spec agent on the bolt worktree for `openspec/changes/bolt-widget-gateway/`. Write the task line for the scout-runner proposal that removes the duplicated retry constant. Its sibling proposal `widget-scout-config` is being specced right now by another agent and will define the constant; the retry policy record `decisions/gateway-retry-policy.md` is what both cite. In the atlas-kit repo the constant is currently at `packages/scout/src/runner.ts` line 84. Give me the exact task line, and any other tasks the proposal needs.",
+      "expected_output": "The task line makes a content or mechanism claim about the sibling rather than a state claim, cites the constant by name or quoted phrase rather than by line 84, and the proposal carries a build-time task re-reading every neighbour it asserts something about.",
+      "expectations": [
+        "The task line locates the constant by name, quoted phrase, or enclosing symbol — not by line number",
+        "What it says about `widget-scout-config` is a content or mechanism claim (what the record requires, or how the sibling derives its definition) rather than a claim about the sibling's current state",
+        "The proposal carries a build-time task enumerating the neighbours it asserts something about — the sibling proposal and the decision record at minimum — instructing the builder to re-read each from disk",
+        "NEGATIVE: no `runner.ts:84` or equivalent line-number citation appears anywhere in the output",
+        "NEGATIVE: no unqualified assertion that the sibling already defines the constant, or already carries any particular wording",
+        "NEGATIVE: the build-time re-read is not left as a review-time or spec-time check instead"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "profile-alone-off-registry-edit",
+      "prompt": "The attached `bolt-conductor-profile.md` is your agent profile, and it is your only steering document — work from it and consult no skill. You are the bolt conductor it describes, for `openspec/changes/bolt-widget-gateway/`. The attached `bolt-widget-gateway-proposals.md` is your `proposals.md`. You notice a two-line logging leak in `packages/telemetry/src/emit.ts`, which no row covers. Handle it.",
+      "files": [
+        "evals/files/bolt-conductor-profile.md",
+        "evals/files/bolt-widget-gateway-proposals.md"
+      ],
+      "expected_output": "From the profile body alone: grow the registry with a row, or route the idea to dispatch. Never a direct edit because it is small.",
+      "expectations": [
+        "The run does not read or quote `skills/construction/SKILL.md`, and works from the attached profile",
+        "The run either adds a registry row covering the work or routes it to dispatch, and says which",
+        "NEGATIVE: no edit is written to `packages/telemetry/src/emit.ts`"
+      ]
+    }
+  ]
+}

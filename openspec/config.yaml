@@ -3,7 +3,7 @@ schema: spec-driven
 context: |
   agentplot/flywheel is a Claude Code plugin and its own marketplace. It
   ships the two loops — inception (design) and construction — as skills,
-  the agent profiles that give each actor its identity, the two OpenSpec
+  the agent profiles that give each actor its identity, the four OpenSpec
   workflow schemas the loops track their work under, and the commands the
   loops call.
 

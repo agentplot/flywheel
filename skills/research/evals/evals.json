@@ -1,0 +1,20 @@
+{
+  "skill_name": "research",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "You are a flywheel design session and the attached file is your work order and where the investigation got to. Close the batch out: say exactly what you write, where each file lands, which commands you run, and what you report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "expected_output": "The answer — one gate fails, and mainWorktree() picks .bare — is delivered in the session report with its evidence. The two-line fix is written down and routed to a handoff, a one-proposal bolt, rather than applied. No prototypes/ note is written, because nothing was built.",
+      "files": ["evals/files/charge-mermaid-gate.md"],
+      "expectations": [
+        "The response delivers the finding in the session report inside sessions/2026-08-14-mermaid-gate/, naming the answer (one gate fails, not two) and the cause in `mainWorktree()`.",
+        "The response carries the evidence — the three exit codes and the offending lines of books/check-mermaid.mjs — rather than the conclusion alone.",
+        "NEGATIVE: The response does not edit books/check-mermaid.mjs, and does not propose applying the two-line fix itself as part of this batch.",
+        "The response routes the fix to a handoff for construction, naming a one-proposal bolt as the shape for work this small.",
+        "The response still writes down what the fix would be, so the bolt does not have to rediscover it.",
+        "NEGATIVE: The response does not write a prototypes/<slug>.md note, and does not create a spike-repo worktree or branch.",
+        "NEGATIVE: The response does not check off or append any line in tasks.md."
+      ]
+    }
+  ]
+}

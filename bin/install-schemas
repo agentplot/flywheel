@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""install-schemas — publish this plugin's OpenSpec schemas as user schemas.
+
+Copies every schema under the plugin's schemas/ into
+~/.local/share/openspec/schemas/, where `openspec` resolves them by name
+for any repo on this machine. A repo's own openspec/schemas/ copy shadows
+the user copy, so a project that wants an in-place edit loop keeps one.
+
+Names stay plain (`flywheel-intent`, `bolt-default`, ...) — resolution is
+by the name a change's .openspec.yaml binds, so the installed directory
+name is the contract.
+"""
+
+import shutil
+import sys
+from pathlib import Path
+
+SRC = Path(__file__).resolve().parent.parent / "schemas"
+DST = Path.home() / ".local/share/openspec/schemas"
+
+
+def main() -> int:
+    if not SRC.is_dir():
+        sys.exit(f"no schemas/ beside this script ({SRC})")
+    DST.mkdir(parents=True, exist_ok=True)
+    installed = []
+    for schema in sorted(SRC.iterdir()):
+        if not (schema / "schema.yaml").is_file():
+            continue
+        target = DST / schema.name
+        if target.exists():
+            shutil.rmtree(target)
+        shutil.copytree(schema, target)
+        installed.append(schema.name)
+    if not installed:
+        sys.exit("schemas/ holds no schema.yaml directories")
+    print("installed as user schemas:", ", ".join(installed))
+    print(f"→ {DST}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,223 @@
+name: bolt-default
+version: 1
+description: Flywheel construction tracking, default depth - one change per
+  bolt; proposals registry, typed tasks, per-repo bolt branches; the loop
+  schedules the declared reviews, an adversarial code-review, and batched
+  acceptance. Picked for normal work touching code others read.
+artifacts:
+  - id: bolt
+    generates: bolt.md
+    description: The bolt - scope, source intents, involved repos and branches, merge criteria
+    template: bolt.md
+    instruction: |
+      You are writing the bolt record for a flywheel construction change.
+
+      A bolt is one construction iteration: the tracking record for building
+      a batch of related proposals across one or more built repos. Its
+      conductor runs in the blueprints repo (a bolt can span built repos)
+      and is the SOLE WRITER of this change's artifacts. Everyone else -
+      dispatch, intent conductors, testing agents - requests changes via
+      `herdr agent prompt bolt-<slug>` when the conductor is running, or by
+      dropping a file in this change's `inbox/` when it is not. Draining is
+      not an append: revise the earliest artifact the request touches (new
+      scope lands here in bolt.md first, then the proposals registry, then
+      tasks), re-walking the artifact sequence forward so it stays
+      coherent; delete the drained file in the same commit.
+
+      A bolt carrying a single proposal is an ordinary bolt. All four
+      sections below are written, and the same bolt conductor is its sole
+      writer.
+
+      Three edits the bolt conductor makes DIRECTLY, with no registry row
+      and no construction worktree: a repo's CLAUDE.md, an architecture
+      decision record, and the loop's own machinery where the change is
+      small and self-evident. An ADR belongs here rather than to the
+      intent that released the work - the bolt is where the material for
+      one exists - and it is written into the built repo's log4brains
+      layout. Everything else a bolt lands is carried by a proposals row.
+
+      **Output:** bolt.md with exactly these sections:
+      1. **Scope** - what this bolt builds, in one paragraph.
+      2. **Sources** - the intents (and their handoff tasks) this bolt
+         serves; requests folded in later are appended here with dates.
+      3. **Repos** - one line per involved built repo: repo · bolt branch
+         name (`bolt/<slug>`) · worktree path. Bolt branches live for the
+         length of the bolt; construction work runs on nested worktrees
+         off them.
+      4. **Merge criteria** - what "thorough enough to land on main" means
+         for this bolt: the acceptance suites that must be green on the
+         bolt branch, review requirements, and any repo-specific gates.
+         The full release gate (wt merge with full hooks) is always
+         implied and never weakened.
+
+      Two rules bind every section here. State a constraint at its MEASURED
+      strength, never its remembered or feared strength; if the strength is
+      unknown, say that instead of rounding up, because an agent told to
+      expect a failure that cannot happen learns to discount constraints.
+      And where a section names something that constrains order, coupling
+      or membership, state the fact that makes the constraint CORRECT, not
+      the mechanism that makes it stick.
+
+      Earlier records in this repo are evidence about the design, not
+      models for the prose.
+    requires: []
+  - id: proposals
+    generates: proposals.md
+    description: The registry - one row per proposal with review mode, status, branch, owner
+    template: proposals.md
+    instruction: |
+      You are maintaining the bolt's proposal registry - the one table the
+      conductor drives construction from.
+
+      One row per proposal:
+      | proposal | repo | change id | review | status | branch | owner |
+
+      - **review** is declared when the row is added: `agent` (an
+        independent agent reviews the spec against its cited design
+        sources) or `human` (the operator reviews via plannotator). The
+        column declares that a row wants a particular kind of eyes on it;
+        it is NOT a statement that a mandatory read type has been
+        performed. A bolt conductor is accountable for one thing - that
+        the batch it is about to build is buildable and internally
+        coherent - and how it satisfies that is its judgment. Reads are
+        taken across the batch rather than one proposal at a time, because
+        the defects that occur are relational and a reader holding one
+        proposal cannot see them. Nothing in this schema prescribes a read
+        that must always run, and nothing caps how many a row may get:
+        a conductor MAY add a review where a plausible-but-wrong success
+        claim would be expensive and no mechanical check would catch it,
+        NEED NOT for small edits to text files, and MAY run more than one
+        round where the risk warrants. A review may span several rows.
+      - **status** moves strictly forward:
+        `to-spec` → `specced` → `in-review` → `approved` → `building` →
+        `built` → `verified` → `merged`. A bounced review returns to
+        `to-spec` with the gaps noted in tasks.md; there is no other
+        backward move.
+      - **branch** is the nested construction worktree's branch once
+        building starts; **owner** is the herdr agent name currently
+        responsible, `-` when none.
+      - Only the bolt conductor edits this file. Status changes happen in
+        the same commit as the work they record (a spec landing, a review
+        verdict, a merge SHA in tasks.md).
+
+      A one-row registry is the ordinary registry with one row: the same
+      columns, the same forward-only status ladder, a bounced review the
+      only return to `to-spec`. The actors do not collapse with the size
+      either. For one row as for any other, the agent that specs the
+      proposal is not the agent that builds it, the row's declared review
+      still runs, and the archive still happens; neither is optional on
+      grounds of the bolt's size.
+    requires:
+      - bolt
+  - id: tasks
+    generates: tasks.md
+    description: The living checklist - typed construction tasks that grow as the bolt runs
+    template: tasks.md
+    instruction: |
+      You are maintaining the bolt's living task list.
+
+      tasks.md holds ORCHESTRATION STEPS AND NOTHING ELSE. Every line is a
+      step in dispatching, tracking or landing a subagent's work: what gets
+      spawned, what it is charged with, what state it moved to, what blocks
+      it. It is not a scratchpad. The conductor's reasoning belongs in the
+      report it sends and in the decision records the intent holds; a ruling
+      that has to survive goes to the intent as a finding, not into this
+      file as a paragraph. The conductor re-reads this file at every turn
+      start, so every paragraph written here is re-read for the rest of the
+      run - one bolt's reached 1,464 lines for 149 tasks.
+
+      Every unit of construction work is a checkbox line under a typed
+      section heading:
+
+      - **Spec** - generate or amend a proposal in a built repo (opsx ff
+        from the cited chapters and decision records).
+      - **Review** - run a proposal's declared review (agent or human via
+        plannotator); record the verdict on the task line. A read the
+        conductor chooses to take over the batch is a Review task in the
+        same way, recording what it found. No kind of read is required of
+        every row and no number of rounds is fixed: what a row declares
+        still runs, whatever the bolt's size, and everything else is the
+        conductor's judgment. A declared review that is not run is
+        recorded as NOT RUN, never left standing as if it had been.
+      - **Build** - apply an approved proposal on a nested construction
+        worktree; note the working arrangement chosen (solo / reviewed /
+        paired) and its reason. The defect a build task guards against -
+        a claim about a neighbouring artifact's STATE that the neighbour
+        no longer bears out. Carry a build-time task enumerating
+        every neighbour the artifact asserts something about — decision
+        records, sibling proposals, the registry, the archive —
+        instructing the builder to re-read each from disk. Build time
+        because that is when the neighbours have had longest to move. End
+        that task with its own warrant, in these words: do not trust this
+        file; every round of review here has found at least one such claim
+        gone stale between writing and reading, so assume this one has
+        too.
+      - **Test** - a batched acceptance run on the bolt branch; never run
+        inside a construction worktree. Findings append new tasks - they
+        never edit checked history.
+      - **Merge** - merge-backs into the bolt branch, and the final
+        landing of each repo's bolt branch on its main (full release
+        gate). Record merge SHAs on the task lines.
+
+      Rules:
+      - Only the bolt conductor edits this file. Requests from others
+        arrive via herdr prompt or inbox/ files, and are folded in here.
+      - New work appends; blocked tasks name their blocker in-line
+        `(blocked by: ...)`; checked tasks never reopen.
+      - ONE ANSWER PER FILE. When something moves, rewrite every statement
+        of it here, not only the line being amended, and state each
+        enumeration once, in one place, marked as the one to copy. An
+        enumeration is what a spec agent copies, so a superseded list left
+        standing in settled voice propagates before anyone notices. A
+        record is authoritative only if it says one thing.
+      - A MECHANISM IS NOT A JUSTIFICATION. Where a task names something
+        that constrains order, coupling or membership, state the fact that
+        makes the constraint correct, not the mechanism that makes it
+        stick. An enforced order whose reason is unrecorded is one refactor
+        from being reversed by someone who reads the guard as ceremony.
+      - Design-level findings (the design is wrong, not the build) are NOT
+        bolt tasks - route them to dispatch and note the routing here.
+    requires:
+      - bolt
+apply:
+  requires:
+    - tasks
+  tracks: tasks.md
+  instruction: |
+    Loop until no task is pending:
+
+    1 · QUERY — run
+        openspec instructions apply --change <id> --json
+      and take every task with done == false. Tasks are the ONLY thing
+      parsed out of OpenSpec. A description is the checkbox line only, so
+      a wrapped task arrives truncated; the payload's contextFiles carries
+      tasks.md's path — read it when the full text matters.
+
+    2 · ANALYSE — judge which tasks can START NOW, grouped into batches
+      one session could take, each batch naming its session type and the
+      model it runs: the type's default unless the invocation's args carry
+      an override. Dependencies are analysed by reading; nothing declares
+      them as data. This step reads and writes nothing.
+
+    3 · WORK — one session per batch, in parallel. Sessions are the only
+      mutating step: every session runs isolated in its own worktree, and
+      every other step is read-only and gets none. SEVERAL task lines per
+      session, never one per task — the session is the merge boundary.
+
+    4 · MERGE — the conductor merges each finished branch through the
+      gate and records state changes in the same commit as the SHA. No
+      worktree survives unmerged and unremoved. Then re-query.
+
+    This member's depth, scheduled by the loop: an independent
+    proposal-review reads every row before its build — a row whose
+    review column asks for the operator's eyes gets that read too — an
+    adversarial code-review reads the built batch after it, and the
+    batched acceptance run passes on the bolt branch before anything
+    lands on main.
+
+    Report the run ID when the loop ends — the cheap check that it
+    actually ran.
+
+    THE ANDON CORD — any session that finds the work has gone wrong in a
+    way no further round will fix stops, holds the batch, and asks the
+    operator. Stopping on a defect is expected behaviour.

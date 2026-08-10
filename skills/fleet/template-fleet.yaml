@@ -1,0 +1,42 @@
+# fleet.yaml — one per GitHub org, at the org folder root (the directory
+# above the org's repos). Not checked into git: placement is
+# machine-local, and cwd: entries below are relative to this folder.
+#
+# The fleet runs in the herdr session named here (default: this folder's
+# name). Start it once with `herdr --session <name>`; it persists.
+#
+# States:
+#   running — `flywheel up` starts this actor if it is not alive
+#   parked  — deliberately not running; requests park in the change's
+#             inbox/ until the actor is next started
+#
+# Every actor row (FULL-LINE comments only — a `#` inside a value is part
+# of the value):
+#   name    — the herdr agent name (the addressing scheme)
+#   profile — the agent profile loaded by --agent (bare names resolve to
+#             this plugin's copies)
+#   model   — the launch model: the session type's default, or a per-row
+#             override written here
+#   host    — a name from hosts: below
+#   state   — running | parked
+#   cwd     — working tree, relative to this folder
+#   prompt  — the first prompt, sent as its own message; for a conductor
+#             this is the whole invocation:
+#             /opsx:apply build a dynamic workflow with the instructions
+#             for <change>
+
+session: myorg
+
+hosts:
+  workstation:
+    hostname: my-machine
+    default: true
+
+actors:
+  - name: dispatch
+    profile: flywheel-dispatch
+    model: fable
+    host: workstation
+    state: running
+    cwd: my-coordination-repo/main
+    prompt: "You are dispatch. Re-read your inbox and the open changes, then wait for input."
