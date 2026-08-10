@@ -3,7 +3,8 @@
 # machine-local, and cwd: entries below are relative to this folder.
 #
 # The fleet runs in the herdr session named here (default: this folder's
-# name). Start it once with `herdr --session <name>`; it persists.
+# name, with any `github_` prefix dropped). Start it once with
+# `herdr --session <name>`; it persists.
 #
 # States:
 #   running — `flywheel up` starts this actor if it is not alive

@@ -519,7 +519,8 @@ stop, and it was committed by a conductor that had read this skill.
 
   **The naming is a rule about a word's presence, never about word order:**
   an actor says "session", a way of working never does. A profile is
-  `flywheel-<type>-session`; a skill is `flywheel-<type>`. An earlier draft
+  `flywheel-<type>-session`; a skill invokes as `flywheel:<type>`, the
+  plugin supplying the prefix. An earlier draft
   used `flywheel-session-<type>` — the same words as the profile in the
   other order — and two independent reviewers confused the pair, the second
   reporting a correct proposal as internally inconsistent. Word order is

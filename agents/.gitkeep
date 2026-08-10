@@ -1,10 +1,14 @@
 # agents/
 
-Empty on purpose. The five agent profiles land here when the split runs.
+The nine agent profiles — six actors and three `user-*` personas. (This
+note lives in .gitkeep because a README.md here would be parsed as a
+profile and fail `claude plugin validate --strict`.)
 
-They are `flywheel-dispatch`, `flywheel-intent-conductor`,
-`flywheel-bolt-conductor`, `flywheel-review-session` and
-`flywheel-interactive-session`.
+Actors: `flywheel-dispatch`, `flywheel-intent-conductor`,
+`flywheel-bolt-conductor`, `flywheel-design-session`,
+`flywheel-interactive-session`, `flywheel-construction-session`.
+Personas — lenses a review session runs under, never actors:
+`user-data-scientist`, `user-devops-engineer`, `user-app-developer`.
 
 **The profiles keep their `flywheel-` prefix where the skills drop theirs, and
 the asymmetry is deliberate.** `claude --agent` resolves a plugin agent by its

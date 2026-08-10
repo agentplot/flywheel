@@ -12,13 +12,15 @@ repos — and it is not checked into git: placement is machine-local, and
 
 ## The command
 
-`bin/flywheel` in this plugin, relative to this skill's base directory at
-`../../bin/flywheel`:
+An installed plugin's `bin/` is on your `PATH`, so the command is bare:
 
 ```bash
-python3 <plugin-root>/bin/flywheel status   # every row vs the live roster
-python3 <plugin-root>/bin/flywheel up       # start running-state rows on this host
+flywheel status   # every row vs the live roster
+flywheel up       # start running-state rows on this host
 ```
+
+When `bin/` is not on `PATH` (a checkout, `--plugin-dir` development),
+run it as `${CLAUDE_PLUGIN_ROOT}/bin/flywheel status`.
 
 Both take `--fleet <path>` when invoked outside the org tree, and
 `--host <name>` to override host detection. The command walks up from the

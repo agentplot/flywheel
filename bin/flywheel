@@ -12,7 +12,8 @@ machine-local. `cwd:` entries are relative to the manifest's directory.
 The fleet runs in its own named herdr session — the org's — so its
 roster, workspaces, and teardown are isolated from other work. The
 session name is the manifest's `session:` field, defaulting to the org
-folder's name. When that session is not running, this command says so
+folder's name with any `github_` prefix dropped (github_willdan → the
+session `willdan`). When that session is not running, this command says so
 and names the start command rather than starting agents into the wrong
 session.
 
@@ -72,7 +73,10 @@ def parse_manifest(path: Path) -> dict:
             section, current = "hosts", None
         elif line == "actors:":
             section, current = "actors", None
-        elif not line.startswith(" ") and section is None and ":" in line:
+        elif not line.startswith(" ") and ":" in line:
+            # a top-level key anywhere ends the current section — never
+            # silently absorbed into the last actor or host
+            section, current, current_host = None, None, None
             k, _, v = line.partition(":")
             top[k.strip()] = v.strip().strip('"')
         elif section == "hosts" and line.startswith("  ") and not line.startswith("    "):
@@ -80,7 +84,7 @@ def parse_manifest(path: Path) -> dict:
             hosts[current_host] = {}
         elif section == "hosts" and line.startswith("    ") and current_host:
             k, _, v = line.strip().partition(":")
-            hosts[current_host][k] = v.strip()
+            hosts[current_host][k] = v.strip().strip('"')
         elif section == "actors" and line.lstrip().startswith("- "):
             current = {}
             actors.append(current)
@@ -222,6 +226,10 @@ def up(manifest: dict, host: str, session: str, env: dict) -> int:
         if not pane:
             print(f"  tab create returned no root_pane.pane_id: "
                   f"{json.dumps(result)[:200]}")
+            if tab_id:
+                subprocess.run(["herdr", "tab", "close", str(tab_id)],
+                               capture_output=True, text=True, env=env)
+                print(f"  closed the orphaned tab {tab_id}")
             failures += 1
             continue
         # -n sets the session title at launch, so there is no rename to

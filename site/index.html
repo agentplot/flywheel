@@ -335,7 +335,7 @@ flowchart TB
 <section>
   <div class="wrap">
     <h2>The actors</h2>
-    <p class="sub">Five profiles. Each one owns a write scope, and the scopes do not overlap.</p>
+    <p class="sub">Nine profiles — six actors and three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
 
     <div class="figure">
 <pre class="mermaid">
@@ -344,10 +344,10 @@ flowchart TD
 
   disp["dispatch<br/><small>standing singleton</small>"]
   ic["intent conductor<br/><small>one per intent</small>"]
-  rs["review session<br/><small>review · prototype · research · writeback</small>"]
+  rs["design session<br/><small>planning · research · prototype · writeback · handoff</small>"]
   is["interactive session<br/><small>builds a surface you work</small>"]
   bc["bolt conductor<br/><small>one per bolt</small>"]
-  agents["spec · apply · testing agents<br/><small>one-shot, dispatched</small>"]
+  agents["construction sessions<br/><small>proposal-writing · review · spec · build · test</small>"]
 
   wIntent["the intent's own records<br/>decisions · tasks · design"]
   wSession["that session's own directory"]
@@ -394,9 +394,9 @@ flowchart TD
         <tr><th>Actor</th><th>Lives as long as</th><th>Writes</th></tr>
       </thead>
       <tbody>
-        <tr><td><code>dispatch</code></td><td>always — one per workspace</td><td>new intent changes, at the moment of triage, and nothing else</td></tr>
+        <tr><td><code>dispatch</code></td><td>always — one per org fleet</td><td>new intent changes, at the moment of triage, and nothing else</td></tr>
         <tr><td><code>intent conductor</code></td><td>its intent</td><td>that intent's records; the books; the context map</td></tr>
-        <tr><td><code>design session</code></td><td>one task batch</td><td>its own session directory; the books; the context map</td></tr>
+        <tr><td><code>design session</code></td><td>one task batch</td><td>its session directory, its own task lines, its charged closures; the books; the context map</td></tr>
         <tr><td><code>bolt conductor</code></td><td>its bolt</td><td>the bolt's proposal registry and tasks</td></tr>
         <tr><td><code>spec / apply / testing</code></td><td>one job</td><td>the change and branch their registry row names</td></tr>
       </tbody>

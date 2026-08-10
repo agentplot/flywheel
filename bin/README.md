@@ -10,4 +10,13 @@ be called by name and nothing else.
 This repository's own gate scripts live in `../scripts/`, precisely because
 they are not that.
 
-Empty on purpose today. `context-map` lands here.
+Two commands live here now, whole — each is a self-contained,
+zero-dependency script, which is the bar for skipping the `../tools/`
+split:
+
+- `flywheel` — drive an org fleet from its `fleet.yaml` (`up` /
+  `status`); the `flywheel:fleet` skill wraps it.
+- `install-schemas` — publish the plugin's OpenSpec schemas as user
+  schemas, moving any existing copy aside as `<name>.replaced`.
+
+`context-map` lands here later, with its implementation in `../tools/`.

@@ -63,8 +63,12 @@ thing in all three places. Add a gate to all three or to none.
 - `node scripts/check-paths.mjs`
 - `node scripts/check-site.mjs`
 
-Once `skills/` carries evals, `claude plugin eval .` joins them; the CI step is
-already written and no-ops until then.
+The seven travelled eval suites are in a legacy `evals.json` format that
+`claude plugin eval` does not read — the runner discovers
+`evals/**/case.yaml` or `evals/**/prompt.md` + `graders/*.md`, and its
+binary contains no reference to `evals.json` (measured, 2.1.221). The CI
+eval step no-ops until the suites are converted to the runner's format;
+that conversion is open work, tracked in the source intent.
 
 Two things `--strict` has already caught here, worth knowing before you
 reintroduce either: a plain `README.md` under `agents/` is loaded as an **agent

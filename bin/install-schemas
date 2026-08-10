@@ -29,7 +29,13 @@ def main() -> int:
             continue
         target = DST / schema.name
         if target.exists():
-            shutil.rmtree(target)
+            # never silently destroy a user's copy — a hand-edited
+            # schema moves aside where it can be diffed and recovered
+            aside = DST / f"{schema.name}.replaced"
+            if aside.exists():
+                shutil.rmtree(aside)
+            target.rename(aside)
+            print(f"{schema.name}: existing user copy moved to {aside.name}")
         shutil.copytree(schema, target)
         installed.append(schema.name)
     if not installed:

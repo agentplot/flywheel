@@ -18,7 +18,9 @@ Seventeen directories:
 - `_reference/` — the shared herdr/worktrunk invocation reference every
   skill points at rather than bundling its own copy.
 
-Each skill that has an `evals/` directory brought it along; the suites
-are what `claude plugin eval` runs. The eight construction-side skills
-arrived without evals — writing them is an open task tracked in the
-source intent.
+Each skill that has an `evals/` directory brought it along. The suites
+are in a legacy `evals.json` format that `claude plugin eval` does not
+yet read — converting them to the runner's `case.yaml`/`prompt.md`
+format is open work, as are suites for the nine skills that have none:
+the seven construction types, `handoff`, and `fleet`. Both are tracked
+in the source intent.

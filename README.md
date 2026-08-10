@@ -210,7 +210,9 @@ its prefix.
 
 The machinery is landed: fifteen loop and session-type skills, the fleet
 skill and command, nine profiles, four schemas, and the OpenSpec record
-that built them. The eight construction-side skills owe eval suites, and
-the context-map tool arrives in a later change.
+that built them. Nine skills have no eval suites yet (the seven
+construction types, `handoff`, and `fleet`), the seven travelled suites
+await conversion to the format `claude plugin eval` reads, and the
+context-map tool arrives in a later change.
 
 MIT licensed.

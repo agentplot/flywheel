@@ -164,12 +164,13 @@ artifacts:
       You are opening or closing a tracked design session for a flywheel intent.
 
       The intent conductor launches every design session. Two agent
-      profiles carry a session's identity, both under `.claude/agents/`:
-      `flywheel-design-session.md` and `flywheel-interactive-session.md`.
-      Six skills carry the way a session works, one per session type, all
-      under `.claude/skills/`: `flywheel-planning/`, `flywheel-interactive/`,
-      `flywheel-prototype/`, `flywheel-research/`, `flywheel-writeback/`,
-      `flywheel-handoff/`.
+      profiles carry a session's identity, shipped by the flywheel
+      plugin and resolved by bare name: `flywheel-design-session` and
+      `flywheel-interactive-session`.
+      Six skills carry the way a session works, one per session type,
+      invoked under the plugin's namespace: `flywheel:planning`,
+      `flywheel:interactive`, `flywheel:prototype`, `flywheel:research`,
+      `flywheel:writeback`, `flywheel:handoff`.
       The conductor chooses the type when it issues the work order - a
       session never picks its own, and a session holding a work order that
       names none asks its conductor - launches the session under one of the
