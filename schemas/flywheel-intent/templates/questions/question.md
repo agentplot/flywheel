@@ -1,8 +1,7 @@
 # Question: [the undecided thing, as a question]
 
-- **State:** open | in [session directory] | closed → decisions/[slug].md
+- **Item:** #[tracker item number]
 - **Raised by:** [session, review, bolt report, or the operator]
-- **Blocks:** [what cannot proceed until this is answered, or "nothing"]
 
 ## The question
 [One paragraph. What is undecided, stated so an answer would be

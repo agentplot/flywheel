@@ -1,7 +1,8 @@
 name: flywheel-intent
-version: 1
-description: Flywheel outer loop - one change per intent; decisions, design
-  reports, prototypes, and typed tasks tracked on blueprints main
+version: 2
+description: Flywheel outer loop - one change per intent; decisions, questions,
+  assertions and session records in git; work items, their states and the
+  release queue on the org's tracker
 artifacts:
   - id: intent
     generates: intent.md
@@ -10,17 +11,11 @@ artifacts:
     instruction: |
       You are writing the intent record for a flywheel outer-loop change.
 
-      Ownership: after dispatch creates this change, its intent conductor
-      (herdr agent `intent-<slug>`) is the SOLE WRITER of its canonical
-      artifacts. Design sessions write only their own assigned
-      `sessions/<date>-<slug>/` directory; the conductor promotes their
-      outputs. Anyone else requests changes - `herdr agent prompt` when
-      the conductor runs, or a file in this change's `inbox/`
-      (`inbox/<date>-<from>-<slug>.md`) when it does not. Draining is not
-      an append: revise the earliest artifact the request touches (new
-      scope lands here in intent.md first), then re-walk the artifact
-      sequence forward so decisions, tasks, and downstream records stay
-      coherent; delete the drained file in the same commit.
+      The intent conductor (herdr agent `intent-<slug>`) is the sole
+      writer of this change's artifacts. Work items live on the org's
+      tracker under the milestone `intent/<slug>` - anyone may queue an
+      item or comment there; the operator's own word is applied directly
+      by whoever holds it, with a comment recording the change.
 
       **Input:** The operator's raw intent - a sentence, bullets, or a document.
 
@@ -32,12 +27,10 @@ artifacts:
          node's current status (settled / candidate / open).
       3. **Scope** - what is in scope; what is explicitly out.
 
-      THREE SECTIONS. There is no open-questions section: questions are the
-      `questions/` artifact, discoverable the same way `decisions/` is, and
-      intent.md carries no pointer to either. A section here would be a slot,
-      and a slot gets filled - with the list, which is the copy that goes
-      stale against the records. What intent.md holds is what does not change
-      as questions close.
+      THREE SECTIONS. Questions and assertions are their own artifacts,
+      discoverable as records and tracked as items; intent.md carries no
+      list of either, because a copied list is the copy that goes stale.
+      What intent.md holds is what does not change as questions close.
 
       Never invent scope the operator did not state or clearly imply.
     requires: []
@@ -53,84 +46,75 @@ artifacts:
       - **Context** - the map node(s), book chapter(s), and what produced it:
         the session directory and its report, a prototype note, or the
         exchange where the operator gave the word.
-      - **Consequences** - the tasks this decision appends: writebacks (book,
-        map), handoffs, or new questions.
+      - **Consequences** - what this decision opens: writeback items,
+        assertions, new questions. Queue each as a tracker item.
 
-      A decision closes on the operator's word, wherever that word is given -
-      annotations on a design session's lavish page, a plannotator round on a
-      draft, or a sentence to the conductor during dispatch or early research.
-      Not every decision comes out of a session or a prototype, and a
-      decision closed in conversation is not a lesser one. The conductor
-      records it either way; a session-born record cites the session
-      directory it came from.
-
-      A decision record is written when the decision closes, never before.
+      A decision closes on the operator's word, wherever that word is given.
+      A decision closed in conversation is not a lesser one; the record is
+      written either way, when the decision closes and never before.
 
       ONE ANSWER PER RECORD. When a decision moves, rewrite every statement
       of it in that record, not only the section being amended, and state
       each enumeration once, in one place, marked as the one to copy. A
-      record that holds a superseded list in flat settled voice states two
-      answers and gives a reader no way to tell which is meant - and an
-      enumeration is the thing a later agent copies. A record is
-      authoritative on its decision only if it says one thing. Where a
-      record must keep a superseded reading, it says so in the sentence
-      that holds it.
+      record is authoritative on its decision only if it says one thing.
+      Where a record must keep a superseded reading, it says so in the
+      sentence that holds it.
 
-      Earlier records in this directory are evidence about the design, not
-      models for the prose.
+      A record is authoritative on its decision and provisional on its
+      measurements: give every measurement the tree it was taken on, and
+      expect a reader to re-run it.
+
       Rejected options do not appear - the books hold destinations, git holds
       history.
     requires:
       - intent
   - id: questions
     generates: questions/**/*.md
-    description: One record per open question - what is undecided, with its state,
-      closing into a decision
+    description: One record per open question - the prose; its state lives on
+      the tracker item created with it
     template: questions/question.md
     instruction: |
       You are recording an open question for a flywheel intent.
 
-      A question is what is not yet decided. It gets a record rather than a
-      bullet so it can carry STATE - a bullet in intent.md cannot say whether
-      it is untouched, in a session right now, or answered but unrecorded,
-      and that is the difference between a list of questions and a list of
-      work. Create one `questions/<slug>.md` per question, with:
-      - **State** - open, in a named session directory, or closed with the
-        decision record it produced.
+      A question gets two things at birth: this record for the prose, and
+      a tracker item (label `state:queued`, milestone `intent/<slug>`) for
+      the state - a question without an item is untrackable. The record
+      holds:
+      - **Item** - the tracker item's number.
       - **Raised by** - the session, review, bolt report, or the operator.
-      - **Blocks** - what cannot proceed until it is answered, or nothing.
       - **The question** - stated so an answer would be recognizable as one.
       - **What turns on it** - what changes each way. If nothing changes,
         there is no question worth recording.
       - **What is already known** - measurements taken, options ruled out,
         adjacent decisions that constrain it. Cite; do not restate.
 
-      A question closes by producing a decision record, never by being
-      deleted or quietly dropped. Closing means: write `decisions/<slug>.md`,
-      set State to closed pointing at it, and check the task. The question
-      record stays - it is how a later reader learns the decision had a
-      question behind it, and what the alternatives were before the answer.
+      What the question blocks is declared on the item as a dependency,
+      not written here.
 
-      Questions are the operator's view of the intent. He reads what is
-      undecided, not what is checked, so a question that exists only as a
-      task is invisible to him.
+      A question closes by producing a decision record: write
+      `decisions/<slug>.md`, add the pointer here, close the item
+      `closed:done`. A question overtaken by events closes `closed:superseded`
+      with a comment saying what overtook it. The record stays - it is how
+      a later reader learns the decision had a question behind it.
     requires:
       - intent
   - id: assertions
     generates: assertions/**/*.md
-    description: One record per proposal assertion - the durable statement of what
-      must be built, which tasks point at rather than restate
+    description: One record per assertion - the proposal itself, the durable
+      claim of what must be built
     template: assertions/assertion.md
     instruction: |
-      You are recording a proposal assertion for a flywheel intent.
+      You are recording an assertion for a flywheel intent.
 
-      An assertion is the durable claim that something must be built. It
-      exists so a task line can stay one line: the task says what to do and
-      what stops it, and the assertion holds the claim, the evidence, and
-      the boundaries. Create one `assertions/<slug>.md` per assertion, with:
+      AN ASSERTION IS THE PROPOSAL. It is written the moment the work is
+      identified, it is what the operator releases, and it is what a bolt's
+      spec agents work from - nothing restates it downstream. Like a
+      question it gets two things at birth: this record, and a tracker
+      item (label `state:queued`, milestone `intent/<slug>`). The record
+      holds:
       - **Repo** - the built repo it lands in.
-      - **State** - open, released to a named bolt, or built with the change
-        id and landing ref.
+      - **Item** - the tracker item's number.
+      - **Raised by** - the session, review, bolt report, or the operator.
       - **The claim** - what must be true when this is built, written so a
         reader can check it against the tree.
       - **Why** - the defect, measurement, or decision behind it. Cite
@@ -138,21 +122,15 @@ artifacts:
       - **Boundaries** - what it does NOT cover where a reader would assume
         otherwise, naming the sibling that holds the rest.
 
-      An assertion is written the moment the work is IDENTIFIED, not when it
-      is released. That is the point of the type: a Design task can point at
-      an assertion whose claim is still being argued, and closing the design
-      question moves the assertion from open to released without rewriting
-      anything. The promotion step is exactly that - flip **State**, and move
-      the task line from Design to Handoff. The claim itself does not move
-      between sections, so nothing has to be re-derived at the boundary.
+      Live state - queued, released, whose epic - is the item's alone.
+      When the work merges, append the terminal fact here: the change id
+      and landing ref, dated. A record asserts nothing that can go stale
+      silently.
 
-      An assertion is authoritative on its claim and provisional on its
-      measurements, the same as a decision record. State the claim as CONTENT
-      the tree can be checked against, not as STATE about a neighbouring
-      artifact, and give every count the ref it was measured on.
-
-      ONE ANSWER PER RECORD, as for decisions. When the claim narrows,
-      rewrite every statement of it here rather than appending a correction.
+      State the claim as CONTENT the tree can be checked against, not as
+      STATE about a neighbouring artifact, and give every measurement its
+      ref. ONE ANSWER PER RECORD: when the claim narrows, rewrite every
+      statement of it here rather than appending a correction.
     requires:
       - intent
   - id: sessions
@@ -163,84 +141,25 @@ artifacts:
     instruction: |
       You are opening or closing a tracked design session for a flywheel intent.
 
-      The intent conductor launches every design session. Two agent
-      profiles carry a session's identity, shipped by the flywheel
-      plugin and resolved by bare name: `flywheel-design-session` and
-      `flywheel-interactive-session`.
-      Six skills carry the way a session works, one per session type,
-      invoked under the plugin's namespace: `flywheel:planning`,
-      `flywheel:interactive`, `flywheel:prototype`, `flywheel:research`,
-      `flywheel:writeback`, `flywheel:handoff`.
-      The conductor chooses the type when it issues the work order - a
-      session never picks its own, and a session holding a work order that
-      names none asks its conductor - launches the session under one of the
-      two profiles, and names the type in the work order; the session loads
-      that type's skill
-      before working its batch. The counts do not pair: six design types,
-      two design-session profiles. Each type has exactly one host profile,
-      fixed by the profiles themselves, so locate yourself by the names in
-      this enumeration rather than inferring a type from a profile or a
-      profile from a type.
+      The intent conductor launches every design session, names its type
+      in the work order, and assigns it a directory under the change:
+      `sessions/<YYYY-MM-DD>-<slug>/`. The date is the day the session is
+      charged; the slug names the batch of work, not its outcome. The
+      session is the sole writer inside its directory.
 
-      Every design session gets a directory of its own under the change:
-      `sessions/<YYYY-MM-DD>-<slug>/`. The date is the day the conductor
-      charges the session; the slug is kebab-case and names the batch of work,
-      not its outcome - the outcome is not known yet. The conductor assigns
-      the directory name in the work order, before the session starts, and that
-      name is the session's address for the rest of the intent's life: nothing
-      renames it, and nothing outside the session writes inside it.
+      A work order is the change id, the session type, the item numbers of
+      its batch, and one or two plain sentences of goal. Worktree, model
+      and directory are launch mechanics, not work order content.
 
-      Collision - the same date and slug already exist. A session picking the
-      earlier one back up REUSES the directory and appends to its README. A
-      genuinely different session takes a slug that says how it differs
-      (`-followup`, `-state-machine`), and only when no honest slug
-      distinguishes the two does it take a `-2` suffix. Never write into
-      another session's directory.
-
-      Each directory opens with `README.md`: the work order (change id, the
-      assigned directory, the task lines the session works), what the session
-      produced (its report, decision drafts, prototype notes - all real
-      committed files, here and nowhere else), and what it delivered to the
-      conductor. The session is the sole writer inside its directory, and
-      in its own worktree it also checks off its own task lines and writes
-      the decision records for questions its work order charged it to
-      close. The conductor is the sole writer ON MAIN — its merge admits
-      the session's writes — and it does the opening and promoting: the
-      report given a row in `design.md`, findings into `prototypes/`,
-      appends into `tasks.md` for what the session discovered.
+      Each directory opens with `README.md`: the work order, what the
+      session produced (reports, decision drafts, prototype notes - all
+      real committed files, here and nowhere else), and what it delivered.
+      The session comments each item it worked; the conductor merges the
+      session's branch and closes items on the evidence.
 
       A closed session directory is never rewritten - it is the trail. When
       later work revises what a session decided, the decision record moves;
       the session's record of having decided it stands.
-    requires:
-      - intent
-  - id: design
-    generates: design.md
-    description: The catalog of design output - one row per session report and per
-      prototype finding
-    template: design.md
-    instruction: |
-      `design.md` is the intent's catalog of what its design work produced -
-      the design-side sibling of a bolt's `proposals.md` registry. It is the
-      one place to read design output, and it is a catalog, never a
-      copy: everything it lists is stored in exactly one place and the row
-      points at it.
-
-      Every report belongs to a session. A report is written inside its
-      session's directory (`sessions/<date>-<slug>/<name>.html`) and stays
-      there - a one-shot report gets its own small session directory rather
-      than living loose, so there is no such thing as a report without a
-      session. Prototype findings live at `prototypes/<slug>.md`. Files never
-      move: promoting a session's output is the conductor adding its row
-      here.
-
-      One row per report and per prototype finding, in this order: date, the
-      path, the session it came from, the decisions it closed (by slug), the
-      tasks it was working. A prototype row names the session that
-      commissioned the prototype, or `—` when the conductor commissioned it
-      directly. A session that produced no separate report file is carried by
-      its `README.md`, so the catalog reads as the full list of what the
-      intent's design work produced.
     requires:
       - intent
   - id: prototypes
@@ -257,143 +176,51 @@ artifacts:
       - **Feeds** - the decision(s) this evidence feeds.
 
       The code never moves with the note - prototypes prove decisions and die.
-      The note is design output like a report is, so the conductor gives it a
-      row in `design.md` naming the session that commissioned it.
-    requires:
-      - intent
-  - id: tasks
-    generates: tasks.md
-    description: The living checklist - the open items; typed tasks that grow as questions close
-    template: tasks.md
-    instruction: |
-      You are maintaining the living task list for a flywheel intent.
-
-      tasks.md holds every unit of outer-loop work as a checkbox line under a
-      typed section heading. A LINE IS A CHECKBOX, A BLOCKER AND A POINTER -
-      what has to happen, what stops it, and where the output went. It is not
-      a scratchpad: the reasoning behind a task belongs in the decision
-      record it closes, the assertion it points at, and the session report
-      that produced it. The conductor re-reads this file at every turn start,
-      so every paragraph written here is re-read for the rest of the run.
-
-      KEEP A TASK TO THREE LINES. One line naming the work, one for the
-      blocker if there is one, one for the pointers. Anything longer means
-      the claim and its evidence are in the wrong file: write an
-      `assertions/<slug>.md` and point at it. A task that argues its own
-      scope has already failed this rule.
-
-      SECTIONS ARE SESSION TYPES. A task is filed under the type of session
-      that will run it, so the line says both what the work is and who does
-      it. The design-loop types, each with what it opens:
-
-      - **design** - a lavish page. Option comparisons, reports with
-        controls, diagrams the operator works rather than reads.
-      - **planning** - `plannotator annotate` on drafts the session wrote.
-      - **research** - reading code, docs, and a tool's actual behaviour to
-        answer a factual question.
-      - **prototype** - a throwaway in the spike repo; the code dies and the
-        finding survives as `prototypes/<slug>.md`.
-      - **writeback** - book chapters in destination voice, or the context
-        map with `map-check --write` green. NOTHING ELSE. Two write scopes
-        exist and they differ: the conductor writes the change's own
-        artifacts, its sessions write their session directories, and both
-        write the books and the map. The change's own artifacts are what
-        conducting produces, so they are never filed as work. Every OTHER
-        file edit, in any repo - blueprints included, where the machinery
-        lives - is a handoff. A writeback task whose target is neither a
-        chapter nor the map is a misfiled handoff.
-      - **handoff** - the request to a bolt, the receipt, and the check-off.
-        The line names the assertion and the built repo; the assertion
-        carries the claim. Handoffs are STAGED here and pass to construction
-        only on the operator's approval; on release the conductor REQUESTS
-        the bolt (prompt or inbox to `bolt-<slug>`, creating the bolt change
-        and starting its conductor if none exists) and never writes a bolt
-        change itself. When done, the line records the bolt and the change
-        id that landed, and the assertion's State becomes built. A handoff
-        carrying one proposal is still a bolt with a bolt conductor; nothing
-        releases into a bare work branch off main. An architecture decision
-        record IS named on a handoff line - repo, decision to record,
-        sources - but generates no proposal: the bolt conductor writes it
-        directly, where the material for it exists.
-
-      The construction-loop types - `proposal-writing`, `proposal-review`,
-      `spec-writing`, `build`, `test`, `code-review`, `human-code-review` -
-      are the bolt's, and do not appear in an intent's tasks.md. They are
-      listed in `decisions/session-types-are-the-task-taxonomy.md` because
-      the set is one set.
-
-      Rules:
-      - A task line names its records: the `questions/<slug>.md` it answers
-        or the `assertions/<slug>.md` it builds. A line pointing at neither
-        is either a chore that needs no tracking or a task whose subject was
-        never written down.
-      - TASKS BATCH ONTO A SESSION. Several lines charged to one session is
-        the normal case - multiple questions in one design session, multiple
-        proposals in one handoff. A charged line names its session as
-        `[sess: <dir>]`. The session is the merge boundary, never the
-        individual task: it takes a worktree, manages its own task
-        completion inside it, and its branch merges when the session
-        finishes.
-      - BATCHING IS SEVERAL LINES ON ONE SESSION, NEVER SEVERAL SUBJECTS ON
-        ONE LINE. Merging tasks into a combined line is the opposite of
-        batching: it hides how much is in flight, makes the frontier read as
-        though it moved by one when the session closed five, and leaves no
-        line to check off per outcome. If a session covers nine things, nine
-        lines carry its name.
-      - Checking off a task that closed a question requires BOTH the
-        `decisions/<slug>.md` record to exist and the question's State to
-        point at it.
-      - A task MAY point at a question or an assertion that is still open -
-        that is how work is identified before it is settled. Promotion is one
-        step: flip the record's State and move the line to the section for
-        the session type that now runs it. The record's content does not move
-        and is not re-derived.
-      - A new open question writes a `questions/<slug>.md` and appends a
-        task; tasks are never deleted, only checked or reworded while
-        unchecked.
-      - A blocked task names its blocker in-line: `(blocked by: <task or run>)`.
+      The commissioning item gets the finding as its closing comment.
     requires:
       - intent
 apply:
   requires:
-    - tasks
-  tracks: tasks.md
+    - intent
   instruction: |
-    Loop until no unblocked task is pending:
+    Work the RELEASED set to empty, then stop at the queue.
 
-    1 · QUERY — run
-        openspec instructions apply --change <id> --json
-      and take every task with done == false. Tasks are the ONLY thing
-      parsed out of OpenSpec. A description is the checkbox line only, so
-      a wrapped task arrives truncated; the payload's contextFiles carries
-      tasks.md's path — read it when the full text matters.
+    The tracker is the org's, named by the `tracker:` line in the org's
+    fleet.yaml; every tracker write runs as the app
+    (`GH_TOKEN=$(flywheel-token --org <org>)`). The invocations are in the
+    flywheel plugin's `skills/_reference/herdr.md`.
 
-    2 · ANALYSE — judge which tasks can START NOW, grouped into batches
-      one session could take, each batch naming its session type — the
-      section it is filed under — and the model it runs: the type's
-      default unless the invocation's args carry an override.
-      Dependencies are analysed by reading; nothing declares them as
-      data. This step reads and writes nothing. A `verify` line is not a
-      session type: it is the conductor's own check, run directly in
-      step 4, never batched into a session.
+    1 · QUERY — the milestone `intent/<slug>`'s open items labelled
+      `state:released`, and its epics whose Project Status the operator
+      has flipped to Released: flip those epics' sub-issues to
+      `state:released` first, then take the whole released set. The
+      tracker is the only source of work.
 
-    3 · WORK — one design session per batch, in parallel. Sessions are
-      the only mutating step: every session runs isolated in its own
-      worktree, and every other step is read-only and gets none. SEVERAL
-      task lines per session, never one per task. A Handoff batch is a
-      session like any other — but it is STAGED until the operator's
-      approval releases it, and the approval is asked for inline, once
-      per release batch, never per item.
+    2 · ANALYSE — group the released items into batches one session could
+      take, each batch naming its session type and model (the type's
+      default unless overridden). Dependencies are the items' blocked-by
+      relations. This step reads and writes nothing.
 
-    4 · MERGE AND PROMOTE — the conductor merges each finished session
-      branch through the gate, promotes what the session delivered
-      (decisions into decisions/, consequences into appended tasks), and
-      records it in the same commit. No worktree survives unmerged and
-      unremoved. Then re-query.
+    3 · WORK — one session per batch, in parallel. A session that edits
+      files runs isolated in its own worktree; a session that only reads
+      and reports gets none. Flip each item to `state:in-session` when
+      its session starts. SEVERAL items per session, never one per item.
 
-    Report the run ID when the loop ends — the cheap check that it
-    actually ran.
+    4 · FOLD — merge each finished session branch through the gate,
+      promote what it delivered (decision records, assertion records,
+      writebacks), comment each item with the outcome, and close finished
+      items `closed:done`. New work a session surfaced is queued as new
+      items - never worked directly from here. Then re-query.
 
-    THE ANDON CORD — any session that finds the work has gone wrong in a
-    way no further round will fix stops, holds the batch, and asks the
-    operator. Stopping on a defect is expected behaviour.
+    When the released set is empty: compose what is ready into proposed
+    epics (`flywheel-epic`), present the queue to the operator - one line
+    per epic and unbatched item - and stop. An empty released set with a
+    full queue is the correct resting state, not a stall.
+
+    Report the run ID when the loop ends.
+
+    THE ANDON CORD — a session that finds the work has gone wrong in a
+    way no further round will fix - the batch builds on a claim just
+    disproved, two released items contradict each other - stops, holds
+    the batch, and asks the operator. Stopping on a defect is expected
+    behaviour.
