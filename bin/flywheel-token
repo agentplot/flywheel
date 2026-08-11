@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# flywheel-token — mint a GitHub App installation token for the tracker.
+#
+# The one credential path for every tracker write the machinery makes:
+#   GH_TOKEN=$(flywheel-token) gh issue ...
+# Everything that is not the tracker stays on the user's own gh login.
+#
+# Config, flags overriding environment:
+#   --app-id  <id>      FLYWHEEL_GH_APP_ID      the GitHub App's id
+#   --key     <path>    FLYWHEEL_GH_APP_KEY     path to the app's .pem
+#   --org     <login>   FLYWHEEL_GH_ORG         the installed org
+#   --no-cache                                  mint fresh, skip the cache
+#
+# Tokens last one hour; this caches per app+org under $XDG_CACHE_HOME and
+# reuses a token until five minutes before expiry, so calling this per
+# command is cheap. The key never leaves the machine: it signs a ten-minute
+# JWT locally, and the JWT buys the installation token from GitHub.
+set -euo pipefail
+
+app_id="${FLYWHEEL_GH_APP_ID:-}"
+key_path="${FLYWHEEL_GH_APP_KEY:-}"
+org="${FLYWHEEL_GH_ORG:-}"
+use_cache=1
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --app-id) app_id="$2"; shift 2 ;;
+    --key)    key_path="$2"; shift 2 ;;
+    --org)    org="$2"; shift 2 ;;
+    --no-cache) use_cache=0; shift ;;
+    -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "flywheel-token: unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+missing=()
+[ -n "$app_id" ]   || missing+=("--app-id / FLYWHEEL_GH_APP_ID")
+[ -n "$key_path" ] || missing+=("--key / FLYWHEEL_GH_APP_KEY")
+[ -n "$org" ]      || missing+=("--org / FLYWHEEL_GH_ORG")
+if [ ${#missing[@]} -gt 0 ]; then
+  printf 'flywheel-token: missing %s\n' "${missing[@]}" >&2
+  exit 2
+fi
+if [ ! -r "$key_path" ]; then
+  echo "flywheel-token: cannot read key: $key_path" >&2
+  exit 2
+fi
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/flywheel"
+cache_file="$cache_dir/token-${app_id}-${org}.json"
+
+now() { date +%s; }
+
+if [ "$use_cache" = 1 ] && [ -r "$cache_file" ]; then
+  cached_exp=$(sed -n 's/.*"exp_unix": *\([0-9]*\).*/\1/p' "$cache_file")
+  if [ -n "$cached_exp" ] && [ "$cached_exp" -gt $(( $(now) + 300 )) ]; then
+    sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$cache_file"
+    exit 0
+  fi
+fi
+
+b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+
+iat=$(( $(now) - 60 ))
+exp=$(( $(now) + 540 ))
+header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$iat" "$exp" "$app_id" | b64url)
+signature=$(printf '%s.%s' "$header" "$payload" \
+  | openssl dgst -sha256 -sign "$key_path" -binary | b64url)
+jwt="$header.$payload.$signature"
+
+api() {
+  curl -sS -H "Authorization: Bearer $jwt" \
+       -H "Accept: application/vnd.github+json" \
+       -H "X-GitHub-Api-Version: 2022-11-28" "$@"
+}
+
+inst_id=$(api "https://api.github.com/app/installations" \
+  | python3 -c '
+import json, sys
+org, app_id = sys.argv[1].lower(), sys.argv[2]
+data = json.load(sys.stdin)
+if isinstance(data, dict):
+    sys.exit("flywheel-token: " + str(data.get("message", data)))
+for inst in data:
+    if inst["account"]["login"].lower() == org:
+        print(inst["id"]); break
+else:
+    logins = ", ".join(i["account"]["login"] for i in data) or "none"
+    sys.exit("flywheel-token: app %s has no installation on %r (installed on: %s)"
+             % (app_id, sys.argv[1], logins))
+' "$org" "$app_id")
+
+resp=$(api -X POST "https://api.github.com/app/installations/$inst_id/access_tokens")
+token=$(printf '%s' "$resp" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+if "token" not in data:
+    sys.exit("flywheel-token: " + str(data.get("message", data)))
+print(data["token"])
+')
+
+if [ "$use_cache" = 1 ]; then
+  mkdir -p "$cache_dir"
+  umask 077
+  # GitHub returns expires_at as ISO-8601; store our own unix stamp instead
+  # of parsing it, one hour minus the clock skew already granted above.
+  printf '{"token": "%s", "exp_unix": %d}\n' "$token" $(( $(now) + 3540 )) > "$cache_file"
+fi
+
+printf '%s\n' "$token"
