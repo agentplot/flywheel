@@ -183,7 +183,7 @@ apply:
   requires:
     - intent
   instruction: |
-    Work the RELEASED set to empty, then stop at the queue.
+    Work the READY set to empty, then stop at the queue.
 
     The tracker is the org's, named by the `tracker:` line in the org's
     fleet.yaml; every tracker write runs as the app
@@ -191,9 +191,9 @@ apply:
     flywheel plugin's `skills/_reference/herdr.md`.
 
     1 · QUERY — the milestone `intent/<slug>`'s open items labelled
-      `state:released`, and its epics whose Project Status the operator
-      has flipped to Released: flip those epics' sub-issues to
-      `state:released` first, then take the whole released set. The
+      `state:ready`, and its epics whose Project Status the operator
+      has moved to Ready on the board: relabel those epics' sub-issues to
+      `state:ready` first, then take the whole ready set. The
       tracker is the only source of work.
 
     2 · ANALYSE — group the released items into batches one session could
@@ -203,7 +203,7 @@ apply:
 
     3 · WORK — one session per batch, in parallel. A session that edits
       files runs isolated in its own worktree; a session that only reads
-      and reports gets none. Flip each item to `state:in-session` when
+      and reports gets none. Flip each item to `state:in-progress` when
       its session starts. SEVERAL items per session, never one per item.
 
     4 · FOLD — merge each finished session branch through the gate,
@@ -212,9 +212,9 @@ apply:
       items `closed:done`. New work a session surfaced is queued as new
       items - never worked directly from here. Then re-query.
 
-    When the released set is empty: compose what is ready into proposed
+    When the ready set is empty: compose what is ready into proposed
     epics (`flywheel-epic`), present the queue to the operator - one line
-    per epic and unbatched item - and stop. An empty released set with a
+    per epic and unbatched item - and stop. An empty ready set with a
     full queue is the correct resting state, not a stall.
 
     Report the run ID when the loop ends.

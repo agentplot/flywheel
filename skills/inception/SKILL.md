@@ -1,6 +1,6 @@
 ---
 name: inception
-description: Run the flywheel design loop — dispatch raw ideas into intent changes and tracker items, run design sessions that close decisions and write the books and the context map, release work to construction by flipping epics. Use when the operator files or discusses a new idea or intent, asks where an idea should go, asks to work an intent's design items, or asks "what's in design".
+description: Run the flywheel design loop — dispatch raw ideas into intent changes and tracker items, run design sessions that close decisions and write the books and the context map, hand work to construction as the operator moves epics to Ready. Use when the operator files or discusses a new idea or intent, asks where an idea should go, asks to work an intent's design items, or asks "what's in design".
 ---
 
 # Flywheel inception — the design loop
@@ -26,16 +26,17 @@ set, and epic queries are in the plugin's `skills/_reference/herdr.md`.
 - **An item** is an issue: title imperative, body one to three sentences
   plus pointers to the record it serves, milestone from birth, labels
   `type:<session-type>` and exactly one `state:*`.
-- **The lifecycle** is `state:queued → state:released → state:in-session`,
+- **The lifecycle** is `state:queued → state:ready → state:in-progress`,
   ending closed with a `closed:*` reason — done, declined, superseded,
-  parked. Anyone queues; only the operator's word releases; an item's
-  progress is its comment history.
+  parked. Anyone queues; only the operator's word makes an item ready;
+  an item's progress is its comment history.
 - **An epic** is one proposed release batch: a parent issue (label
   `epic`) whose sub-issues are the batch, composed with `flywheel-epic`,
-  sitting in the Project at Status **Proposed**. The operator releases
-  by flipping it to **Released** — one flip per batch, never per item.
+  sitting in the Project at Status **Backlog**. The operator approves a
+  batch by moving its epic to **Ready** on the board — one move per
+  batch, never per item.
 - **Milestones** are the long-lived containers: `intent/<slug>` for
-  design items, `<slug>-writebacks` for the intent's writebacks,
+  design items, `intent/writeback-<slug>` for the intent's writebacks,
   `bolt/<slug>` per bolt. Dependencies are the items' native blocked-by
   relations, declared best-effort by whoever files an item and confirmed
   by the conductor at batching time.
@@ -84,7 +85,7 @@ model are launch mechanics the conductor sets, not work order content.
   reads, comments its answer, and reports — no branch, no merge, no
   teardown.
 - **Sessions run with their own judgment.** A small fix inside the
-  batch's released scope is work, not a finding. Discoveries beyond the
+  batch's ready scope is work, not a finding. Discoveries beyond the
   batch are queued items, filed in a minute. Escalation is for being
   blocked, not for noticing things.
 - **A report is comment-sized**: what happened, evidence as pointers,
@@ -154,12 +155,12 @@ evidence.
 
 ## Intent conductor
 
-Work the released set to empty, then stop at the queue — the schema's
+Work the ready set to empty, then stop at the queue — the schema's
 apply instruction holds the loop, launched as
 `/opsx:apply build a dynamic workflow with the instructions for <change>`.
 
-- **Released items get sessions**, batched, in parallel where batches
-  are disjoint. Flip items `state:in-session` as sessions start.
+- **Ready items get sessions**, batched, in parallel where batches
+  are disjoint. Flip items `state:in-progress` as sessions start.
 - **Fold**: merge each finished session branch through the full gate
   (`wt merge --no-remove -C <worktree>`) — books, mermaid and map are
   exactly what a documentation session should pass — then promote:
@@ -168,9 +169,9 @@ apply instruction holds the loop, launched as
   not done until its worktree and branch are gone.
 - **At the queue**: compose what is ready into proposed epics
   (`flywheel-epic` — handoff batches onto the bolt milestone's epics,
-  writebacks onto `<slug>-writebacks`), present the queue one line per
-  epic and unbatched item, and wait for the flip. The flip is the
-  approval; a released handoff epic becomes a bolt — create the bolt
+  writebacks onto `intent/writeback-<slug>`), present the queue one line
+  per epic and unbatched item, and wait. Moving an epic to Ready is the
+  approval; a handoff epic moved to Ready becomes a bolt — create the bolt
   change and start `bolt-<slug>` if none exists, and never write a bolt
   change's artifacts.
 - **Close honestly**: milestone empty and writebacks green → propose

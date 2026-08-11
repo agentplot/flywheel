@@ -230,20 +230,20 @@ caches for the hour, so calling it per command is free:
 ```bash
 tok=$(flywheel-token --org <org>)     # FLYWHEEL_GH_APP_ID / _KEY / _ORG configure it
 GH_TOKEN=$tok gh issue list --repo <org>/<tracker> --milestone "intent/<slug>" \
-  --label state:released --state open --json number,title,labels
+  --label state:ready --state open --json number,title,labels
 GH_TOKEN=$tok gh issue create --repo <org>/<tracker> --title "<the work, imperatively>" \
   --body "<goal + pointer to its record>" --label "type:research" --label "state:queued" \
   --milestone "intent/<slug>"
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
-  --remove-label state:released --add-label state:in-session
+  --remove-label state:ready --add-label state:in-progress
 GH_TOKEN=$tok gh issue comment <n> --repo <org>/<tracker> --body "<what happened>"
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label closed:done
 GH_TOKEN=$tok gh issue close <n> --repo <org>/<tracker> --comment "<landing SHA / outcome>"
 ```
 
 Composing a proposed release batch is one call — parent issue, sub-issues,
-project, Status **Proposed** (the operator's flip to **Released** is the
-approval, and nothing else flips it):
+project, Status **Backlog** (moving it to **Ready** on the board is
+the operator's approval, and nothing else moves it):
 
 ```bash
 flywheel-epic --org <org> --repo <tracker> --milestone "bolt/<slug>" \
@@ -259,7 +259,7 @@ GH_TOKEN=$tok gh api graphql -f query='
       fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
       content { ... on Issue { number title state } } } } } } } }' \
   --jq '.data.organization.projectsV2.nodes[0].items.nodes[]
-        | select(.fieldValueByName.name == "Released" and .content.state == "OPEN")
+        | select(.fieldValueByName.name == "Ready" and .content.state == "OPEN")
         | "#\(.content.number) \(.content.title)"'
 ```
 

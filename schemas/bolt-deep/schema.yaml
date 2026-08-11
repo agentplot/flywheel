@@ -54,7 +54,7 @@ apply:
   requires:
     - bolt
   instruction: |
-    Work the RELEASED set to empty, then stop at the queue.
+    Work the READY set to empty, then stop at the queue.
 
     The tracker is the org's, named by the `tracker:` line in the org's
     fleet.yaml; every tracker write runs as the app
@@ -62,9 +62,9 @@ apply:
     flywheel plugin's `skills/_reference/herdr.md`.
 
     1 · QUERY — the milestone `bolt/<slug>`'s open items labelled
-      `state:released`, plus any epic of this bolt whose Project Status
-      the operator has flipped to Released: flip those epics' sub-issues
-      to `state:released` first, then take the whole set. Each item
+      `state:ready`, plus any epic of this bolt whose Project Status
+      the operator has moved to Ready on the board: relabel those epics' sub-issues
+      to `state:ready` first, then take the whole set. Each item
       points at its assertion record - THE ASSERTION IS THE PROPOSAL,
       and the spec is derived from it and the decisions it cites, never
       from a restatement.
@@ -75,7 +75,7 @@ apply:
       relations. This step reads and writes nothing.
 
     3 · WORK — one session per batch, in parallel, each on a nested
-      worktree off the bolt branch. Flip items to `state:in-session` as
+      worktree off the bolt branch. Flip items to `state:in-progress` as
       their session starts, and record progress - spec landed, review
       verdict, build done - as comments on the item. An item's spec agent
       and its build agent stay two agents. Re-read every neighbour a spec
@@ -99,9 +99,9 @@ apply:
     wrong, not the build - are queued as items on the source intent's
     milestone, never fixed from here.
 
-    When the released set is empty: present the queue - this bolt's
-    `state:queued` items and Proposed epics, one line each - and stop.
-    An empty released set with a full queue is the correct resting state.
+    When the ready set is empty: present the queue - this bolt's
+    `state:queued` items and Backlog epics, one line each - and stop.
+    An empty ready set with a full queue is the correct resting state.
     When the milestone's items are all closed, propose closure to the
     operator: tear down worktrees, branches and the bolt branches, and
     `openspec archive` the change.

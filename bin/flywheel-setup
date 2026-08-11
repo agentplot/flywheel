@@ -17,8 +17,9 @@ sibling `flywheel-token` from `FLYWHEEL_GH_*`):
   - the org Project (default title "Flywheel"), linked to the repo;
   - its fields: Team (single select, from --team), Quarter (single
     select, the next six quarters), Iteration (two-week iterations),
-    and the Status options the release flip uses (Proposed, Released —
-    added alongside whatever options the project already has).
+    Start and Target (dates — what the roadmap lays items out by), and
+    the Status options the board uses (Backlog, Ready — added alongside
+    whatever options the project already has).
 """
 
 import argparse
@@ -41,8 +42,8 @@ TYPE_KINDS = [
 LABELS = {
     **{f"type:{k}": ("1d76db", f"{k} session work") for k in TYPE_KINDS},
     "state:queued": ("ededed", "identified, awaiting release"),
-    "state:released": ("0e8a16", "released by the operator"),
-    "state:in-session": ("fbca04", "a session is working it"),
+    "state:ready": ("0e8a16", "approved by the operator; work may start"),
+    "state:in-progress": ("fbca04", "a session is working it"),
     "closed:done": ("2da44e", "finished; evidence on the item"),
     "closed:declined": ("b60205", "not doing it; reason on the item"),
     "closed:superseded": ("d93f0b", "overtaken by another item"),
@@ -51,8 +52,8 @@ LABELS = {
 }
 
 STATUS_OPTIONS = [
-    ("Proposed", "GRAY", "batched by the conductor, awaiting the flip"),
-    ("Released", "GREEN", "the operator's flip; the conductor works it"),
+    ("Backlog", "GRAY", "batched by the conductor, awaiting approval"),
+    ("Ready", "GREEN", "approved by the operator; work may start"),
 ]
 
 
@@ -137,7 +138,7 @@ def ensure_link(token, org, repo, project_id):
     except GraphqlError as e:
         # Linking needs the repo-level Projects permission, which the app
         # deliberately does not request. Everything that matters — adding
-        # items, fields, the Status flip — works without the link; it only
+        # items, fields, the Status moves — works without the link; it only
         # surfaces the project in the repo's Projects tab. One manual
         # "Add project" there does the same.
         return (f"skipped ({e}) — link it once by hand in the repo's "
@@ -215,6 +216,11 @@ def ensure_fields(token, project_id, teams):
                          "startDate": next_monday().isoformat(),
                          "duration": 14, "iterations": []})
         made.append("Iteration")
+
+    for name in ("Start", "Target"):
+        if name not in fields:
+            create_field(token, project_id, name, "DATE")
+            made.append(name)
 
     status = fields.get("Status")
     if status and "options" in status:

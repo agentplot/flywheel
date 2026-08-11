@@ -7,11 +7,13 @@
 Reads the change directory's `tasks.md` and creates one tracker item per
 UNCHECKED task line: title from the line, body from the full task text
 (continuation lines included, blockers quoted), the section heading mapped
-to a `type:*` label, and `state:queued` — or `state:released` for handoff
+to a `type:*` label, and `state:queued` — or `state:ready` for handoff
 lines already marked RELEASED. Checked lines are history and stay in git.
 
 The milestone defaults to `intent/<dirname>` (`bolt/<dirname>` when the
-change's `.openspec.yaml` binds a bolt schema) and is created if missing.
+change's `.openspec.yaml` binds a bolt schema) and is created if missing;
+writeback-typed items go to `intent/writeback-<dirname>` instead, the
+convention the roadmap groups them by.
 Dependencies are left as quoted blocker text in each body — wire the
 native blocked-by relations when batching, when the numbers exist to
 point at. Released items are listed at the end for `flywheel-epic` to
@@ -119,7 +121,7 @@ def main():
         if len(title_clean) > 100:
             title_clean = title_clean[:100].rsplit(" ", 1)[0] + "…"
         title_clean = title_clean or title[:100]
-        labels = ["state:released" if released else "state:queued"]
+        labels = ["state:ready" if released else "state:queued"]
         if t:
             labels.append(f"type:{t}")
         body = body_text
@@ -127,22 +129,30 @@ def main():
             body += "\n\nblocked by (wire the relation when the numbers exist): " \
                     + "; ".join(blockers)
         body += f"\n\nmigrated from `{tasks_file}` · section: {section}"
-        items.append((title_clean, labels, body, released))
+        ms_title = milestone
+        if t == "writeback" and milestone.startswith("intent/"):
+            ms_title = "intent/writeback-" + milestone.removeprefix("intent/")
+        items.append((title_clean, labels, body, released, ms_title))
 
-    print(f"{len(items)} unchecked lines → milestone '{milestone}'")
+    print(f"{len(items)} unchecked lines → '{milestone}'"
+          + (" (+ writeback milestone)" if any(
+              m != milestone for *_, m in items) else ""))
     if args.dry_run:
-        for title, labels, _, _ in items:
-            print(f"  [{' '.join(labels)}] {title}")
+        for title, labels, _, _, ms_title in items:
+            print(f"  [{' '.join(labels)}] ({ms_title}) {title}")
         return
 
     token = resolve_token(args.org)
-    ms = ensure_milestone(token, args.org, args.repo, milestone)
+    ms_numbers = {}
     released_numbers = []
-    for title, labels, body, released in items:
+    for title, labels, body, released, ms_title in items:
+        if ms_title not in ms_numbers:
+            ms_numbers[ms_title] = ensure_milestone(
+                token, args.org, args.repo, ms_title)
         issue = gh(token, "api", f"/repos/{args.org}/{args.repo}/issues",
                    "--input", "-", input_json={
                        "title": title, "body": body,
-                       "labels": labels, "milestone": ms})
+                       "labels": labels, "milestone": ms_numbers[ms_title]})
         print(f"  #{issue['number']} {title}")
         if released:
             released_numbers.append(str(issue["number"]))

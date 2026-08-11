@@ -65,7 +65,7 @@ tree.
 ## The item flow
 
 Each item's progress is its comment history — spec landed, review
-verdict, build done, merge SHA — and its label stays `state:in-session`
+verdict, build done, merge SHA — and its label stays `state:in-progress`
 from first spec work until it closes `closed:done` with the landing SHA
 in the closing comment.
 
@@ -110,11 +110,12 @@ to expect a failure that cannot happen learns to discount constraints.
 
 ## The long-lived posture
 
-Work the released set to empty, then stop at the queue. Every released
+Work the ready set to empty, then stop at the queue. Every released
 item with an unblocked next action is dispatched; when all are waiting
 on running sessions, park on them (`herdr agent wait`), and when the
-released set is empty, present this bolt's queue — `state:queued` items
-and Proposed epics, one line each — and wait for the operator's flip.
+ready set is empty, present this bolt's queue — `state:queued` items
+and Backlog epics, one line each — and wait for the operator to move
+one to Ready.
 New work pushed into a live bolt joins as queued items; scope that
 belongs elsewhere is queued elsewhere.
 

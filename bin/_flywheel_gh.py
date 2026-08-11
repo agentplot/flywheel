@@ -109,11 +109,77 @@ def set_item_option(token, project_id, item_id, field_id, option_id):
              "field": field_id, "option": option_id})
 
 
-def ensure_milestone(token, org, repo, title):
-    """The milestone's number, created open if missing."""
+def ensure_milestone(token, org, repo, title, due_on=None):
+    """The milestone's number, created open if missing.
+
+    A due date makes the milestone visible on the roadmap; pass due_on as
+    YYYY-MM-DD to set it at creation, or to add it to an existing
+    milestone that has none.
+    """
+    due = {"due_on": f"{due_on}T23:59:59Z"} if due_on else {}
     for ms in gh(token, "api", f"/repos/{org}/{repo}/milestones?state=all",
                  "--paginate"):
         if ms["title"] == title:
+            if due and not ms.get("due_on"):
+                gh(token, "api", "-X", "PATCH",
+                   f"/repos/{org}/{repo}/milestones/{ms['number']}",
+                   "--input", "-", input_json=due)
             return ms["number"]
     return gh(token, "api", f"/repos/{org}/{repo}/milestones", "--input", "-",
-              input_json={"title": title})["number"]
+              input_json={"title": title, **due})["number"]
+
+
+def project_iterations(token, project_id, field_name="Iteration"):
+    """(field_id, {iteration title: iteration id}) for an iteration field."""
+    nodes = graphql(token, """
+      query($project: ID!) {
+        node(id: $project) {
+          ... on ProjectV2 {
+            fields(first: 50) {
+              nodes {
+                ... on ProjectV2IterationField {
+                  id name
+                  configuration { iterations { id title } }
+                }
+              }
+            }
+          }
+        }
+      }""", {"project": project_id})["node"]["fields"]["nodes"]
+    for node in nodes:
+        if node and node.get("name") == field_name:
+            its = node["configuration"]["iterations"]
+            return node["id"], {i["title"]: i["id"] for i in its}
+    return None, {}
+
+
+def project_date_field(token, project_id, field_name):
+    """The field id of a DATE field, or None."""
+    nodes = graphql(token, """
+      query($project: ID!) {
+        node(id: $project) {
+          ... on ProjectV2 {
+            fields(first: 50) {
+              nodes { ... on ProjectV2FieldCommon { id name dataType } }
+            }
+          }
+        }
+      }""", {"project": project_id})["node"]["fields"]["nodes"]
+    for node in nodes:
+        if node and node.get("name") == field_name \
+                and node.get("dataType") == "DATE":
+            return node["id"]
+    return None
+
+
+def set_item_value(token, project_id, item_id, field_id, value):
+    """Set a project item field: {"date": ...}, {"iterationId": ...}, or
+    {"singleSelectOptionId": ...}."""
+    graphql(token, """
+      mutation($project: ID!, $item: ID!, $field: ID!,
+               $value: ProjectV2FieldValue!) {
+        updateProjectV2ItemFieldValue(input: {
+          projectId: $project, itemId: $item, fieldId: $field, value: $value
+        }) { projectV2Item { id } }
+      }""", {"project": project_id, "item": item_id,
+             "field": field_id, "value": value})
