@@ -20,17 +20,18 @@ records themselves — never re-derived from memory:
 - the bolt member the work warrants (`bolt-default`, `bolt-quick`,
   `bolt-deep`), because the member picked at creation IS the review
   depth;
-- the bolt's owner — the developer whose word settles its decisions;
+- the bolt's owner — the developer whose word settles its decisions,
+  read from the released items' assignee;
 - any architecture decision record the batch names: repo, decision to
   record, sources. The bolt conductor writes it directly.
 
 ## How it travels
 
-To the bolt conductor by herdr prompt when it runs, a file in the bolt
-change's `inbox/` when it does not — the invocations are in the plugin's
-`skills/_reference/herdr.md`. If no bolt exists yet, report that:
-creating the bolt change and starting its conductor is your conductor's
-act.
+To the bolt conductor by herdr prompt when it runs, as a comment on
+the released epic when it does not — the invocations are in the
+plugin's `skills/_reference/herdr.md`. If no bolt conductor exists yet,
+report that: the fleet layer starts it, and it scaffolds its change on
+first start.
 
 ## The receipt is custody, not completion
 

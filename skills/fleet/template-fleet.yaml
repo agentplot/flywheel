@@ -9,7 +9,7 @@
 # States:
 #   running — `flywheel up` starts this actor if it is not alive
 #   parked  — deliberately not running; requests park in the change's
-#             inbox/ until the actor is next started
+#             queued items and comments until the actor is next started
 #
 # Every actor row (FULL-LINE comments only — a `#` inside a value is part
 # of the value):
@@ -36,8 +36,8 @@ hosts:
 actors:
   - name: dispatch
     profile: flywheel-dispatch
-    model: fable
+    model: opus[1m]
     host: workstation
     state: running
     cwd: my-coordination-repo/main
-    prompt: "You are dispatch. Re-read your inbox and the open changes, then wait for input."
+    prompt: "You are dispatch for the <org> org; the tracker is <org>/<tracker-repo>. Report your state, then wait for input."

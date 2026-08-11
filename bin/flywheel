@@ -18,10 +18,9 @@ and names the start command rather than starting agents into the wrong
 session.
 
 Placement only: this command starts and reports actors; it never decides
-what they own (a change's .openspec.yaml owner: does) and never tears
-one down (teardown is deliberate, not a sync step). Rows on other hosts
-are reported, not driven — herdr remote first, ssh + prompt as fallback,
-inbox + waker when neither reaches.
+what they own (the tracker items' assignee does) and never tears one
+down (teardown is deliberate, not a sync step). Rows on other hosts are
+reported, not driven.
 
 The manifest is a constrained YAML subset parsed here without a YAML
 dependency: two-space indentation, top-level scalars, `actors:` a list
@@ -206,7 +205,7 @@ def up(manifest: dict, host: str, session: str, env: dict) -> int:
             continue
         if a.get("host") != host:
             print(f"{name}: on {a.get('host')} — not this host, reach it via "
-                  "herdr remote / ssh / inbox")
+                  "herdr remote / ssh")
             continue
         cwd = (manifest["root"] / a["cwd"]).resolve()
         if not cwd.is_dir():

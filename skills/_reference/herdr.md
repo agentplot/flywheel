@@ -80,6 +80,8 @@ for planning, interactive and proposal-review; `opus[1m]` for research,
 spec-writing, build, test, code-review and human-code-review; opus for
 prototype, writeback, handoff and proposal-writing — and a work order or
 invocation may override it; pass whichever applies as `--model <name>`.
+The standing actors — dispatch and both conductor kinds — run
+`opus[1m]`, set on their fleet rows.
 
 The pane must be at its interactive shell prompt before `agent start`.
 

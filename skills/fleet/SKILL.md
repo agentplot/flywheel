@@ -56,12 +56,18 @@ is delivered as its own message, which is why it works.
 
 ## What this command never does
 
-It never decides ownership (a change's `.openspec.yaml` `owner:` does),
-never tears an actor down (teardown is deliberate), and never starts a
-`parked` row — parked is a statement that requests wait in the change's
-`inbox/` until the actor is next started. Rows on other hosts are
-reported, not driven: herdr remote first, ssh + prompt as fallback,
-inbox + waker when neither reaches.
+It never decides ownership (the tracker items' assignee does), never
+tears an actor down (teardown is deliberate), and never starts a
+`parked` row — parked is a statement that requests wait as queued items
+and comments until the actor is next started. Rows on other hosts are
+reported, not driven.
+
+The manifest's actor rows are an interim: the destination is a
+deterministic reconciler that derives which conductors should exist
+from the tracker — an open milestone with ready items and no running
+conductor starts one, placement read from the board's Team field — with
+`fleet.yaml` shrunk to placement config. Until it lands, `flywheel up`
+drives the rows.
 
 After hand-starting a conductor outside this command, record it in
 `fleet.yaml` — the manifest is placement's one record, and an actor it

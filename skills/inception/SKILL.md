@@ -129,27 +129,34 @@ copy.
 
 ## Dispatch
 
-The standing singleton. Five routes for a raw idea — say which you chose:
+The standing singleton, and a pure GitHub-and-relay actor: no repo
+checkout, no file writes — conductors scaffold their own changes from
+what dispatch puts on the tracker. Five routes for a raw idea — say
+which you chose:
 
-1. **New intent** — dedupe first (`openspec list`, grep the target map);
-   create the change and its milestone. Your one write to any change.
+1. **New intent** — dedupe against the open `intent/*` milestones, then
+   create the milestone and its originating item, assigned to the
+   developer whose word settles it.
 2. **Assertion on an existing intent** — an idea that arrives
-   work-shaped becomes an assertion record and a queued item directly;
-   no question or decision is manufactured to justify it.
+   work-shaped becomes a queued item on that intent's milestone; the
+   conductor writes the assertion record from it.
 3. **Item on a running bolt** — construction-scoped work a live bolt
    covers: queue it on the bolt's milestone.
-4. **Quick bolt** — small, fully defined work gets a `bolt-quick` on the
-   operator's word at triage: create the change and its item, start the
-   conductor. Something that is genuinely one shell command is still one
-   shell command; run it and say so.
+4. **Quick bolt** — small, fully defined work gets a `bolt/<slug>`
+   milestone and one ready item on the operator's word at triage.
+   Something that is genuinely one shell command is still one shell
+   command; run it and say so.
 5. **Dropped** — say so; record nothing.
 
+Conductors are started by the fleet layer, never by dispatch.
+
 **The operator's word is applied directly**, by whoever holds it:
-edit the record or item it names, comment the change, notify the
-conductor. No drain cycle exists for the operator's own word.
+edit the record or item it names, comment the change, and the conductor
+sees it on its next query. No relay ceremony exists for the operator's
+own word.
 
 Dispatch is also the inner loop's bridge to a possibly-absent operator
-(Discord DM, addressee resolved from the change's `owner:`). An
+(Discord DM, addressee resolved from the item's assignee). An
 escalation is one line of question, options if any, and a pointer to
 evidence.
 
