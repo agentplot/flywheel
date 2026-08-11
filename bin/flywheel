@@ -262,6 +262,21 @@ def up(manifest: dict, host: str, session: str, env: dict) -> int:
                 print(f"  first prompt failed: {sent.stderr.strip()} — "
                       f"{name} is alive but uncharged; prompt it by hand")
                 failures += 1
+                continue
+            # A multi-line or slow-composer prompt can land unsubmitted —
+            # the agent stays idle with the text sitting at its prompt.
+            # Verify it went to work; one Enter submits a stuck composer.
+            for _attempt in range(3):
+                time.sleep(4)
+                agent = herdr_agents(env).get(name, {})
+                if agent.get("agent_status") == "working":
+                    break
+                subprocess.run(["herdr", "agent", "send-keys", name, "enter"],
+                               capture_output=True, text=True, env=env)
+            else:
+                print(f"  {name} never went to work on its first prompt — "
+                      "read its pane and prompt it by hand")
+                failures += 1
     return 1 if failures else 0
 
 
