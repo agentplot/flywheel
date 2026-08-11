@@ -8,3 +8,4 @@ node_modules/
 # Local IDE / shell state
 .claude/settings.local.json
 .DS_Store
+__pycache__/
