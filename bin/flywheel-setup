@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""flywheel-setup — converge an org's tracker to the flywheel's shape.
+
+  flywheel-setup --org ORG --repo REPO [--project TITLE] [--team NAME ...]
+
+Idempotent: run it any time, as often as wanted; it creates what is
+missing and never rewrites what exists. Everything it touches is repo- or
+project-level — org-level customization is deliberately outside the
+flywheel's permissions.
+
+What it converges, as the app identity (`GH_TOKEN`, or minted by the
+sibling `flywheel-token` from `FLYWHEEL_GH_*`):
+
+  - the tracker labels on the repo: `type:*` for the session types,
+    `state:*` for the queue lifecycle, `closed:*` for the end reasons,
+    and `epic` for release batches;
+  - the org Project (default title "Flywheel"), linked to the repo;
+  - its fields: Team (single select, from --team), Quarter (single
+    select, the next six quarters), Iteration (two-week iterations),
+    and the Status options the release flip uses (Proposed, Released —
+    added alongside whatever options the project already has).
+"""
+
+import argparse
+import datetime
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+TYPE_KINDS = [
+    # design loop
+    "planning", "interactive", "research", "prototype", "writeback",
+    "handoff",
+    # construction loop (proposal-writing survives as the exception path)
+    "proposal-writing", "proposal-review", "spec-writing", "build", "test",
+    "code-review", "human-code-review",
+]
+
+LABELS = {
+    **{f"type:{k}": ("1d76db", f"{k} session work") for k in TYPE_KINDS},
+    "state:queued": ("ededed", "identified, awaiting release"),
+    "state:released": ("0e8a16", "released by the operator"),
+    "state:in-session": ("fbca04", "a session is working it"),
+    "closed:done": ("2da44e", "finished; evidence on the item"),
+    "closed:declined": ("b60205", "not doing it; reason on the item"),
+    "closed:superseded": ("d93f0b", "overtaken by another item"),
+    "closed:parked": ("c5def5", "waiting on an external event; reopenable"),
+    "epic": ("d4a72c", "a release batch; items are its sub-issues"),
+}
+
+STATUS_OPTIONS = [
+    ("Proposed", "GRAY", "batched by the conductor, awaiting the flip"),
+    ("Released", "GREEN", "the operator's flip; the conductor works it"),
+]
+
+
+def gh(token, *args, input_json=None):
+    env = dict(os.environ, GH_TOKEN=token)
+    stdin = json.dumps(input_json) if input_json is not None else None
+    proc = subprocess.run(
+        ["gh", *args], env=env, input=stdin, capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        sys.exit(f"flywheel-setup: gh {' '.join(args[:2])} failed: "
+                 f"{proc.stderr.strip() or proc.stdout.strip()}")
+    return json.loads(proc.stdout) if proc.stdout.strip() else {}
+
+
+class GraphqlError(Exception):
+    pass
+
+
+def graphql(token, query, variables=None):
+    body = {"query": query, "variables": variables or {}}
+    data = gh(token, "api", "/graphql", "--input", "-", input_json=body)
+    if data.get("errors"):
+        raise GraphqlError(data["errors"][0]["message"])
+    return data["data"]
+
+
+def ensure_labels(token, org, repo):
+    existing = {
+        l["name"]
+        for l in gh(token, "api", f"/repos/{org}/{repo}/labels", "--paginate")
+    }
+    created = []
+    for name, (color, desc) in LABELS.items():
+        if name in existing:
+            continue
+        gh(token, "api", f"/repos/{org}/{repo}/labels", "--input", "-",
+           input_json={"name": name, "color": color, "description": desc})
+        created.append(name)
+    return created
+
+
+def ensure_project(token, org, title):
+    data = graphql(token, """
+      query($org: String!) {
+        organization(login: $org) {
+          id
+          projectsV2(first: 100) { nodes { id title number } }
+        }
+      }""", {"org": org})
+    org_id = data["organization"]["id"]
+    for node in data["organization"]["projectsV2"]["nodes"]:
+        if node["title"] == title:
+            return node["id"], node["number"], False
+    created = graphql(token, """
+      mutation($owner: ID!, $title: String!) {
+        createProjectV2(input: {ownerId: $owner, title: $title}) {
+          projectV2 { id number }
+        }
+      }""", {"owner": org_id, "title": title})["createProjectV2"]["projectV2"]
+    return created["id"], created["number"], True
+
+
+def ensure_link(token, org, repo, project_id):
+    data = graphql(token, """
+      query($org: String!, $repo: String!) {
+        repository(owner: $org, name: $repo) {
+          id
+          projectsV2(first: 100) { nodes { id } }
+        }
+      }""", {"org": org, "repo": repo})
+    repo_id = data["repository"]["id"]
+    if project_id in {n["id"] for n in data["repository"]["projectsV2"]["nodes"]}:
+        return "already linked"
+    try:
+        graphql(token, """
+          mutation($project: ID!, $repo: ID!) {
+            linkProjectV2ToRepository(
+              input: {projectId: $project, repositoryId: $repo}
+            ) { repository { id } }
+          }""", {"project": project_id, "repo": repo_id})
+    except GraphqlError as e:
+        # Linking needs the repo-level Projects permission, which the app
+        # deliberately does not request. Everything that matters — adding
+        # items, fields, the Status flip — works without the link; it only
+        # surfaces the project in the repo's Projects tab. One manual
+        # "Add project" there does the same.
+        return (f"skipped ({e}) — link it once by hand in the repo's "
+                "Projects tab, or grant the app repo-level Projects access")
+    return "linked"
+
+
+def project_fields(token, project_id):
+    nodes = graphql(token, """
+      query($project: ID!) {
+        node(id: $project) {
+          ... on ProjectV2 {
+            fields(first: 50) {
+              nodes {
+                ... on ProjectV2FieldCommon { id name dataType }
+                ... on ProjectV2SingleSelectField {
+                  options { id name description }
+                }
+              }
+            }
+          }
+        }
+      }""", {"project": project_id})["node"]["fields"]["nodes"]
+    return {n["name"]: n for n in nodes if n}
+
+
+def create_field(token, project_id, name, data_type, **extra):
+    graphql(token, """
+      mutation($input: CreateProjectV2FieldInput!) {
+        createProjectV2Field(input: $input) {
+          projectV2Field { ... on ProjectV2FieldCommon { id } }
+        }
+      }""", {"input": {"projectId": project_id, "name": name,
+                       "dataType": data_type, **extra}})
+
+
+def next_quarters(count=6):
+    today = datetime.date.today()
+    year, q = today.year, (today.month - 1) // 3 + 1
+    out = []
+    for _ in range(count):
+        out.append(f"{year}-Q{q}")
+        q += 1
+        if q == 5:
+            year, q = year + 1, 1
+    return out
+
+
+def next_monday():
+    today = datetime.date.today()
+    return today + datetime.timedelta(days=(7 - today.weekday()) % 7 or 7)
+
+
+def ensure_fields(token, project_id, teams):
+    fields = project_fields(token, project_id)
+    made = []
+
+    if "Team" not in fields:
+        create_field(token, project_id, "Team", "SINGLE_SELECT",
+                     singleSelectOptions=[
+                         {"name": t, "color": "BLUE", "description": ""}
+                         for t in teams])
+        made.append("Team")
+
+    if "Quarter" not in fields:
+        create_field(token, project_id, "Quarter", "SINGLE_SELECT",
+                     singleSelectOptions=[
+                         {"name": q, "color": "GRAY", "description": ""}
+                         for q in next_quarters()])
+        made.append("Quarter")
+
+    if "Iteration" not in fields:
+        create_field(token, project_id, "Iteration", "ITERATION",
+                     iterationConfiguration={
+                         "startDate": next_monday().isoformat(),
+                         "duration": 14, "iterations": []})
+        made.append("Iteration")
+
+    status = fields.get("Status")
+    if status and "options" in status:
+        have = {o["name"] for o in status["options"]}
+        want = [(n, c, d) for n, c, d in STATUS_OPTIONS if n not in have]
+        if want:
+            options = [
+                {"id": o["id"], "name": o["name"], "color": "GRAY",
+                 "description": o.get("description") or ""}
+                for o in status["options"]
+            ] + [{"name": n, "color": c, "description": d}
+                 for n, c, d in want]
+            graphql(token, """
+              mutation($input: UpdateProjectV2FieldInput!) {
+                updateProjectV2Field(input: $input) {
+                  projectV2Field { ... on ProjectV2FieldCommon { id } }
+                }
+              }""", {"input": {"fieldId": status["id"],
+                               "singleSelectOptions": options}})
+            made.append("Status options: " + ", ".join(n for n, _, _ in want))
+    return made
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--org", required=True)
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--project", default="Flywheel", metavar="TITLE")
+    ap.add_argument("--team", action="append", default=None,
+                    help="Team option; repeatable (default: flywheel)")
+    args = ap.parse_args()
+
+    token = os.environ.get("GH_TOKEN")
+    if not token:
+        helper = Path(__file__).resolve().parent / "flywheel-token"
+        proc = subprocess.run([str(helper), "--org", args.org],
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            sys.exit(proc.stderr.strip())
+        token = proc.stdout.strip()
+
+    created = ensure_labels(token, args.org, args.repo)
+    print(f"labels: created {len(created)}" +
+          (f" ({', '.join(created)})" if created else ", all present"))
+
+    project_id, number, fresh = ensure_project(token, args.org, args.project)
+    print(f"project: {'created' if fresh else 'found'} "
+          f"'{args.project}' (#{number})")
+
+    print(f"link: {ensure_link(token, args.org, args.repo, project_id)}")
+
+    made = ensure_fields(token, project_id, args.team or ["flywheel"])
+    print("fields: " + ("; ".join(made) if made else "all present"))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except GraphqlError as e:
+        sys.exit(f"flywheel-setup: graphql: {e}")
