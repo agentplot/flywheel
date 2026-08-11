@@ -74,13 +74,12 @@ which is how a profile (`--agent <profile>`) and a model (`--model <name>`)
 are selected.
 
 **Every session launch names its model.** The session type's definition
-carries the default — the one enumeration is the type table in
-`openspec/specs/flywheel-session-type-skills/spec.md`: Fable for the six
-design types and the three spec-side construction types
-(proposal-writing, proposal-review, spec-writing), `opus[1m]` for the
-four code-side construction types (build, test, code-review,
-human-code-review) — and a work order or invocation may override it; pass
-whichever applies as `--model <name>`.
+carries the default — the one enumeration is the type table in the
+plugin's `openspec/specs/flywheel-session-type-skills/spec.md`: fable
+for planning, interactive and proposal-review; `opus[1m]` for research,
+spec-writing, build, test, code-review and human-code-review; opus for
+prototype, writeback, handoff and proposal-writing — and a work order or
+invocation may override it; pass whichever applies as `--model <name>`.
 
 The pane must be at its interactive shell prompt before `agent start`.
 
@@ -206,7 +205,7 @@ exactly those.
 ## Spawning a design session — the whole sequence
 
 ```bash
-wt switch --create sess/<slug> --base main --no-cd
+wt switch --create sess/<slug> --base main --no-cd   # only if the session edits files
 herdr tab create --cwd <worktree-path> --label "<slug>" --no-focus
 herdr agent start <slug>-session-<n> --kind claude --pane <pane-id> \
   -- --agent flywheel-design-session --model <model>
@@ -214,12 +213,69 @@ herdr agent prompt <slug>-session-<n> "/rename <slug>-session-<n>"
 # confirm the title, then send the work order
 ```
 
-A `design`-type session takes `--agent flywheel-interactive-session`
+An interactive-design session takes `--agent flywheel-interactive-session`
 instead; the other five design types run under `flywheel-design-session`.
+**A session that edits no files gets no worktree** — skip the `wt switch`,
+start it in the launch directory, and skip the merge and teardown too.
 
-The work order names the change id, the task batch, the session's
-`sessions/<date>-<slug>/` directory, its worktree, and the session-type
-skill for the batch.
+The work order is four things: the change id, the session type, the item
+numbers of its batch, and one or two plain sentences of goal. Worktree,
+session directory and model are launch mechanics, not work order content.
+
+## The tracker
+
+Every machinery write to the tracker runs as the app. `flywheel-token`
+caches for the hour, so calling it per command is free:
+
+```bash
+tok=$(flywheel-token --org <org>)     # FLYWHEEL_GH_APP_ID / _KEY / _ORG configure it
+GH_TOKEN=$tok gh issue list --repo <org>/<tracker> --milestone "intent/<slug>" \
+  --label state:released --state open --json number,title,labels
+GH_TOKEN=$tok gh issue create --repo <org>/<tracker> --title "<the work, imperatively>" \
+  --body "<goal + pointer to its record>" --label "type:research" --label "state:queued" \
+  --milestone "intent/<slug>"
+GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
+  --remove-label state:released --add-label state:in-session
+GH_TOKEN=$tok gh issue comment <n> --repo <org>/<tracker> --body "<what happened>"
+GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label closed:done
+GH_TOKEN=$tok gh issue close <n> --repo <org>/<tracker> --comment "<landing SHA / outcome>"
+```
+
+Composing a proposed release batch is one call — parent issue, sub-issues,
+project, Status **Proposed** (the operator's flip to **Released** is the
+approval, and nothing else flips it):
+
+```bash
+flywheel-epic --org <org> --repo <tracker> --milestone "bolt/<slug>" \
+  --title "<the batch, imperatively>" <item> <item> ...
+```
+
+Finding the epics the operator has released:
+
+```bash
+GH_TOKEN=$tok gh api graphql -f query='
+{ organization(login: "<org>") { projectsV2(first: 5, query: "Flywheel") { nodes {
+    items(first: 100) { nodes {
+      fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+      content { ... on Issue { number title state } } } } } } } }' \
+  --jq '.data.organization.projectsV2.nodes[0].items.nodes[]
+        | select(.fieldValueByName.name == "Released" and .content.state == "OPEN")
+        | "#\(.content.number) \(.content.title)"'
+```
+
+**Sub-issues and dependencies take the database id, not the number.**
+`gh api /repos/<o>/<r>/issues/<n> --jq .id` fetches it; passing the issue
+number fails opaquely. An item joins exactly one epic — attaching a
+sub-issue that already has a parent is a 422:
+
+```bash
+GH_TOKEN=$tok gh api /repos/<org>/<tracker>/issues/<blocked>/dependencies/blocked_by \
+  --input - <<< '{"issue_id": <database id of the blocker>}'
+```
+
+`flywheel-setup --org <org> --repo <tracker>` converges labels, the
+project and its fields, idempotently — run it once per org, or any time
+the shape is in doubt.
 
 ## The bolt's own topology
 
