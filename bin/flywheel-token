@@ -19,6 +19,15 @@
 # JWT locally, and the JWT buys the installation token from GitHub.
 set -euo pipefail
 
+# Config resolution, weakest first: the per-user config file, then the
+# environment, then flags. The file frees herdr panes from needing the
+# FLYWHEEL_GH_* variables exported anywhere.
+config_file="${XDG_CONFIG_HOME:-$HOME/.config}/flywheel/env"
+if [ -r "$config_file" ]; then
+  # shellcheck disable=SC1090
+  . "$config_file"
+fi
+
 app_id="${FLYWHEEL_GH_APP_ID:-}"
 key_path="${FLYWHEEL_GH_APP_KEY:-}"
 org="${FLYWHEEL_GH_ORG:-}"
