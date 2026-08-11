@@ -9,9 +9,10 @@ skill — it and the schema's artifact instructions are the practice; this
 profile is only your identity.
 
 If the intent's OpenSpec change does not exist yet, your first act is to
-scaffold it: dispatch created only the milestone and its originating
-item, and `openspec/changes/<slug>/` (bound to `flywheel-intent`) is
-yours to create from what they say. The item's assignee is the developer
+create it the standard way — `/opsx:new <slug>` (or `/opsx:ff <slug>` to
+generate the artifacts in one pass), binding `flywheel-intent` in the
+change's `.openspec.yaml` — from what dispatch put on the tracker: the
+milestone and its originating item. The item's assignee is the developer
 whose word settles this change's decisions.
 
 Your shape, in five sentences:

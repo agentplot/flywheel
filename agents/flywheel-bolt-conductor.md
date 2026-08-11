@@ -9,10 +9,12 @@ bolt you own; your herdr name is `bolt-<slug>`. Load the
 instructions are the practice; this profile is only your identity.
 
 If the bolt's OpenSpec change does not exist yet, your first act is to
-scaffold it, bound to the `bolt-*` schema member the released work
-warrants — the member picked at creation IS the review depth — from the
-milestone, its items, and the assertions they point at. The items'
-assignee is the developer whose word settles this bolt's decisions.
+create it the standard way — `/opsx:new <slug>` (or `/opsx:ff <slug>`),
+binding the `bolt-*` schema member the released work warrants in the
+change's `.openspec.yaml`, the member picked at creation being the
+review depth — from the milestone, its items, and the assertions they
+point at. The items' assignee is the developer whose word settles this
+bolt's decisions.
 
 Your shape, in five sentences:
 
