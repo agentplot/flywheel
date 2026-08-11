@@ -7,7 +7,9 @@
 #
 # Config, flags overriding environment:
 #   --app-id  <id>      FLYWHEEL_GH_APP_ID      the GitHub App's id
-#   --key     <path>    FLYWHEEL_GH_APP_KEY     path to the app's .pem
+#   --key     <ref>     FLYWHEEL_GH_APP_KEY     the app's .pem: a path, or
+#                                               op:<vault>/<item title> to
+#                                               read it from 1Password
 #   --org     <login>   FLYWHEEL_GH_ORG         the installed org
 #   --no-cache                                  mint fresh, skip the cache
 #
@@ -41,10 +43,29 @@ if [ ${#missing[@]} -gt 0 ]; then
   printf 'flywheel-token: missing %s\n' "${missing[@]}" >&2
   exit 2
 fi
-if [ ! -r "$key_path" ]; then
-  echo "flywheel-token: cannot read key: $key_path" >&2
-  exit 2
-fi
+case "$key_path" in
+  op:*)
+    # op:<vault>/<item title> — fetched per run, held only in a 0600 temp
+    # file that dies with the process; nothing persists on disk.
+    ref="${key_path#op:}"
+    vault="${ref%%/*}"
+    item="${ref#*/}"
+    keyfile=$(mktemp)
+    trap 'rm -f "$keyfile"' EXIT
+    chmod 600 "$keyfile"
+    if ! op document get "$item" --vault "$vault" > "$keyfile"; then
+      echo "flywheel-token: op could not read '$item' from vault '$vault'" >&2
+      exit 2
+    fi
+    key_path="$keyfile"
+    ;;
+  *)
+    if [ ! -r "$key_path" ]; then
+      echo "flywheel-token: cannot read key: $key_path" >&2
+      exit 2
+    fi
+    ;;
+esac
 
 cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/flywheel"
 cache_file="$cache_dir/token-${app_id}-${org}.json"
