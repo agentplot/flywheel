@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""flywheel-epic — compose a proposed release batch from queued items.
+
+  flywheel-epic --org ORG --repo REPO --milestone TITLE --title TITLE \\
+      [--body TEXT] [--project Flywheel] ITEM_NUMBER ...
+
+The conductor's batching move, in one call: creates the epic issue
+(labels `epic` + `state:queued`, in the named milestone, created if
+missing), attaches the items as sub-issues, adds the epic to the org
+Project, and sets its Status to **Proposed**. The operator releases by
+flipping that Status to **Released** — this tool never does.
+
+Prints the epic's number and URL. Token: `GH_TOKEN`, or minted by the
+sibling `flywheel-token` from `FLYWHEEL_GH_*`.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _flywheel_gh import (GraphqlError, add_to_project, ensure_milestone,
+                          find_project, gh, graphql, project_single_select,
+                          resolve_token, set_item_option)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--org", required=True)
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--milestone", required=True, metavar="TITLE")
+    ap.add_argument("--title", required=True)
+    ap.add_argument("--body", default="")
+    ap.add_argument("--project", default="Flywheel", metavar="TITLE")
+    ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
+    args = ap.parse_args()
+
+    token = resolve_token(args.org)
+    repo_path = f"/repos/{args.org}/{args.repo}"
+
+    # Fetch every item up front: composing a batch from a missing item or
+    # one already in another epic should fail before anything is created.
+    items = [gh(token, "api", f"{repo_path}/issues/{n}") for n in args.items]
+    for item in items:
+        if item.get("parent_issue_url"):
+            parent = item["parent_issue_url"].rsplit("/", 1)[-1]
+            sys.exit(f"flywheel-epic: #{item['number']} is already in epic "
+                     f"#{parent} — an item joins exactly one epic")
+
+    ms_number = ensure_milestone(token, args.org, args.repo, args.milestone)
+
+    epic = gh(token, "api", f"{repo_path}/issues", "--input", "-",
+              input_json={
+                  "title": args.title,
+                  "body": args.body,
+                  "labels": ["epic", "state:queued"],
+                  "milestone": ms_number,
+              })
+    print(f"epic #{epic['number']}: {epic['html_url']}")
+
+    for item in items:
+        gh(token, "api", f"{repo_path}/issues/{epic['number']}/sub_issues",
+           "--input", "-", input_json={"sub_issue_id": item["id"]})
+        print(f"  sub-issue: #{item['number']} {item['title']}")
+
+    project_id = find_project(token, args.org, args.project)
+    if not project_id:
+        sys.exit(f"flywheel-epic: no project titled '{args.project}' — "
+                 "run flywheel-setup first")
+    item_id = add_to_project(token, project_id, epic["node_id"])
+    field_id, options = project_single_select(token, project_id, "Status")
+    if "Proposed" not in options:
+        sys.exit("flywheel-epic: the Status field has no 'Proposed' option — "
+                 "run flywheel-setup first")
+    set_item_option(token, project_id, item_id, field_id, options["Proposed"])
+    print(f"  status: Proposed, in '{args.project}', "
+          f"milestone '{args.milestone}'")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except GraphqlError as e:
+        sys.exit(f"flywheel-epic: graphql: {e}")

@@ -37,10 +37,28 @@ done
 
 missing=()
 [ -n "$app_id" ]   || missing+=("--app-id / FLYWHEEL_GH_APP_ID")
-[ -n "$key_path" ] || missing+=("--key / FLYWHEEL_GH_APP_KEY")
 [ -n "$org" ]      || missing+=("--org / FLYWHEEL_GH_ORG")
 if [ ${#missing[@]} -gt 0 ]; then
   printf 'flywheel-token: missing %s\n' "${missing[@]}" >&2
+  exit 2
+fi
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/flywheel"
+cache_file="$cache_dir/token-${app_id}-${org}.json"
+
+now() { date +%s; }
+
+# A warm cache needs no key at all — check it before touching the key.
+if [ "$use_cache" = 1 ] && [ -r "$cache_file" ]; then
+  cached_exp=$(sed -n 's/.*"exp_unix": *\([0-9]*\).*/\1/p' "$cache_file")
+  if [ -n "$cached_exp" ] && [ "$cached_exp" -gt $(( $(now) + 300 )) ]; then
+    sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$cache_file"
+    exit 0
+  fi
+fi
+
+if [ -z "$key_path" ]; then
+  echo "flywheel-token: missing --key / FLYWHEEL_GH_APP_KEY" >&2
   exit 2
 fi
 case "$key_path" in
@@ -66,19 +84,6 @@ case "$key_path" in
     fi
     ;;
 esac
-
-cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/flywheel"
-cache_file="$cache_dir/token-${app_id}-${org}.json"
-
-now() { date +%s; }
-
-if [ "$use_cache" = 1 ] && [ -r "$cache_file" ]; then
-  cached_exp=$(sed -n 's/.*"exp_unix": *\([0-9]*\).*/\1/p' "$cache_file")
-  if [ -n "$cached_exp" ] && [ "$cached_exp" -gt $(( $(now) + 300 )) ]; then
-    sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$cache_file"
-    exit 0
-  fi
-fi
 
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 
