@@ -68,7 +68,7 @@ copy. Read it before doing any of them.
   directory, the decision records its work order charged it to close,
   and the books and map for writeback batches — inside its own worktree.
 - **Anyone** writes the tracker: items, comments, queued discoveries.
-- Construction — every other file edit, in any repo, blueprints'
+- Construction — every other file edit, in any repo, the loop's own
   machinery included — reaches a repo through a released bolt.
 
 ## Sessions

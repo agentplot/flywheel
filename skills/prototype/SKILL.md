@@ -11,8 +11,8 @@ an argument can settle it.
 
 ## The code is built somewhere else, and dies there
 
-Delegate the build to a **spike-repo worktree** via herdr — not in
-blueprints, and not in your session directory:
+Delegate the build to a **spike-repo worktree** via herdr — not in the
+change's repo, and not in your session directory:
 
 ```bash
 wt switch --create spike/<slug> --base main --no-cd   # in the spike repo
