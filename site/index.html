@@ -3,220 +3,502 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The flywheel — two loops for turning intent into built code</title>
-<meta name="description" content="A design loop that burns fog into decisions, and a construction loop that drives proposals to merged. They meet at one operator gate. A Claude Code plugin.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='11' cy='16' r='8' fill='none' stroke='%236aa9ff' stroke-width='2.5'/%3E%3Ccircle cx='23' cy='16' r='5.5' fill='none' stroke='%23f0a24a' stroke-width='2.5'/%3E%3C/svg%3E">
+<title>Flywheel — two loops for turning intent into built code</title>
+<meta name="description" content="Intent falls inward until it is code. Evidence climbs back out until a human signs it. A design loop burns fog into decisions, a construction loop drives proposals to merged, and they meet at one operator gate. A Claude Code plugin.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%238FB9AE' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='7.5' fill='none' stroke='%23C9A227' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23B4552D'/%3E%3C/svg%3E">
+
+<!-- The two faces the hero paints above the fold, preloaded. These are also the
+     only font paths check-site.mjs can see: it resolves href and src, never a
+     CSS url(), so a typo inside @font-face would fail silently by falling back.
+     Preloading them puts them under the gate. -->
+<link rel="preload" as="font" type="font/woff2" crossorigin href="fonts/space-grotesk-latin-700-normal.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="fonts/ibm-plex-mono-latin-400-normal.woff2">
 <style>
-:root{
-  --bg:#fbfbfa; --panel:#ffffff; --line:#e2e0dc;
-  --ink:#1c1b19; --ink2:#4e4b46; --ink3:#807b73;
-  --design:#2f6fd0; --design-soft:#e6efff;
-  --build:#c2762a;  --build-soft:#fdf1e2;
-  --gate:#6b4fbb;   --gate-soft:#efeaff;
-  --code:#f4f3f0;
+/* ---------------------------------------------------------------- fonts --
+   Vendored, not linked. Nothing on this page loads from a CDN — what ships is
+   what is in the repository, which is why the mermaid bundle sits in vendor/
+   and these five faces sit in fonts/. Both families are SIL OFL 1.1; the
+   licences ship beside them as fonts/LICENSE-*.txt. Re-vendor with
+   `npm run vendor-fonts`, which copies them out of the two @fontsource
+   devDependencies so the bytes have a recorded origin. */
+@font-face{
+  font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;
+  src:url("fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
 }
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#14141a; --panel:#1b1b22; --line:#2e2e38;
-    --ink:#eceaf3; --ink2:#b6b2c2; --ink3:#83808f;
-    --design:#7aacff; --design-soft:#1a2438;
-    --build:#f0a24a;  --build-soft:#332413;
-    --gate:#a992f5;   --gate-soft:#241d3a;
-    --code:#22222b;
-  }
+@font-face{
+  font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;
+  src:url("fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Space Grotesk";font-style:normal;font-weight:500;font-display:swap;
+  src:url("fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Space Grotesk";font-style:normal;font-weight:700;font-display:swap;
+  src:url("fonts/space-grotesk-latin-700-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* --------------------------------------------------------------- ground --
+   One palette, dark. The hero is a whole-page design rather than a band — the
+   ground, the 28px grid and the plate are the body — so the page carries it
+   rather than seaming a dark hero onto a light document. */
+:root{
+  --ground:#0D2528;
+  --ground-2:#123236;
+  --brass:#C9A227;
+  --brass-dim:#8A7326;
+  --mint:#8FB9AE;
+  --bone:#EDE7DA;
+  --rust:#B4552D;
+
+  --ink:var(--bone);
+  --ink2:rgba(237,231,218,.78);
+  --ink3:rgba(143,185,174,.66);
+  --line:rgba(143,185,174,.22);
+  --line-soft:rgba(143,185,174,.13);
+  --panel:#123236;
+  --code:rgba(9,28,31,.72);
+  color-scheme:dark;
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+html,body{margin:0;padding:0;background:var(--ground);color:var(--bone);
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;}
 body{
-  margin:0; background:var(--bg); color:var(--ink);
-  font:16px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background-image:
+    linear-gradient(rgba(143,185,174,.055) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(143,185,174,.055) 1px,transparent 1px);
+  background-size:28px 28px;
+  background-attachment:fixed;
+  min-height:100vh;
 }
-.wrap{max-width:960px;margin:0 auto;padding:0 24px}
-code,.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;font-size:.92em}
-code{background:var(--code);padding:.12em .38em;border-radius:4px}
-pre code{background:none;padding:0}
+[hidden]{display:none!important}
+.wrap{width:100%;max-width:960px;margin:0 auto;padding:0 18px}
 
-/* ---------------------------------------------------------------- hero -- */
-header{padding:72px 0 56px;border-bottom:1px solid var(--line)}
+a{color:var(--mint);text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--brass)}
+:focus-visible{outline:2px solid var(--brass);outline-offset:3px;border-radius:2px}
+
+/* --------------------------------------------------------------- topbar -- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  background:rgba(13,37,40,.92);
+  border-bottom:1px solid var(--line-soft);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.topbar .wrap{display:flex;align-items:center;gap:18px;height:46px}
+.mark{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:-.02em;color:var(--bone);text-decoration:none;margin-right:auto;
+}
+.mark span{color:var(--brass)}
+.topbar nav{display:flex;gap:16px}
+.topbar nav a{
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3);text-decoration:none;white-space:nowrap;
+}
+.topbar nav a:hover{color:var(--brass)}
+
+/* ----------------------------------------------------------------- hero --
+   The settled study, carried across. Geometry, palette, type scale, the SVG,
+   the ratio cells and the rotation ratios are unchanged; the study centred a
+   single plate in the viewport, and here the plate sits in page flow so a
+   walkthrough can follow it. */
+/* The study padded its body 18px at the sides; that padding lives here now, so
+   the plate never touches the viewport edge and its left edge lines up with
+   every .wrap below it. */
+.hero{padding:38px 18px 8px}
+.plate{width:100%;max-width:960px;margin:0 auto}
+
 .eyebrow{
-  font-size:12px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--ink3);margin:0 0 14px;font-weight:600;
+  font-size:11px;letter-spacing:.28em;text-transform:uppercase;
+  color:var(--mint);opacity:.85;margin:0 0 10px;
 }
 h1{
-  font-size:clamp(34px,5.5vw,54px);line-height:1.08;margin:0 0 18px;
-  letter-spacing:-.022em;font-weight:680;
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-weight:700;font-size:clamp(40px,9vw,72px);
+  letter-spacing:-.035em;line-height:.92;margin:0;color:var(--bone);
 }
-h1 .accent{color:var(--design)}
-.lede{font-size:clamp(17px,2.1vw,20px);color:var(--ink2);max-width:44ch;margin:0 0 34px}
-.hero{display:block;width:100%;max-width:760px;margin:0 auto;height:auto}
+h1 span{color:var(--brass)}
+.deck{
+  max-width:34ch;margin:14px 0 0;font-size:13.5px;line-height:1.6;
+  color:rgba(237,231,218,.72);
+}
 
-/* -------------------------------------------------------------- layout -- */
-section{padding:56px 0;border-bottom:1px solid var(--line)}
-section:last-of-type{border-bottom:none}
-h2{font-size:clamp(23px,3vw,29px);line-height:1.2;margin:0 0 6px;letter-spacing:-.014em;font-weight:660}
-.sub{color:var(--ink3);margin:0 0 30px;font-size:15px}
-h3{font-size:17px;margin:34px 0 8px;font-weight:640}
-p{margin:0 0 16px;max-width:70ch}
-ul{margin:0 0 16px;padding-left:22px;max-width:70ch}
-li{margin:0 0 7px}
-a{color:var(--design);text-decoration-thickness:1px;text-underline-offset:2px}
+.stage{position:relative;margin:6px 0 0}
+.stage svg{display:block;width:100%;height:auto;overflow:visible}
+
+/* rotation: inner rings turn faster — the gear ratio, literally */
+.spin{transform-box:fill-box;transform-origin:center;animation:cw linear infinite}
+.counter{transform-box:fill-box;transform-origin:center;animation:ccw linear infinite}
+.r-rim   {animation-duration:240s}
+.r-intent{animation-duration:120s}
+.r-bolt  {animation-duration:40s}
+.r-core  {animation-duration:10s}
+@keyframes cw{to{transform:rotate(360deg)}}
+@keyframes ccw{to{transform:rotate(-360deg)}}
+@media (prefers-reduced-motion:reduce){.spin,.counter{animation:none}}
+
+.arc-label{font-family:"IBM Plex Mono",monospace;font-size:12.5px;letter-spacing:.24em;text-transform:uppercase}
+
+.block{
+  margin-top:26px;border-top:1px solid rgba(143,185,174,.25);
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+}
+.cell{padding:16px 18px 4px;border-right:1px solid rgba(143,185,174,.15)}
+.cell:last-child{border-right:none}
+.cell h3{
+  font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--mint);margin:0 0 8px;font-weight:500;
+}
+.cell p{margin:0 0 10px;font-size:12.5px;line-height:1.55;color:rgba(237,231,218,.78)}
+.ratio{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:22px;color:var(--brass);letter-spacing:-.02em}
+.foot{
+  margin-top:18px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(143,185,174,.6);display:flex;gap:20px;flex-wrap:wrap;
+}
+@media(max-width:640px){
+  .cell{border-right:none;border-bottom:1px solid rgba(143,185,174,.15)}
+  .arc-label{font-size:15px}
+}
+
+/* ----------------------------------------------------------------- tabs --
+   Progressive enhancement. Before JS runs — and if it never does — this is a
+   plain scrolling document: every panel visible, the tablist a row of anchors
+   to real element ids. The tab layer switches on only after the diagrams have
+   rendered, and sets its own ARIA then, so a no-JS reader is never told about
+   tabs that are not there. */
+.tabs{
+  position:sticky;top:46px;z-index:15;
+  margin-top:34px;
+  background:rgba(13,37,40,.92);
+  border-top:1px solid var(--line-soft);
+  border-bottom:1px solid var(--line);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.tabs .wrap{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tabs .wrap::-webkit-scrollbar{display:none}
+.tab{
+  flex:0 0 auto;
+  padding:13px 14px 11px;
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3);text-decoration:none;white-space:nowrap;
+  border-bottom:2px solid transparent;
+  background:none;font-family:inherit;cursor:pointer;
+}
+.tab:hover{color:var(--bone)}
+html[data-tabs="on"] .tab[aria-selected="true"]{
+  color:var(--brass);border-bottom-color:var(--brass);
+}
+
+/* --------------------------------------------------------------- panels -- */
+.panel{padding:44px 0 8px;scroll-margin-top:96px}
+html:not([data-tabs="on"]) .panel{border-bottom:1px solid var(--line-soft)}
+h2{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:clamp(24px,3.4vw,32px);line-height:1.15;margin:0 0 6px;
+  letter-spacing:-.025em;font-weight:700;color:var(--bone);
+}
+.sub{color:var(--ink3);margin:0 0 28px;font-size:12.5px;letter-spacing:.04em}
+h3{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:17px;margin:34px 0 8px;font-weight:700;letter-spacing:-.015em;color:var(--bone);
+}
+p{margin:0 0 15px;max-width:74ch;font-size:13.5px;line-height:1.7;color:var(--ink2)}
+ul{margin:0 0 15px;padding-left:20px;max-width:74ch;font-size:13.5px;line-height:1.7;color:var(--ink2)}
+li{margin:0 0 6px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.93em}
+code{background:var(--code);padding:.12em .4em;border-radius:3px;color:var(--bone)}
+pre code{background:none;padding:0}
 
 .figure{
-  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
   padding:22px 18px 14px;margin:0 0 8px;overflow-x:auto;
+}
+/* The flowcharts lay out around 1700 units wide, so inside a 960px column they
+   scale to roughly half size and the <small> sublabels stop being readable.
+   Prose stays in the column where it belongs; only the figures step out of it,
+   and only once the viewport is wide enough to give them something. */
+@media (min-width:1060px){
+  .figure{
+    width:min(1240px,calc(100vw - 36px));
+    position:relative;left:50%;transform:translateX(-50%);
+  }
 }
 .figure pre.mermaid{margin:0;text-align:center;min-width:min-content}
 .figure svg{max-width:100%;height:auto}
+.caption{color:var(--ink3);font-size:12.5px;line-height:1.65;margin:0 0 28px;max-width:74ch}
 
-/* Mermaid's classDef takes literal colours, which cannot follow a media
-   query — so the classDef exists only to attach the class name, and the
-   colours come from here, where the custom properties already know which
-   theme is on. */
-.mermaid g.node.d  rect,.mermaid g.node.d  polygon,.mermaid g.node.d  path{fill:var(--design-soft)!important;stroke:var(--design)!important}
-.mermaid g.node.b  rect,.mermaid g.node.b  polygon,.mermaid g.node.b  path{fill:var(--build-soft)!important;stroke:var(--build)!important}
-.mermaid g.node.g  rect,.mermaid g.node.g  polygon,.mermaid g.node.g  path{fill:var(--gate-soft)!important;stroke:var(--gate)!important;stroke-width:2px!important}
-.mermaid g.node.w  rect,.mermaid g.node.w  polygon,.mermaid g.node.w  path{fill:var(--code)!important;stroke:var(--ink3)!important}
-.mermaid g.node.hu rect,.mermaid g.node.hu polygon,.mermaid g.node.hu path{fill:var(--gate-soft)!important;stroke:var(--gate)!important}
-.mermaid g.node.fb rect,.mermaid g.node.fb polygon,.mermaid g.node.fb path{fill:none!important;stroke:var(--ink3)!important}
+pre.block{
+  background:var(--code);border:1px solid var(--line);border-radius:8px;
+  padding:14px 16px;overflow-x:auto;margin:0 0 15px;line-height:1.6;
+  font-size:13px;color:var(--bone);
+}
+
+/* Mermaid's classDef takes literal colours, which cannot follow a custom
+   property — so the classDef exists only to attach the class name, and the
+   colours come from here, where the palette already lives. */
+.mermaid g.node.d  rect,.mermaid g.node.d  polygon,.mermaid g.node.d  path{fill:rgba(201,162,39,.13)!important;stroke:var(--brass)!important}
+.mermaid g.node.b  rect,.mermaid g.node.b  polygon,.mermaid g.node.b  path{fill:rgba(180,85,45,.16)!important;stroke:var(--rust)!important}
+.mermaid g.node.g  rect,.mermaid g.node.g  polygon,.mermaid g.node.g  path{fill:rgba(143,185,174,.16)!important;stroke:var(--mint)!important;stroke-width:2px!important}
+.mermaid g.node.w  rect,.mermaid g.node.w  polygon,.mermaid g.node.w  path{fill:none!important;stroke:rgba(143,185,174,.5)!important}
+.mermaid g.node.hu rect,.mermaid g.node.hu polygon,.mermaid g.node.hu path{fill:rgba(237,231,218,.14)!important;stroke:var(--bone)!important}
+.mermaid g.node.fb rect,.mermaid g.node.fb polygon,.mermaid g.node.fb path{fill:none!important;stroke:rgba(143,185,174,.45)!important}
 .mermaid g.node small{color:var(--ink3);font-size:.86em;line-height:1.4}
-.mermaid g.node .nodeLabel,.mermaid g.node .nodeLabel *{color:var(--ink)!important;fill:var(--ink)!important}
+.mermaid g.node .nodeLabel,.mermaid g.node .nodeLabel *{color:var(--bone)!important;fill:var(--bone)!important}
 .mermaid .cluster rect{fill:none!important;stroke:var(--line)!important;stroke-width:1.5px!important}
 .mermaid .cluster .nodeLabel,.mermaid .cluster-label .nodeLabel{color:var(--ink3)!important;fill:var(--ink3)!important}
 .mermaid .edgeLabel,.mermaid .edgeLabel *{color:var(--ink3)!important;fill:var(--ink3)!important;background:var(--panel)!important}
 .mermaid .edgeLabel p{background:var(--panel)!important}
-.mermaid .flowchart-link{stroke:var(--ink3)!important}
-.mermaid .marker{fill:var(--ink3)!important;stroke:var(--ink3)!important}
+.mermaid .flowchart-link{stroke:rgba(143,185,174,.55)!important}
+.mermaid .marker{fill:rgba(143,185,174,.55)!important;stroke:rgba(143,185,174,.55)!important}
 /* stateDiagram carries no user classes, so it is styled wholesale. */
-.mermaid g.stateGroup rect,.mermaid .statediagram-state rect{fill:var(--build-soft)!important;stroke:var(--build)!important}
-.mermaid .statediagram-state .nodeLabel,.mermaid g.stateGroup text{fill:var(--ink)!important;color:var(--ink)!important}
-.mermaid .statediagram-state circle,.mermaid .node circle{fill:var(--ink3)!important;stroke:var(--ink3)!important}
-.mermaid .transition{stroke:var(--ink3)!important}
-.caption{color:var(--ink3);font-size:14px;margin:0 0 30px;max-width:70ch}
+.mermaid g.stateGroup rect,.mermaid .statediagram-state rect{fill:rgba(180,85,45,.16)!important;stroke:var(--rust)!important}
+.mermaid .statediagram-state .nodeLabel,.mermaid g.stateGroup text{fill:var(--bone)!important;color:var(--bone)!important}
+.mermaid .statediagram-state circle,.mermaid .node circle{fill:var(--mint)!important;stroke:var(--mint)!important}
+.mermaid .transition{stroke:rgba(143,185,174,.55)!important}
 
-pre.block{
-  background:var(--code);border:1px solid var(--line);border-radius:10px;
-  padding:14px 16px;overflow-x:auto;margin:0 0 16px;line-height:1.55;
+/* ---------------------------------------------------------------- cards -- */
+.cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));margin:0 0 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.card h4{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  margin:0 0 6px;font-size:15px;font-weight:700;letter-spacing:-.015em;color:var(--bone);
 }
-
-/* --------------------------------------------------------------- cards -- */
-.cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));margin:0 0 8px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
-.card h4{margin:0 0 6px;font-size:15px;font-weight:660}
-.card p{margin:0;font-size:14.5px;color:var(--ink2)}
+.card p{margin:0;font-size:12.5px;line-height:1.6}
 .tag{
-  display:inline-block;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
-  font-weight:660;padding:2px 8px;border-radius:20px;margin:0 0 9px;
+  display:inline-block;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+  font-weight:500;padding:2px 8px;border-radius:20px;margin:0 0 10px;border:1px solid;
 }
-.tag.design{background:var(--design-soft);color:var(--design)}
-.tag.build{background:var(--build-soft);color:var(--build)}
-.tag.gate{background:var(--gate-soft);color:var(--gate)}
+.tag.design{color:var(--brass);border-color:rgba(201,162,39,.45);background:rgba(201,162,39,.09)}
+.tag.build{color:var(--rust);border-color:rgba(180,85,45,.5);background:rgba(180,85,45,.1)}
+.tag.gate{color:var(--mint);border-color:rgba(143,185,174,.45);background:rgba(143,185,174,.09)}
 
-table{border-collapse:collapse;width:100%;margin:0 0 18px;font-size:14.5px;display:block;overflow-x:auto}
-th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--ink3);font-weight:640;font-size:12.5px;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+table{border-collapse:collapse;width:100%;margin:0 0 18px;font-size:12.5px;display:block;overflow-x:auto}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line-soft);vertical-align:top;line-height:1.6;color:var(--ink2)}
+th{color:var(--mint);font-weight:500;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
 
 blockquote{
-  margin:0 0 18px;padding:2px 0 2px 18px;border-left:3px solid var(--gate);
-  color:var(--ink2);max-width:66ch;
+  margin:0 0 18px;padding:4px 0 4px 18px;border-left:3px solid var(--brass);
+  color:var(--bone);max-width:70ch;font-size:14px;line-height:1.7;
 }
-footer{padding:40px 0 64px;color:var(--ink3);font-size:14px}
-footer a{color:var(--ink3)}
+
+.more{
+  margin:22px 0 0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink3);
+}
+.more a{color:var(--mint);text-decoration:none;border-bottom:1px solid rgba(143,185,174,.35)}
+.more a:hover{color:var(--brass);border-bottom-color:var(--brass)}
+
+footer{
+  margin-top:52px;border-top:1px solid var(--line);
+  padding:26px 0 60px;color:var(--ink3);font-size:11px;
+  letter-spacing:.14em;text-transform:uppercase;
+}
+footer .wrap{display:flex;gap:20px;flex-wrap:wrap}
+footer a{color:var(--ink3);text-decoration:none}
+footer a:hover{color:var(--brass)}
 </style>
 </head>
 <body>
 
-<header>
+<header class="topbar">
   <div class="wrap">
-    <p class="eyebrow">agentplot / flywheel</p>
-    <h1>Two loops that turn <span class="accent">intent</span> into built code.</h1>
-    <p class="lede">
-      A design loop burns fog into decisions. A construction loop drives
-      proposals to merged. They are coupled at exactly one point, and that
-      point is yours.
-    </p>
-
-    <svg class="hero" viewBox="0 0 760 300" role="img"
-         aria-label="Two meshing rings. The left ring is the design loop, running idea to intent to decision to handoff. The right ring is the construction loop, running spec to review to build to test to merge. A single vertical gate sits between them, and everything crossing from design to construction passes through it.">
-      <defs>
-        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5"
-                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
-          <path d="M0,1 L9,5 L0,9 z" fill="currentColor"/>
-        </marker>
-      </defs>
-
-      <!-- design ring -->
-      <g color="var(--design)">
-        <circle cx="232" cy="150" r="104" fill="none" stroke="var(--design)"
-                stroke-width="2" stroke-opacity=".28"/>
-        <!-- three sweeps around the ring, arrowheads showing it turns -->
-        <path d="M 232 46 A 104 104 0 0 1 322 202" fill="none" stroke="var(--design)"
-              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
-        <path d="M 322 202 A 104 104 0 0 1 142 202" fill="none" stroke="var(--design)"
-              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
-        <path d="M 142 202 A 104 104 0 0 1 232 46" fill="none" stroke="var(--design)"
-              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
-        <circle cx="232" cy="46"  r="7" fill="var(--bg)" stroke="var(--design)" stroke-width="3"/>
-        <circle cx="322" cy="202" r="7" fill="var(--bg)" stroke="var(--design)" stroke-width="3"/>
-        <circle cx="142" cy="202" r="7" fill="var(--bg)" stroke="var(--design)" stroke-width="3"/>
-        <text x="232" y="30" text-anchor="middle" font-size="13" font-weight="620"
-              fill="var(--ink2)" font-family="inherit">idea</text>
-        <text x="345" y="228" text-anchor="start" font-size="13" font-weight="620"
-              fill="var(--ink2)" font-family="inherit">decision</text>
-        <text x="119" y="228" text-anchor="end" font-size="13" font-weight="620"
-              fill="var(--ink2)" font-family="inherit">intent</text>
-        <text x="232" y="145" text-anchor="middle" font-size="17" font-weight="680"
-              fill="var(--design)" font-family="inherit">design</text>
-        <text x="232" y="168" text-anchor="middle" font-size="12.5"
-              fill="var(--ink3)" font-family="inherit">fog → decisions</text>
-      </g>
-
-      <!-- construction ring: smaller and turning faster, which is the point -->
-      <g color="var(--build)">
-        <circle cx="580" cy="150" r="82" fill="none" stroke="var(--build)"
-                stroke-width="2" stroke-opacity=".28"/>
-        <path d="M 580 68 A 82 82 0 0 1 651 191" fill="none" stroke="var(--build)"
-              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
-        <path d="M 651 191 A 82 82 0 0 1 509 191" fill="none" stroke="var(--build)"
-              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
-        <path d="M 509 191 A 82 82 0 0 1 580 68" fill="none" stroke="var(--build)"
-              stroke-width="3.5" stroke-linecap="round" marker-end="url(#ar)"/>
-        <circle cx="580" cy="68"  r="6.5" fill="var(--bg)" stroke="var(--build)" stroke-width="3"/>
-        <circle cx="651" cy="191" r="6.5" fill="var(--bg)" stroke="var(--build)" stroke-width="3"/>
-        <circle cx="509" cy="191" r="6.5" fill="var(--bg)" stroke="var(--build)" stroke-width="3"/>
-        <text x="580" y="52" text-anchor="middle" font-size="13" font-weight="620"
-              fill="var(--ink2)" font-family="inherit">spec</text>
-        <text x="676" y="216" text-anchor="start" font-size="13" font-weight="620"
-              fill="var(--ink2)" font-family="inherit">build</text>
-        <text x="484" y="216" text-anchor="end" font-size="13" font-weight="620"
-              fill="var(--ink2)" font-family="inherit">merge</text>
-        <text x="580" y="145" text-anchor="middle" font-size="17" font-weight="680"
-              fill="var(--build)" font-family="inherit">construction</text>
-        <text x="580" y="168" text-anchor="middle" font-size="12.5"
-              fill="var(--ink3)" font-family="inherit">proposals → merged</text>
-      </g>
-
-      <!-- the gate: the one coupling between them -->
-      <g>
-        <line x1="418" y1="58" x2="418" y2="242" stroke="var(--gate)"
-              stroke-width="2.5" stroke-dasharray="7 6" stroke-linecap="round"/>
-        <path d="M 340 150 L 405 150" fill="none" stroke="var(--gate)" stroke-width="3.5"
-              stroke-linecap="round" color="var(--gate)" marker-end="url(#ar)"/>
-        <path d="M 431 150 L 492 150" fill="none" stroke="var(--gate)" stroke-width="3.5"
-              stroke-linecap="round" color="var(--gate)" marker-end="url(#ar)"/>
-        <rect x="374" y="76" width="88" height="27" rx="13.5"
-              fill="var(--gate-soft)" stroke="var(--gate)" stroke-width="1.5"/>
-        <text x="418" y="94.5" text-anchor="middle" font-size="12.5" font-weight="680"
-              fill="var(--gate)" font-family="inherit">the gate</text>
-        <text x="418" y="266" text-anchor="middle" font-size="12.5"
-              fill="var(--ink3)" font-family="inherit">your word — the only one required</text>
-      </g>
-    </svg>
+    <a class="mark" href="#top">Fly<span>wheel</span></a>
+    <nav aria-label="Elsewhere">
+      <a href="https://github.com/agentplot/flywheel">GitHub</a>
+      <a href="https://github.com/agentplot/flywheel#readme">Docs</a>
+    </nav>
   </div>
 </header>
 
-<section>
+<div class="hero" id="top">
+  <div class="plate">
+
+    <p class="eyebrow">Claude Code plugin · spec-driven</p>
+    <h1>Fly<span>wheel</span></h1>
+    <p class="deck">Intent falls inward until it is code. Evidence climbs back out until a human signs it. Every turn leaves spec behind — and spec is the mass.</p>
+
+    <div class="stage">
+    <svg viewBox="0 0 900 696" role="img" aria-label="Four concentric rings: human review on the outside, then intent, then bolts, with construction at the core.">
+      <defs>
+        <marker id="in" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="#B4552D"/>
+        </marker>
+        <marker id="out" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="#8FB9AE"/>
+        </marker>
+
+        <!-- label arcs (static, so text stays readable) -->
+        <path id="a-rim"    d="M450,330 m-296,0 a296,296 0 0,1 592,0" fill="none"/>
+        <path id="a-intent" d="M450,330 m-226,0 a226,226 0 0,1 452,0" fill="none"/>
+        <path id="a-bolt"   d="M450,330 m-158,0 a158,158 0 0,1 316,0" fill="none"/>
+        <path id="a-rim-b"    d="M450,330 m296,0 a296,296 0 0,1 -592,0" fill="none"/>
+        <path id="a-intent-b" d="M450,330 m226,0 a226,226 0 0,1 -452,0" fill="none"/>
+        <path id="a-bolt-b"   d="M450,330 m158,0 a158,158 0 0,1 -316,0" fill="none"/>
+
+        <g id="bot">
+          <line x1="0" y1="-13" x2="0" y2="-8" stroke="#0D2528" stroke-width="2"/>
+          <circle cx="0" cy="-14" r="2" fill="#0D2528"/>
+          <rect x="-9" y="-8" width="18" height="15" rx="5" fill="#C9A227"/>
+          <circle cx="-3.5" cy="-1" r="1.8" fill="#0D2528"/>
+          <circle cx="3.5" cy="-1" r="1.8" fill="#0D2528"/>
+        </g>
+        <g id="bot-mint">
+          <line x1="0" y1="-13" x2="0" y2="-8" stroke="#0D2528" stroke-width="2"/>
+          <circle cx="0" cy="-14" r="2" fill="#0D2528"/>
+          <rect x="-9" y="-8" width="18" height="15" rx="5" fill="#8FB9AE"/>
+          <circle cx="-3.5" cy="-1" r="1.8" fill="#0D2528"/>
+          <circle cx="3.5" cy="-1" r="1.8" fill="#0D2528"/>
+        </g>
+      </defs>
+
+      <g transform="translate(0,36)">
+      <!-- ============ RIM: human review. the heavy wheel. ============ -->
+      <circle cx="450" cy="330" r="310" fill="none" stroke="#8FB9AE" stroke-opacity=".22" stroke-width="1"/>
+      <circle cx="450" cy="330" r="282" fill="none" stroke="#8FB9AE" stroke-opacity=".22" stroke-width="1"/>
+      <!-- mass hatching between them: the stored momentum -->
+      <g class="spin r-rim" stroke="#8FB9AE" stroke-opacity=".3" stroke-width="1">
+        <g id="hatch"></g>
+      </g>
+
+      <!-- ============ ring bodies ============ -->
+      <circle cx="450" cy="330" r="248" fill="none" stroke="#C9A227" stroke-opacity=".35" stroke-width="1" stroke-dasharray="2 7"/>
+      <circle cx="450" cy="330" r="204" fill="none" stroke="#C9A227" stroke-opacity=".5" stroke-width="1"/>
+      <circle cx="450" cy="330" r="176" fill="none" stroke="#C9A227" stroke-opacity=".22" stroke-width="1" stroke-dasharray="2 7"/>
+      <circle cx="450" cy="330" r="138" fill="none" stroke="#C9A227" stroke-opacity=".5" stroke-width="1"/>
+      <circle cx="450" cy="330" r="104" fill="none" stroke="#B4552D" stroke-opacity=".45" stroke-width="1" stroke-dasharray="2 7"/>
+
+      <!-- core -->
+      <circle cx="450" cy="330" r="84" fill="#123236" stroke="#B4552D" stroke-opacity=".75" stroke-width="1.5"/>
+
+      <!-- ============ tick marks that actually turn ============ -->
+      <g class="spin r-intent" id="ticks-intent"></g>
+      <g class="spin r-bolt" id="ticks-bolt"></g>
+      <g class="spin r-core" id="ticks-core"></g>
+
+      <!-- ============ flow: inward = spec, outward = evidence ============ -->
+      <g stroke-width="1.5" fill="none">
+        <path d="M450 44 L450 118" stroke="#B4552D" marker-end="url(#in)" opacity=".9"/>
+        <path d="M450 148 L450 200" stroke="#B4552D" marker-end="url(#in)" opacity=".9"/>
+        <path d="M450 218 L450 236" stroke="#B4552D" marker-end="url(#in)" opacity=".9"/>
+        <path d="M450 604 L450 540" stroke="#8FB9AE" marker-end="url(#out)" opacity=".9"/>
+        <path d="M450 510 L450 462" stroke="#8FB9AE" marker-end="url(#out)" opacity=".9"/>
+        <path d="M450 440 L450 422" stroke="#8FB9AE" marker-end="url(#out)" opacity=".9"/>
+      </g>
+      <text x="464" y="90" fill="#B4552D" font-size="10.5" letter-spacing="2.4">SPEC DESCENDS</text>
+      <text x="464" y="588" fill="#8FB9AE" font-size="10.5" letter-spacing="2.4">EVIDENCE CLIMBS</text>
+
+      <!-- ============ gates ============ -->
+      <g>
+        <rect x="180" y="316" width="76" height="28" rx="3" fill="#0D2528" stroke="#8FB9AE" stroke-opacity=".7"/>
+        <text x="218" y="334.5" text-anchor="middle" fill="#8FB9AE" font-size="10" letter-spacing="1.6">GATE</text>
+        <rect x="644" y="316" width="76" height="28" rx="3" fill="#0D2528" stroke="#8FB9AE" stroke-opacity=".7"/>
+        <text x="682" y="334.5" text-anchor="middle" fill="#8FB9AE" font-size="10" letter-spacing="1.6">GATE</text>
+      </g>
+
+      <!-- ============ arc labels ============ -->
+      <text class="arc-label" fill="#8FB9AE">
+        <textPath href="#a-rim" startOffset="50%" text-anchor="middle">Human review · Plannotator · Lavish</textPath>
+      </text>
+      <text class="arc-label" fill="#8FB9AE" opacity=".55">
+        <textPath href="#a-rim-b" startOffset="50%" text-anchor="middle">the rim carries the momentum</textPath>
+      </text>
+
+      <text class="arc-label" fill="#C9A227">
+        <textPath href="#a-intent" startOffset="50%" text-anchor="middle">Intent · intent agent</textPath>
+      </text>
+      <text class="arc-label" fill="#C9A227" opacity=".55">
+        <textPath href="#a-intent-b" startOffset="50%" text-anchor="middle">intent specs · openspec</textPath>
+      </text>
+
+      <text class="arc-label" fill="#C9A227">
+        <textPath href="#a-bolt" startOffset="50%" text-anchor="middle">Bolts · bolt agents</textPath>
+      </text>
+      <text class="arc-label" fill="#C9A227" opacity=".55">
+        <textPath href="#a-bolt-b" startOffset="50%" text-anchor="middle">bolt specs · openspec</textPath>
+      </text>
+
+      <text x="450" y="322" text-anchor="middle" fill="#EDE7DA" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="19" letter-spacing="-.4">CONSTRUCTION</text>
+      <text x="450" y="344" text-anchor="middle" fill="#B4552D" font-size="10.5" letter-spacing="2.2">CODE · TESTS</text>
+      <text x="450" y="362" text-anchor="middle" fill="#8FB9AE" font-size="10" letter-spacing="2.2" opacity=".7">MINUTES</text>
+
+      <!-- ============ the agents, riding their rings ============ -->
+      <g class="spin r-intent"><g transform="translate(450,330)"><g transform="translate(0,-204)"><g class="counter r-intent"><use href="#bot"/></g></g></g></g>
+
+      <g class="spin r-bolt"><g transform="translate(450,330)">
+        <g transform="rotate(0) translate(0,-138)"><g class="counter r-bolt"><use href="#bot"/></g></g>
+        <g transform="rotate(120) translate(0,-138)"><g class="counter r-bolt"><use href="#bot"/></g></g>
+        <g transform="rotate(240) translate(0,-138)"><g class="counter r-bolt"><use href="#bot"/></g></g>
+      </g></g>
+
+      <g class="spin r-core"><g transform="translate(450,330)">
+        <g transform="rotate(30) translate(0,-84)"><g class="counter r-core"><use href="#bot-mint"/></g></g>
+        <g transform="rotate(150) translate(0,-84)"><g class="counter r-core"><use href="#bot-mint"/></g></g>
+        <g transform="rotate(270) translate(0,-84)"><g class="counter r-core"><use href="#bot-mint"/></g></g>
+      </g></g>
+
+      </g>
+
+      <!-- the human, hand on the rim -->
+      <g transform="translate(450,26)">
+        <rect x="-46" y="-15" width="92" height="30" rx="4" fill="#0D2528" stroke="#EDE7DA" stroke-opacity=".8"/>
+        <text x="0" y="5" text-anchor="middle" fill="#EDE7DA" font-size="11" letter-spacing="2">HUMAN</text>
+      </g>
+    </svg>
+    </div>
+
+    <div class="block">
+      <div class="cell">
+        <h3>Rim · human</h3>
+        <div class="ratio">1 turn</div>
+        <p>Plans and diffs open in a browser. Annotate, send back, or approve. Nothing descends without a signature.</p>
+      </div>
+      <div class="cell">
+        <h3>Intent</h3>
+        <div class="ratio">1 : 2</div>
+        <p>One intent agent holds the goal and its units. Both live as OpenSpec, not chat history.</p>
+      </div>
+      <div class="cell">
+        <h3>Bolts</h3>
+        <div class="ratio">1 : 6</div>
+        <p>Units become bolts — hours, not sprints. Each bolt gets its own spec and its own agent.</p>
+      </div>
+      <div class="cell">
+        <h3>Construction</h3>
+        <div class="ratio">1 : 24</div>
+        <p>Small agents write code and tests against the bolt spec. Fastest ring, shortest memory.</p>
+      </div>
+    </div>
+
+    <p class="foot">
+      <span>Ratios are the point</span>
+      <span>Inner rings turn faster</span>
+      <span>Spec accumulates at every radius</span>
+    </p>
+  </div>
+</div>
+
+<nav class="tabs" id="walkthrough" aria-label="Walkthrough">
   <div class="wrap">
-    <h2>What it is</h2>
+    <a class="tab" href="#why">Why two loops</a>
+    <a class="tab" href="#loops">The two loops</a>
+    <a class="tab" href="#actors">The actors</a>
+    <a class="tab" href="#bolt">Inside a bolt</a>
+    <a class="tab" href="#install">Install</a>
+  </div>
+</nav>
+
+<main>
+
+<section class="panel" id="why">
+  <div class="wrap">
+    <h2>Why two loops</h2>
     <p class="sub">A Claude Code plugin, and its own marketplace.</p>
 
     <p>
@@ -255,10 +537,12 @@ footer a{color:var(--ink3)}
           touches. Past the gate it runs without you.</p>
       </div>
     </div>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#why-two-loops">Read this in full in the README</a></p>
   </div>
 </section>
 
-<section>
+<section class="panel" id="loops">
   <div class="wrap">
     <h2>The two loops</h2>
     <p class="sub">Where the work goes, and the single edge between them.</p>
@@ -329,10 +613,12 @@ flowchart TB
       handoff carrying a single proposal is a one-proposal bolt — the same
       path at its smallest size, not a shortcut around it.
     </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#the-design-loop--an-intent">Read this in full in the README</a></p>
   </div>
 </section>
 
-<section>
+<section class="panel" id="actors">
   <div class="wrap">
     <h2>The actors</h2>
     <p class="sub">Nine profiles — six actors and three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
@@ -408,10 +694,12 @@ flowchart TD
       the conductor that raised it — never to a different actor, and never as
       an edit to that conductor's change.
     </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#the-actors">Read this in full in the README</a></p>
   </div>
 </section>
 
-<section>
+<section class="panel" id="bolt">
   <div class="wrap">
     <h2>Inside a bolt</h2>
     <p class="sub">Every row of the registry is in exactly one of these states.</p>
@@ -443,10 +731,12 @@ stateDiagram-v2
       is bounded is <em>reading</em>; the merge gate, the acceptance suites and
       the release gate never relax.
     </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#the-construction-loop--a-bolt">Read this in full in the README</a></p>
   </div>
 </section>
 
-<section>
+<section class="panel" id="install">
   <div class="wrap">
     <h2>Install</h2>
     <p class="sub">The repository is its own marketplace, so it is two commands.</p>
@@ -463,41 +753,173 @@ stateDiagram-v2
 <pre class="block"><code>claude --plugin-dir /path/to/flywheel/main
 /reload-plugins</code></pre>
 
+    <h3>Where the rest of it is written down</h3>
+    <ul>
+      <li><a href="https://github.com/agentplot/flywheel#readme">The README</a> — the whole machinery in prose, and the source of every walkthrough above.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/skills">skills/</a> — the two loop skills and the thirteen session-type skills.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/agents">agents/</a> — the agent profiles, one file each.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/schemas">schemas/</a> — the OpenSpec workflow schemas, published as user schemas.</li>
+    </ul>
+
     <p>
       <a href="https://github.com/agentplot/flywheel">Source on GitHub</a> ·
       MIT licensed
     </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#install">Read this in full in the README</a></p>
   </div>
 </section>
 
+</main>
+
 <footer>
   <div class="wrap">
-    <p>
-      <a href="https://github.com/agentplot/flywheel">agentplot/flywheel</a> —
-      the machinery lands here as it settles.
-    </p>
+    <span><a href="https://github.com/agentplot/flywheel">agentplot/flywheel</a></span>
+    <span><a href="https://github.com/agentplot/flywheel#readme">Docs</a></span>
+    <span>MIT licensed</span>
+    <span>The machinery lands here as it settles</span>
   </div>
 </footer>
 
+<script>
+  /* The hero's rings. Straight from the settled study: the hatching is stored
+     mass on the rim, and each ring's ticks turn at its own rate. */
+  const cx = 450, cy = 330;
+  const svgns = "http://www.w3.org/2000/svg";
+
+  function radialTicks(id, r1, r2, count, color, opacity, width){
+    const g = document.getElementById(id);
+    if(!g) return;
+    for(let i=0;i<count;i++){
+      const a = (i/count)*Math.PI*2;
+      const l = document.createElementNS(svgns,"line");
+      l.setAttribute("x1", cx + Math.cos(a)*r1);
+      l.setAttribute("y1", cy + Math.sin(a)*r1);
+      l.setAttribute("x2", cx + Math.cos(a)*r2);
+      l.setAttribute("y2", cy + Math.sin(a)*r2);
+      l.setAttribute("stroke", color);
+      l.setAttribute("stroke-opacity", opacity);
+      l.setAttribute("stroke-width", width);
+      g.appendChild(l);
+    }
+  }
+
+  radialTicks("hatch", 282, 310, 96, "#8FB9AE", ".28", 1);
+  radialTicks("ticks-intent", 204, 216, 24, "#C9A227", ".45", 1);
+  radialTicks("ticks-bolt", 138, 150, 36, "#C9A227", ".45", 1);
+  radialTicks("ticks-core", 84, 94, 48, "#B4552D", ".5", 1);
+</script>
+
 <script src="vendor/mermaid.min.js"></script>
 <script>
-  // Rendered client-side against the same bundle scripts/check-site.mjs parses
-  // with, so a diagram that renders here parses in the gate and vice versa.
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+  /* Rendered client-side against the same bundle scripts/check-site.mjs parses
+     with, so a diagram that renders here parses in the gate and vice versa. */
   mermaid.initialize({
-    startOnLoad: true,
+    startOnLoad: false,
     theme: "base",
     securityLevel: "strict",
-    fontFamily: 'ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',
+    fontFamily: '"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace',
     flowchart: { nodeSpacing: 34, rankSpacing: 46, padding: 10, useMaxWidth: true },
-    themeVariables: dark
-      ? { background:"#1b1b22", primaryColor:"#1a2438", primaryTextColor:"#eceaf3",
-          primaryBorderColor:"#7aacff", lineColor:"#83808f", textColor:"#b6b2c2",
-          mainBkg:"#1a2438", nodeBorder:"#7aacff" }
-      : { background:"#ffffff", primaryColor:"#e6efff", primaryTextColor:"#12305e",
-          primaryBorderColor:"#2f6fd0", lineColor:"#807b73", textColor:"#4e4b46",
-          mainBkg:"#e6efff", nodeBorder:"#2f6fd0" },
+    themeVariables: {
+      background:"#123236", primaryColor:"#1b3a3a", primaryTextColor:"#EDE7DA",
+      primaryBorderColor:"#C9A227", lineColor:"#8FB9AE", textColor:"#EDE7DA",
+      mainBkg:"#1b3a3a", nodeBorder:"#C9A227",
+    },
   });
+
+  /* ------------------------------------------------------------------ tabs --
+     Order matters, and it is the whole reason startOnLoad is off.
+
+     Mermaid sizes a diagram by measuring its container. A diagram rendered
+     inside a hidden panel measures zero and lands as a collapsed or blank
+     SVG — which is exactly the failure check-site.mjs cannot catch, because it
+     proves the source parses and never that it renders. So every panel is laid
+     out and measurable while mermaid.run() works, and only afterwards does the
+     tab layer switch on and start hiding things.
+
+     Until that happens the page is a plain scrolling document with anchor
+     links, which is also what a reader with JS off keeps. The ARIA roles are
+     added here rather than in the markup for the same reason: nobody should be
+     told about tabs that are not running. */
+  (async () => {
+    const tablist = document.querySelector(".tabs .wrap");
+    const tabs = [...document.querySelectorAll(".tab")];
+    const panels = tabs.map((t) => document.querySelector(t.getAttribute("href")));
+    if (!tablist || !tabs.length || panels.some((p) => !p)) return;
+
+    try {
+      await mermaid.run({ querySelector: "pre.mermaid" });
+    } catch (error) {
+      /* A diagram that fails here would have failed the gate. Leave the page
+         as a scrolling document rather than hiding four fifths of it. */
+      console.error("mermaid failed to render; staying in document mode", error);
+      return;
+    }
+
+    document.documentElement.setAttribute("data-tabs", "on");
+
+    tablist.setAttribute("role", "tablist");
+    tabs.forEach((tab, i) => {
+      const panel = panels[i];
+      const id = panel.id;
+      tab.id = "tab-" + id;
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-controls", id);
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", tab.id);
+      panel.setAttribute("tabindex", "0");
+    });
+
+    let current = -1;
+
+    function select(index, { focus = false, scroll = false } = {}) {
+      const i = Math.max(0, Math.min(tabs.length - 1, index));
+      if (i === current) return;
+      current = i;
+      tabs.forEach((tab, n) => {
+        const on = n === i;
+        tab.setAttribute("aria-selected", on ? "true" : "false");
+        tab.setAttribute("tabindex", on ? "0" : "-1");
+        panels[n].hidden = !on;
+      });
+      tabs[i].scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (focus) tabs[i].focus();
+      if (scroll) document.getElementById("walkthrough").scrollIntoView({ block: "start" });
+    }
+
+    const indexForHash = () => {
+      const hash = location.hash.slice(1);
+      const found = panels.findIndex((p) => p.id === hash);
+      return found === -1 ? 0 : found;
+    };
+
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", (event) => {
+        /* preventDefault keeps the browser from jumping the document; the hash
+           is still written, so the address bar and the back button both work. */
+        event.preventDefault();
+        select(i);
+        history.pushState(null, "", tab.getAttribute("href"));
+      });
+    });
+
+    tablist.addEventListener("keydown", (event) => {
+      const keys = { ArrowRight: current + 1, ArrowLeft: current - 1, Home: 0, End: tabs.length - 1 };
+      if (!(event.key in keys)) return;
+      event.preventDefault();
+      const next = (keys[event.key] + tabs.length) % tabs.length;
+      select(next, { focus: true });
+      history.pushState(null, "", tabs[next].getAttribute("href"));
+    });
+
+    addEventListener("popstate", () => select(indexForHash()));
+    addEventListener("hashchange", () => select(indexForHash()));
+
+    /* A deep link arrives with the tab already named; scroll to the
+       walkthrough so the reader lands on what they asked for. */
+    const initial = indexForHash();
+    select(initial, { scroll: location.hash !== "" && initial !== 0 });
+  })();
 </script>
 </body>
 </html>
