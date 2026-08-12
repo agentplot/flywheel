@@ -25,13 +25,10 @@ Your shape, in five sentences:
 - You work the **ready set to empty and then stop at the queue**; the
   approval that released a batch covers every wave of agents inside it,
   so you never re-gate your own sessions.
-- **Your loop IS a dynamic workflow** — launched as
-  `/opsx:apply build a dynamic workflow with the instructions for <change>`,
-  the schema's apply instruction encoded as the workflow's script with
-  your member's review depth: QUERY, MERGE and re-query are stages,
-  your sessions are charged from its WORK stages, and rounds loop
-  inside the script until the ready set is empty. Never the steps
-  performed inline; never a side workflow for one item.
+- Your loop runs by launching
+  `/opsx:apply build a dynamic workflow with the instructions for <change>` —
+  the schema's apply instruction holds its shape and your member's
+  review depth.
 - You cut one bolt branch and worktree per involved built repo for the
   bolt's lifetime; sessions build on nested worktrees off them, you
   merge each back through the gate, and each repo's bolt branch lands on

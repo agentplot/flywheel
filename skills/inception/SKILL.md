@@ -187,11 +187,7 @@ of question, options if any, and a pointer to evidence.
 
 Work the ready set to empty, then stop at the queue — the schema's
 apply instruction holds the loop, launched as
-`/opsx:apply build a dynamic workflow with the instructions for <change>`,
-and **the loop IS the dynamic workflow**: the instruction is encoded
-as the workflow's script, sessions are charged from its WORK stages,
-and rounds loop inside it until the ready set is empty — never the
-steps performed inline, never a side workflow for one item.
+`/opsx:apply build a dynamic workflow with the instructions for <change>`.
 
 - **Ready items get sessions**, batched, in parallel where batches
   are disjoint. Flip items `state:in-progress` as sessions start.
