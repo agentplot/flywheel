@@ -17,11 +17,21 @@ sibling `flywheel-token` from `FLYWHEEL_GH_*`):
     `needs-operator` for items blocked on the operator's word;
   - the org Project (default title "Flywheel"), linked to the repo —
     copied from the hand-built template project (--template, default
-    "Flywheel Template") when one exists, because views cannot be
-    created through the API. The template wants three views: a Board
-    grouped by Status (Backlog / Ready lanes), a Roadmap laid out by
-    Start/Target grouped by Milestone, and a Triage table filtered to
-    open items with no milestone;
+    "Flywheel Template") when one exists, because views and workflows
+    cannot be configured through the API. The template's hand-built
+    shape: the "Item added -> Status: Todo" workflow DISABLED and
+    "Auto-add to project" ENABLED with filter `is:issue is:open` (so
+    Triage self-populates while the Board's lanes hold only what the
+    tools set), plus the views — Board by Status showing only the
+    Backlog and Ready columns (filter is:open, sort Target asc);
+    Roadmap by Start/Target grouped by Milestone, month zoom,
+    milestone markers, slice by Quarter; Triage table `is:open
+    no:milestone`, oldest first; Waiting-on-me table `is:open
+    label:needs-operator`; optionally In-flight (`is:open
+    label:state:in-progress`) and Landed (`is:closed
+    label:closed:done`, sliced by Quarter). Status options ordered
+    Backlog, Ready first; Team options with the default host first,
+    because the tools default to the first option;
   - its fields: Team (single select, from --team), Quarter (single
     select, the next six quarters), Start and Target (dates — what the
     roadmap lays items out by; no Iteration — the flywheel is
