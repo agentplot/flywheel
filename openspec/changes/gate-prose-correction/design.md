@@ -12,10 +12,11 @@ The two co-land.
 
 | Fact | Strength | Source |
 | --- | --- | --- |
-| `[pre-merge]` hooks run on every shape of `wt merge`, including the clean fast-forward, after the rebase, with `HEAD` equal to the sha that lands and cwd the source worktree; a failure aborts with exit 1 and nothing landed | **measured**, ten shapes | `openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md` |
+| `[pre-merge]` hooks run after the rebase, with `HEAD` equal to the sha that lands and cwd the source worktree, on every shape of `wt merge` **that does not suppress them** — the clean fast-forward included; a failure aborts with exit 1 and nothing landed. The qualifier is load-bearing: the bare universal is refuted by the `nohooks`/`noverify` rows of this same finding | **measured**, ten shapes | `openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md` |
 | `--no-hooks` on `wt merge` runs **zero** hooks and exits 0 — with `[pre-merge]` configured, it skips the gate | **measured** | same, `nohooks` row |
 | `verify = false` does the same | **measured** | same, `noverify` row |
-| A trailing `-C` reads the wrong directory and reports no hooks | **PROSE ONLY, not measured** — its sole provenance is `skills/_reference/herdr.md`, added in `b5d308b` | filed for measurement as #64 |
+| A trailing `-C` reads the wrong directory and reports no hooks | **PARTIALLY measured under #64** — `hook show` is unaffected, `wt merge` untested; the prose originates in `skills/_reference/herdr.md`, added in `b5d308b` | #64 |
+| `.github/workflows/gates.yml` triggers on `push` to `branches: [main]`, on `pull_request`, and on `workflow_dispatch` — so a push to a `build/*` branch fires nothing | **measured**, read from the workflow on this branch | `.github/workflows/gates.yml`, its `on:` block |
 | Unapproved project hooks in a non-interactive environment abort with exit 1 and nothing landed — never an ungated green | **measured** | `finding.md`, `lab/evidence/unapproved.txt` |
 | `--yes` on **`wt merge`** runs the hooks without persisting the approval — a trust bypass, not a gate bypass | **measured** | `finding.md`, `yesbypass` |
 | `--yes` on **`wt config approvals add`** fails non-interactively and persists nothing — a different command and a different fact | **measured**, twice — the ff-gate lab and this bolt | `finding.md`'s corrections to the record; `openspec/changes/merge-gate-remedy/bolt.md` |
@@ -51,20 +52,22 @@ is cited nowhere as evidence for the landing tree. `pre-merge-gate`'s task
 ### The two unmeasured facts, and why each is handled the way it is
 
 **Config locus.** The spec forbids resolving it in either direction and
-forbids a standing instruction about how to read a zero-hook merge. The
-reasoning is worth keeping where a builder will read it: the scoped
-reading — "for *this* bolt's merge-back, zero hooks is the asymmetric-config
-question answering itself, neither a green nor a defect" — is correct as an
-instruction about one merge, and it is what `bolt.md` says. Transplanted
-into `skills/_reference/herdr.md` it becomes a general licence telling every
-future agent to shrug at an ungated merge. That is the precise symptom
-`finding.md` records as having "no way to tell it apart from a gated merge",
-and it is why this intent exists at all. It would also be a false dichotomy:
-two other causes of a zero-hook merge are measured (`nohooks`, `noverify`),
-and a third — the trailing `-C` — is warned about in this very file at
-**prose strength only**, its sole provenance being that paragraph, added in
-`b5d308b`. Keep the warning; do not label it measured. Cite `bolt.md` for
-the scoped reading; do not reproduce it.
+forbids a standing instruction about how to read a zero-hook merge.
+
+`bolt.md` used to say a zero-hook merge-back would be "the asymmetric-config
+question answering itself". **It withdrew that at `28fb534`** as a false
+dichotomy — the same error this change refused to carry into `herdr.md`. At
+least four causes produce zero hooks: `--no-hooks` and `--no-verify`
+(measured); a trailing `-C`, warned about in this very file (prose from
+`b5d308b`, **partially measured under #64** — `hook show` unaffected,
+`wt merge` untested); and only then the config locus. Keep that warning, and
+keep its strength honest.
+
+As standing prose, pre-assigning the cause is a general licence to shrug at
+an ungated merge — the precise symptom `finding.md` records as having "no
+way to tell it apart from a gated merge", and the reason this intent exists.
+**Cite `bolt.md`; do not reproduce its reasoning**, which has moved once
+already.
 
 **Execution order.** Dropped, because nothing about ordering has been
 measured on this tree and it cannot be measured until the grant lets the

@@ -12,9 +12,17 @@ gate itself is the `flywheel-merge-gate` capability's, landing alongside.
 
 `skills/_reference/herdr.md`, under the "Merging through the gate" heading,
 SHALL state that the gate is the repo's `[pre-merge]` hooks and that
-`wt merge` runs them after the rebase and before the merge to target, on
-every shape of merge including the clean fast-forward, with `HEAD` equal to
-the sha that lands, and that a failure aborts with nothing landed.
+`wt merge` runs them after the rebase and before the merge to target, with
+`HEAD` equal to the sha that lands, and that a failure aborts with nothing
+landed.
+
+The shapes claim SHALL carry its qualifier: **on every shape of `wt merge`
+that does not suppress them**, the clean fast-forward included. The bare
+universal is refuted by the very finding cited for it — `finding.md`'s
+`nohooks` and `noverify` rows ran nothing — and `--no-hooks` and
+`--no-verify` are the suppressing shapes. `bolt.md` carried the same bare
+universal for six commits and is corrected at `28fb534`; the wording here
+follows that correction.
 
 The sentence beginning "The gate runs the repo's `.config/wt.toml` checks on
 the exact rebased tree that lands" — located by that phrase, never by line
@@ -53,22 +61,26 @@ worktree's config governs, and SHALL NOT state or imply that the target's
 does.
 
 The reference SHALL NOT carry a standing instruction about how to read a
-merge that runs zero hooks. Zero hooks has at least two other **measured**
-causes — the `nohooks` and `noverify` rows of `finding.md` both ran nothing
-and exited 0 — and one further candidate that is documented but **not
-measured**: this same file's warning that a trailing `-C` reads the wrong
-directory and reports no hooks, whose only provenance is that prose, added
-in `b5d308b`. So naming the asymmetric-config question as *the* explanation
-is a false dichotomy. More importantly, a standing
+merge that runs zero hooks. At least four causes produce zero hooks:
+`--no-hooks` and `--no-verify` suppressing them (**measured** — the
+`nohooks` and `noverify` rows of `finding.md` both ran nothing and exited
+0); a trailing `-C` reading the wrong directory, which this same file warns
+about (prose, `b5d308b`, **partially measured under #64** — `hook show` is
+unaffected, `wt merge` untested); and only then the config locus. **A
+zero-hook merge is evidence of nothing until the others are excluded**, so
+naming the asymmetric-config question as *the* explanation is a false
+dichotomy. More importantly, a standing
 instruction to treat an ungated merge as neither a green nor a defect is a
 general licence to shrug at the exact symptom `finding.md` records as having
 no way to tell apart from a gated merge, which is the reason this intent
 exists.
 
-The scoped reading — that for this bolt's own merge-back a zero-hook result
-is that question answering itself — is
-`openspec/changes/merge-gate-remedy/bolt.md`'s, and SHALL be cited there
-rather than reproduced.
+Where a bolt's own merge-back turns on the answer, how to read that one
+merge belongs to its `bolt.md` and SHALL be **cited** from there rather than
+reproduced. That record's reasoning moves — `merge-gate-remedy`'s previously
+pre-assigned a zero-hook merge-back to the config-locus question and
+withdrew it at `28fb534` as the same false dichotomy — which is precisely
+why standing prose cites the record instead of copying its current view.
 
 The same obligation binds `.config/wt.toml`'s head comment under the
 `flywheel-merge-gate` capability, and the two files SHALL carry the question
@@ -153,6 +165,31 @@ configured, `--no-hooks` on `wt merge` **skips the gate** — measured, the
 that narrows the warning to skipping the worktree warm-up gives a smaller
 reason for the same prohibition and does not satisfy this requirement.
 
+**Each section SHALL carry the warning that is true of its own command,
+which means the sentence is split rather than moved.** The `--no-hooks`
+paragraph sits under "Cutting a worktree", immediately after the
+`wt switch --create` block, and `[pre-merge]` is not among the hooks that
+run at that command at all — so a gate-skipping warning is simply wrong
+there, and the warm-up is the only reason that applies. Meanwhile "Merging
+through the gate", where `--no-hooks` genuinely does skip the gate, carries
+no warning at all. So:
+
+- Under "Cutting a worktree": `--no-hooks` on `wt switch --create` skips the
+  `[post-start]` warm-up and leaves the worktree cold. That is the whole
+  reason there.
+- Under "Merging through the gate": `--no-hooks` on `wt merge` skips the
+  gate — zero hooks, exit 0, measured — and is never passed.
+
+A single sentence covering both commands cannot be true of either.
+
+#### Scenario: An agent cutting a worktree reads why not to pass the flag
+
+- **WHEN** it reads the `--no-hooks` paragraph beside `wt switch --create`
+- **THEN** the reason given is the one that applies to that command — the
+  skipped warm-up and the cold worktree
+- **AND** it is not told that the flag skips a merge gate that this command
+  never runs
+
 Any consequence stated about a cold worktree SHALL be stated only at the
 strength measured. The chain from a cold worktree to `check-site.mjs`
 exiting 2 holds only where the source worktree has `node_modules` and the
@@ -175,10 +212,28 @@ literal single-line search for it returns nothing.
 
 Both halves of that sentence SHALL be deliberate and true. Its first clause,
 "The repo's commit checks run on every push", is muddled before this pass
-and false after it: `[pre-commit]` is empty once the checks move, and what
-runs on push is the built repo's CI (`.github/workflows/gates.yml`). The
-clause SHALL either say that, or go — it SHALL NOT be left as an incidental
-survivor of the rewrite. CI on push is real and agents rely on it.
+and false after it: `[pre-commit]` is empty once the checks move.
+
+The clause SHALL NOT be replaced with "the built repo's CI runs its checks
+on every push", which is also false and is worse for being checkable.
+Measured on the tree: `.github/workflows/gates.yml` triggers on `push` to
+`branches: [main]`, on `pull_request`, and on `workflow_dispatch`. This repo
+lands through `wt merge` rather than pull requests, so **a build session's
+pushes to a `build/*` branch fire nothing at all** — and a build session is
+exactly who reads this sentence.
+
+What the clause SHALL say instead, or else go entirely, is where a
+construction branch's commits are actually checked: the `[pre-merge]` hooks
+at merge-back, and CI once the work has landed on `main`. Between those two
+points a construction branch has no automated check on it, and a build
+session is better told that than told to expect one.
+
+The same false sentence is re-typed in `devenv.nix`'s `gates` script comment
+("`.github/workflows/gates.yml` runs on every push") and SHALL be corrected
+there in the same pass, to what the workflow's own triggers say.
+
+`AGENTS.md` and `README.md` carry the same claim and are **out of scope** —
+queued as #67. Correcting them here would be a silent widening.
 
 The Merge stage's "full release gate — full hooks, never weakened" is an
 instruction rather than a claim about what runs, and SHALL stand unchanged.
@@ -186,8 +241,19 @@ So SHALL the Spec stage, which this pass does not touch.
 
 #### Scenario: A build session reads the Build stage after the checks move
 
-- **WHEN** it reads what runs on push and what runs at merge-back
-- **THEN** both statements are true of the repo as this pass leaves it
+- **WHEN** it reads what runs at merge-back and what runs in CI
+- **THEN** both statements are true of the repo as this pass leaves it,
+  checked against `.config/wt.toml`'s tables and `gates.yml`'s `on:` block
+  rather than against what the sentence used to say
+
+#### Scenario: A build session asks what checks its own branch pushes
+
+- **WHEN** it pushes commits to a `build/*` branch
+- **THEN** nothing the skill says leads it to expect CI to run, because
+  `gates.yml` triggers only on push to `main`, on `pull_request`, and on
+  `workflow_dispatch`
+- **AND** it is told that its commits are checked at merge-back by the
+  `[pre-merge]` hooks
 
 ### Requirement: Every statement of the gate's shape counts what is configured
 
