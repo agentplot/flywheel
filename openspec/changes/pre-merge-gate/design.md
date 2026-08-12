@@ -5,6 +5,10 @@ because almost every defect available in this change is a strength error:
 writing a sentence more confidently than the tree has been measured for, or
 writing a scoped instruction as standing prose.
 
+`gate-prose-correction` (#35) carries the same ledger for the prose half.
+The two co-land; see that change's design for the prose obligations and for
+the conductor-authorized adjacent edits.
+
 ### What is measured, and where
 
 | Fact | Strength | Source |
@@ -12,22 +16,40 @@ writing a scoped instruction as standing prose.
 | `[pre-merge]` hooks run on every shape of `wt merge`, including the clean fast-forward, after the rebase, with `HEAD` equal to the sha that lands and cwd the source worktree; a failure aborts with exit 1 and nothing landed | **measured**, ten shapes | `openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md` |
 | `[pre-commit]` fires only where `wt` itself writes a commit — never on the clean fast-forward, and not even on `--no-ff` | **measured** | same, `noff` and `ff-clean-2` rows |
 | `--no-hooks` and `verify = false` each run **zero** hooks and exit 0 | **measured** | same, `nohooks` and `noverify` rows |
-| A trailing `-C` reads the wrong directory and reports no hooks | **measured**, and already documented | `skills/_reference/herdr.md`, the `-C` paragraph |
-| Unapproved project hooks in a non-interactive environment abort with exit 1 and nothing landed — never an ungated green | **measured** | `finding.md`, `lab/evidence/unapproved.txt` |
-| The installed `wt 5fba0bd` **is** worktrunk 0.57.0 — the same nix store build the ten shapes were measured on | **measured** | `finding.md`, its "Exercised, not read" bullet |
+| Unapproved project hooks in a non-interactive environment abort with exit 1 and nothing landed — never an ungated green | **measured** | same, `lab/evidence/unapproved.txt` |
+| The installed `wt 5fba0bd` **is** worktrunk 0.57.0 — the same nix store build the ten shapes were measured on | **measured** | same, its "Exercised, not read" bullet |
 | Moving a granted hook template between hook event tables, with its text unchanged, **preserves the grant**; one added trailing space breaks it | **measured**, this bolt, negative control included | `openspec/changes/merge-gate-remedy/bolt.md` |
-| `wt hook show` on this configuration lists exactly four project templates, each marked `(requires approval)` | **measured**, this bolt | `bolt.md` |
-| `wt step copy-ignored --help`: `--from` "Defaults to main worktree" | **measured**, `wt 5fba0bd` | the binary's own help |
+| `wt config approvals add` **does** enumerate `[post-start]` templates, `wt step copy-ignored` included | **measured**, this bolt, while reviewing #36 | `bolt.md` |
+| `--yes` on `wt config approvals add` fails non-interactively and persists nothing | **measured**, same pass | `bolt.md` |
+| `wt step copy-ignored --help`: `--from` "Defaults to main worktree" | **measured**, `wt 5fba0bd`, by this spec session on this branch | the binary's own help |
+| `wt hook show` listing exactly four project templates on this configuration | **EXPECTED, not measured** — see below | task 2.7 |
 | Which worktree's *config* supplies the hooks when source and target differ | **NOT measured** — the lab ran symmetric config throughout | see below |
 | Whether the three `[pre-merge]` entries run sequentially or concurrently | **NOT measured** — worktrunk's `hook.md` and the binary's generic help disagree | see below |
-| Whether `wt config approvals add` enumerates `[post-start]` templates | **NOT measured** | see below |
 
 The version fact is in the table because a previous session raised an alarm
 that the installed binary differs from the one the finding measured. It is
 false. `finding.md` names the same nix store path. Any restatement of that
 alarm in this change is a defect, not a caution.
 
-### The three unmeasured facts, and why each is handled the way it is
+### The four-template reading is expected, not measured — and why that matters
+
+An earlier revision of this spec stated at measured strength that
+`wt hook show` on this configuration lists four `(requires approval)`
+templates, and cited `bolt.md`. `bolt.md` carries no such measurement, and
+**no committed tree carries the four-template configuration** — so the tree
+that would have been measured does not exist yet. A claim about the tree
+that lands cannot rest on a tree that will not.
+
+The reading itself is real, but its provenance is: `wt hook show` under
+`wt 5fba0bd` on the **discarded** plan-mode branch `build/gate-remedy` at
+`37118d9`, by a session that was subsequently stood down. That is
+corroboration and nothing more; it is recorded here with full provenance
+and is cited nowhere as evidence for the landing tree.
+
+Task 2.7 produces the measurement on the tree that will actually land, and
+the requirement is written as an expectation until it does.
+
+### The two unmeasured facts, and why each is handled the way it is
 
 **Config locus.** The spec forbids resolving it in either direction and
 forbids a standing instruction about how to read a zero-hook merge. The
@@ -35,11 +57,11 @@ reasoning is worth keeping where a builder will read it: the scoped
 reading — "for *this* bolt's merge-back, zero hooks is the asymmetric-config
 question answering itself, neither a green nor a defect" — is correct as an
 instruction about one merge, and it is what `bolt.md` says. Transplanted
-into `skills/_reference/herdr.md` it becomes a general licence telling every
-future agent to shrug at an ungated merge. That is the precise symptom
-`finding.md` records as having "no way to tell it apart from a gated merge",
-and it is why this intent exists at all. It would also be a false dichotomy:
-three other causes of a zero-hook merge are measured. Cite `bolt.md`; do not
+into standing prose it becomes a general licence telling every future agent
+to shrug at an ungated merge. That is the precise symptom `finding.md`
+records as having "no way to tell it apart from a gated merge", and it is
+why this intent exists at all. It would also be a false dichotomy: three
+other causes of a zero-hook merge are measured. Cite `bolt.md`; do not
 reproduce it.
 
 **Execution order.** Dropped rather than replaced with worktrunk's docs. A
@@ -47,121 +69,66 @@ doc is not a measurement of this tree, and the two docs disagree with each
 other. It is a named measurement for the acceptance run, once the grant
 exists.
 
-**Grant enumeration.** `wt hook show` listing four `(requires approval)`
-templates is a fact about `hook show`, not about `approvals add`. Keeping
-them apart is what stops a three-row grant listing from being read as a
-wrong-checkout diagnosis when it might instead be `approvals add` not
-enumerating `[post-start]` at all.
-
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Make the gate real, and make every sentence about it true at the strength
-  it is known at.
+- Make the gate real, and let the file that configures it describe it at the
+  strength it is known at.
 - Leave every claim re-checkable: cite by anchor or quoted phrase, never by
-  line number. Line numbers in these exact files have already drifted once
-  inside this bolt.
-- Land the configuration and the prose in one pass, so the repo is never in
-  a state where the prose is wrong in a new way.
+  line number.
+- Leave a configuration the operator can grant in one interactive pass.
 
 **Non-Goals:**
 
 - Adding, removing, or retuning what the three checks test.
-- The operator's grant (#33) — sequenced by the bolt conductor, not by this
-  change.
-- The fleet-layer check that the grant exists (#36) — its own assertion, its
-  own spec, already in flight on this bolt.
-- Resolving any of the three unmeasured facts above. A change that resolves
-  one of them is asserting past its evidence.
+- Any prose file — that is `gate-prose-correction` (#35), co-landing.
+- The operator's grant (#33), and the fleet-layer check that the grant
+  exists (#36).
+- Resolving either unmeasured fact above. A change that resolves one of them
+  is asserting past its evidence.
 
 ## Decisions
 
-### One change, not two
+### Two changes, one branch, one merge-back
 
-#34 and #35 are separate assertions but a single change. #35's central
-sentence is false before #34 lands and stale-wrong after it: there is no
-ordering of two changes that leaves the repo correct in between. The bolt
-plan batched them for the same reason.
+`skills/construction/SKILL.md`'s Spec stage sets the grain: "one
+spec-driven change per assertion … a session may write several changes, but
+the change grain is the assertion: its record binds one change id and one
+landing ref." So #34 and #35 are two change ids.
 
-*Alternative considered:* two changes with a strict order. Rejected — every
-intermediate state is a repo that lies about its own gate, and the window is
-exactly as long as a review round.
+They co-land on one branch in one pass, because #35's central sentence is
+false before this change lands and stale-wrong after it: there is no
+ordering of the two that leaves the repo correct in between. What the design
+rejects is *sequencing* them, not separating them. Co-landing satisfies both
+the grain rule and the one-pass necessity.
 
-### One new capability rather than a delta on an existing spec
+### A capability of its own, split from the description
 
 `openspec/specs/` was read for an existing home. No capability carries a
-requirement about the merge gate's mechanism or its description.
-`flywheel-construction-skill` governs the skill's review bounds, bolt rules
-and state claims; its Build stage's gate sentence is not under any of its
-requirements. So this is `flywheel-merge-gate`, new — sibling to
-`flywheel-fleet-approvals` (#36), which checks that the gate's grants exist.
+requirement about which hook table this repo's checks live under. This is
+`flywheel-merge-gate`, new — sibling to `flywheel-fleet-approvals` (#36),
+which checks that the gate's grants exist, and to
+`flywheel-gate-description` (#35), which governs what the machinery says
+about the gate. The split follows the assertions: one is mechanism, one is
+description.
 
-### The two count corrections in `devenv.nix` and the one in `gates.yml` are in scope
+### The head comment stays with the configuration
 
-Each is a one-word claim about the exact table this change rewrites, and
-each is the same defect class as the "All four" the head-comment rewrite
-removes. The conductor authorized them. `devenv.nix` carries **two** such
-miscounts, eight lines apart — the packages comment's "Two gates … node runs
-both checks" and the `gates` script comment's "the same two commands." Both
-are in the spec; fixing one and leaving the other in the same file is not a
-finished fix.
+#34's assertion owns the head comment explicitly — "its count of the checks
+it defines matches the number defined" — so the block is specced here rather
+than with the prose. The count claims in `devenv.nix` and
+`.github/workflows/gates.yml` are **not** here: #34's own boundary says it
+"does not touch `.github/workflows/gates.yml`", and those corrections are
+conductor-authorized adjacent scope carried by `gate-prose-correction`.
 
-Note the packages comment needs more than a numeral: with three gates, "node
-runs both checks" is wrong twice over, since `validate-manifests.sh` runs
-under `sh`. The spec requires the runtime claim to be true of the `gates`
-script, not merely the count.
+### The config-locus requirement is stated in both changes, deliberately
 
-### `herdr.md`'s `--no-hooks` paragraph is fixed in this pass
-
-The paragraph says "This repo configures no `wt` lifecycle hooks today, so
-the flag suppresses nothing and would silently skip the first one added."
-This change's `[post-start]` entry **is** that first hook, so this change's
-own commit is what falsifies the sentence.
-
-This is not the "fourth site" #35's boundary reserves. That boundary is
-about pre-existing gate-claim sites a grep missed; it does not license
-landing a sentence your own commit makes false.
-
-The replacement's reason must be the gate, not the warm-up. `--no-hooks`
-skipping the gate is measured (`nohooks` row). A previous framing narrowed
-the paragraph to the warm-up and lost that.
-
-### Gate-claim sites that need no edit — ruled, so nobody re-opens them
-
-Read from disk on this branch at `ea5d0c6`:
-
-- `AGENTS.md` — "The same three run in `.config/wt.toml` before a merge"
-  (locate by "before a merge"). Count already correct; the phrase becomes
-  true when this change lands.
-- `README.md` — the Gates section's "`.config/wt.toml` before a merge".
-  Same.
-- `openspec/specs/flywheel-construction-skill/spec.md` — "checks that run
-  against the tree that lands: the merge gate, the bolt's merge criteria,
-  and the acceptance evidence all still bind" (locate by "the tree that
-  lands"). Becomes true on the landing.
-
-A prior sweep ruled no edit on all three, and this design carries that
-ruling so a build session does not re-open it. If a build session finds one
-of these false rather than merely un-true-yet, that is a stop-and-report,
-not a widening.
-
-### Explicitly not this change's, though adjacent
-
-- **`herdr.md`'s squash sentence** — "`wt merge` on this machine squashes by
-  default … Pass `--no-squash` unless a squash is what you want."
-  `wt config show` reports `[merge] squash = false`, so the sentence is
-  false and its instruction a no-op. It is pre-existing, it is not a gate
-  claim, and the conductor has filed it as its own item. **Leave it alone**
-  even though the edit to the section above sits directly against it.
-- **`openspec/changes/add-flywheel-loops/design.md`** carries the old
-  "merge gate on the rebased tree at merge-back" phrasing. That is another
-  open change's design material — a design-loop finding for its intent, not
-  this change's edit.
-- **`openspec/changes/gated-merge-guarantee/questions/hook-approvals-never-granted.md`**
-  marks the table-move keying provisional, and this bolt has measured it.
-  Upgrading that record is the design loop's, not this batch's; the fact is
-  carried here and in `bolt.md`.
+It is a property of a *pair* of files, and the grain rule puts each file in
+a different change. Each change states its own file's obligation and
+cross-references the other, so neither is landable while satisfying its own
+requirement and violating the joint one. A reviewer checking only one change
+still sees the joint constraint.
 
 ## Risks / Trade-offs
 
@@ -187,30 +154,32 @@ it, and the bolt record carries the scoped reading for this one merge. The
 acceptance run records what actually happened; it does not decide it in
 advance.
 
-**Line numbers drift.** → Every site in the spec is anchored by heading or
-quoted phrase. They have already moved once inside this bolt: `herdr.md`'s
-gate sentence was `:184` at `c7697d6` and `:202` on this branch. A build
-session that locates by number will edit the wrong thing.
+**Line numbers drift, and phrases wrap.** → Every site is anchored by
+heading or quoted phrase. `herdr.md`'s gate sentence was `:184` at
+`c7697d6`, `:202` before this branch was rebased, and `:215` after — three
+positions inside one bolt. Separately, quoted phrases in
+`skills/construction/SKILL.md` are **line-wrapped in the source**, so a
+literal single-line `grep` for them returns nothing; search on a fragment
+that does not span a line break.
 
 **Prose written to a tree that moved.** → Every neighbour this change
 asserts anything about is re-read from disk at build time before the claim
-is trusted. Siblings on this bolt are live.
+is trusted. Siblings on this bolt are live, and `main` has already moved
+under this branch once.
 
 ## Migration Plan
 
 Not a deployment. The ordering that matters is the bolt's, and it is
 `openspec/changes/merge-gate-remedy/bolt.md`'s to state:
 
-1. Author and commit this change's edits on the construction branch. Do not
-   merge.
+1. Author and commit both changes' edits on this branch. Do not merge.
 2. Report the four hook template strings verbatim, with the worktree path,
    for #33. From that moment `.config/wt.toml` is frozen.
 3. The operator grants interactively, cwd inside that worktree. The listing
-   must show four templates, one of them `wt step copy-ignored`. **Three
-   rows is stop-and-investigate**, not a diagnosis: the wrong checkout is
-   one cause, `approvals add` not enumerating `[post-start]` is another, and
-   which one it is has to be established before approving.
-4. Merge back.
+   must show four templates, one of them `wt step copy-ignored`. Three rows
+   is `main`'s three-check shape — the wrong checkout — and the remedy is to
+   re-run with cwd in the construction worktree.
+4. Merge back, both changes together.
 
 Rollback is `git revert` of the commits; nothing outside the repo changes
 except the operator's approvals store, which is additive and keyed on text
@@ -218,7 +187,6 @@ that would no longer exist.
 
 ## Open Questions
 
-None that block this change. The three unmeasured facts above are named in
-the spec as things the prose must *not* resolve, and two of them —
-execution order, and whether the merge-back gates at all — are named
+None that block this change. The two unmeasured facts above are named in the
+spec as things the configuration must *not* resolve, and both are named
 measurements for this bolt's acceptance run.
