@@ -19,14 +19,18 @@ sibling `flywheel-token` from `FLYWHEEL_GH_*`):
     copied from the hand-built template project (--template, default
     "Flywheel Template") when one exists, because views and workflows
     cannot be configured through the API. The template's hand-built
-    shape: the "Item added -> Status: Todo" workflow DISABLED and
-    "Auto-add to project" ENABLED with filter `is:issue is:open` (so
-    Triage self-populates while the Board's lanes hold only what the
-    tools set), plus the views — Board by Status showing only the
-    Backlog and Ready columns (filter is:open, sort Target asc);
-    Roadmap by Start/Target grouped by Milestone, month zoom,
-    milestone markers, slice by Quarter; Triage table `is:open
-    no:milestone`, oldest first; Waiting-on-me table `is:open
+    shape: the "Item added -> set Status" workflow DISABLED (measured:
+    left on, it stamps the first Status option onto every auto-added
+    item and floods the kanban) and "Auto-add to project" ENABLED with
+    filter `is:issue is:open` (so Triage self-populates while the
+    Board's lanes hold only what the tools set), plus the views —
+    Board by Status showing only the Backlog and Ready columns (filter
+    is:open no:parent-issue, sort Target asc); Roadmap by Start/Target
+    grouped by Milestone, filter is:open no:parent-issue so only the
+    approval carriers draw bars (sub-issues carry no dates or Team —
+    the batch is the single scheduling source), month zoom, milestone
+    markers, slice by Quarter; Triage table `is:open no:milestone`,
+    oldest first; Waiting-on-me table `is:open
     label:needs-operator`; optionally In-flight (`is:open
     label:state:in-progress`) and Landed (`is:closed
     label:closed:done`, sliced by Quarter). Status options ordered

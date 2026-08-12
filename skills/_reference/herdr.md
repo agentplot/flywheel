@@ -62,8 +62,19 @@ reports no hooks.
 
 ## Starting an agent, and naming it before you send its work order
 
+**The name IS the classification.** The roster must read at a glance:
+conductors are `intent-<slug>` and `bolt-<slug>`, dispatch is
+`dispatch`, and every session starts with its session type —
+`research-<topic>`, `planning-<topic>`, `interactive-<topic>`,
+`prototype-<topic>`, `writeback-<topic>`, `handoff-<topic>`,
+`spec-<topic>`, `build-<topic>`, `test-<topic>`, `review-<topic>`.
+Type names never collide with `intent`/`bolt`/`dispatch`, so the
+prefix alone says what a row is. **The tab label is the agent name,
+the same string** — a tab labeled one thing holding an agent named
+another is how a session becomes unfindable.
+
 ```bash
-herdr tab create --cwd <worktree-path> --label "<short title>" --no-focus
+herdr tab create --cwd <worktree-path> --label "<the agent name>" --no-focus
 herdr agent start <name> --kind claude --pane <pane-id> -- --agent <profile>
 ```
 
@@ -215,10 +226,10 @@ exactly those.
 
 ```bash
 wt switch --create sess/<slug> --base main --no-cd   # only if the session edits files
-herdr tab create --cwd <worktree-path> --label "<slug>" --no-focus
-herdr agent start <slug>-session-<n> --kind claude --pane <pane-id> \
+herdr tab create --cwd <worktree-path> --label "<type>-<topic>" --no-focus
+herdr agent start <type>-<topic> --kind claude --pane <pane-id> \
   -- --agent flywheel-design-session --model <model>
-herdr agent prompt <slug>-session-<n> "/rename <slug>-session-<n>"
+herdr agent prompt <type>-<topic> "/rename <type>-<topic>"
 # confirm the title, then send the work order
 ```
 
