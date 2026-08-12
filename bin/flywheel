@@ -385,26 +385,40 @@ def wt_failure_reason(args: list[str], code: int, cwd: Path, what: str) -> str:
     worktrunk loads two files here — the repo's project config and the
     operator's approvals store — and its exit code alone does not say
     which. The check already reads both, so it asks them rather than
-    reaching for worktrunk's stderr. Where neither can be faulted, it names
-    both instead of picking one: this is the state whose whole purpose is
-    telling an operator which way it broke, and a confident wrong answer is
-    worse here than an honest pair.
+    reaching for worktrunk's stderr.
+
+    Both are tested before anything is said, and all four combinations get
+    their own sentence. Exculpating one file is a claim, and it is only
+    made when it is true: a message that clears the repo's
+    version-controlled config while that config is *also* broken sends an
+    operator hunting in the wrong place, which is the same misdirection as
+    naming the wrong file outright. Where both are faulted, both are named
+    and the store leads, because worktrunk fails on the store first and
+    that is genuinely the next thing to fix. Where neither can be faulted,
+    both are named without blame rather than one picked on a guess.
     """
     cmd = f"`wt {' '.join(args)}`"
-    fault = store_fault()
-    if fault:
-        return (f"{cmd} exited {code} — worktrunk also loads the approvals "
-                f"store, and {fault}. That file is the fault, not this "
-                f"repo's configuration.")
+    store = APPROVALS_STORE.expanduser()
     config = Path(repo_key(cwd)) / ".config" / "wt.toml"
-    fault = toml_fault(config)
-    if fault:
+    store_bad = store_fault()
+    config_bad = toml_fault(config)
+
+    if store_bad and config_bad:
+        return (f"{cmd} exited {code} — both files worktrunk loads here are "
+                f"broken. The approvals store {store_bad}. This repo's "
+                f"{config} could not be parsed either ({config_bad}). "
+                "worktrunk fails on the store first, so fix that one first; "
+                "the repo's config still needs fixing after it.")
+    if store_bad:
+        return (f"{cmd} exited {code} — worktrunk also loads the approvals "
+                f"store, and {store_bad}. That file is the fault, not this "
+                f"repo's configuration.")
+    if config_bad:
         return (f"{cmd} exited {code} — this repo's {config} could not be "
-                f"parsed ({fault}), so the fleet could not {what}.")
+                f"parsed ({config_bad}), so the fleet could not {what}.")
     return (f"{cmd} exited {code}, so the fleet could not {what}. Both this "
-            f"repo's {config} and the approvals store "
-            f"{APPROVALS_STORE.expanduser()} parse here, so run that command "
-            "in the repo to see which worktrunk objects to.")
+            f"repo's {config} and the approvals store {store} parse here, so "
+            "run that command in the repo to see which worktrunk objects to.")
 
 
 def wt_json(args: list[str], cwd: Path, what: str):
