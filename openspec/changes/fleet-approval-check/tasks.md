@@ -56,7 +56,7 @@ a thing to build around.
       `wt config show --format json -C <path>` per repo, per `design.md`
       decision 1. Treat `project.exists: false` as "no hooks", not as an
       error. Done when a repo outside any project resolves to gate-ready.
-- [ ] 2.3 Collect hook templates from worktrunk's own enumeration of the repo's
+- [x] 2.3 Collect hook templates from worktrunk's own enumeration of the repo's
       configured hooks — `wt hook show --format json -C <path>`, taking
       `template` from every record whose `source` is `"project"`. Do NOT parse
       the hook grammar by hand: it accepts five shapes (`design.md`, *The
@@ -78,7 +78,7 @@ a thing to build around.
 - [x] 2.6 Cache the result per pass, keyed on the project-config path's parent
       (or the resolved working directory when there is no project config), so
       a repo is evaluated and reported once however many actors resolve to it.
-- [ ] 2.7 Treat a non-zero exit from the hook enumeration as **indeterminate**,
+- [x] 2.7 Treat a non-zero exit from the hook enumeration as **indeterminate**,
       never as an empty template set. Measured: with a project config worktrunk
       cannot load, `wt hook show --format json` exits 1 with empty stdout — so
       "no records" and "config unreadable" are indistinguishable without the
@@ -86,7 +86,7 @@ a thing to build around.
       whose gate is definitionally unrunnable. Done when a malformed project
       config yields indeterminate and a repo with genuinely no project hooks
       yields gate-ready.
-- [ ] 2.8 Contain every failure to the repo it concerns: a store that is
+- [x] 2.8 Contain every failure to the repo it concerns: a store that is
       unreadable or not shaped as expected, and a failed worktrunk query, make
       that one repo indeterminate and let the pass finish reporting the others.
       No unhandled exception may escape the check into `up`, `status` or
@@ -107,13 +107,13 @@ a thing to build around.
       repos in the same pass, and the command exits non-zero when it refused
       any start for this reason. Done when a mixed manifest starts one actor,
       refuses the other, and exits non-zero.
-- [ ] 3.3 `flywheel status`: add one row per repo **it can inspect from here** —
+- [x] 3.3 `flywheel status`: add one row per repo **it can inspect from here** —
       this host's actors whose working directories resolve on this machine —
       showing gate-readiness, with ungranted templates and the same remedy
       beneath a failing row. Claim nothing about a repo on another host or a
       directory that is absent. Leave the existing per-actor rows and the drift
       exit code intact. Start nothing.
-- [ ] 3.3a `flywheel status`: name every actor whose repo was skipped from the
+- [x] 3.3a `flywheel status`: name every actor whose repo was skipped from the
       gate rows and why — on another host, or its directory not present here.
       Done when a reader can tell from the output alone which repos were
       checked and which were not; silently omitting them is the defect.
@@ -183,26 +183,26 @@ The adversarial code-review found the extraction reported gate-ready on hooks
 it could not see. These tasks are what prove that class of defect is gone —
 run them against the rebuilt check, not against the reasoning about it.
 
-- [ ] 7.1 Build one fixture per accepted grammar shape — bare string, named
+- [x] 7.1 Build one fixture per accepted grammar shape — bare string, named
       table, inline table, array of strings, mixed array, `[[event]]` pipeline
       blocks — each ungranted, and confirm every command in every shape is
       reported as a gap. Isolate with a relocated `HOME`; **never** write the
       operator's `~/.config/worktrunk/approvals.toml`.
-- [ ] 7.2 Cross-check each fixture against `wt hook show --format json`: the
+- [x] 7.2 Cross-check each fixture against `wt hook show --format json`: the
       set of templates the check reports SHALL equal the set of `template`
       values whose `source` is `"project"`. A shape where the two disagree is a
       defect in the check, not in the fixture.
-- [ ] 7.3 Confirm a `[[event]]` block's keys are read as command names: a block
+- [x] 7.3 Confirm a `[[event]]` block's keys are read as command names: a block
       written `name = "x"` / `command = "y"` yields two commands, `x` and `y`,
       matching worktrunk's enumeration exactly.
-- [ ] 7.4 Confirm a user-level hook is never reported as a gap, and that a repo
+- [x] 7.4 Confirm a user-level hook is never reported as a gap, and that a repo
       whose only hooks are user-level is gate-ready.
-- [ ] 7.5 Confirm a malformed project config is indeterminate, not gate-ready,
+- [x] 7.5 Confirm a malformed project config is indeterminate, not gate-ready,
       and that a reshaped approvals store leaves `up`, `status` and `reconcile`
       running rather than raising.
-- [ ] 7.6 Confirm `flywheel status` on a manifest with an off-host actor and an
+- [x] 7.6 Confirm `flywheel status` on a manifest with an off-host actor and an
       absent working directory names both as skipped, with reasons, and claims
       gate-readiness for neither.
-- [ ] 7.7 Re-run the whole verification group 5 against the rebuilt check, and
+- [x] 7.7 Re-run the whole verification group 5 against the rebuilt check, and
       re-confirm 5.4: the operator's approvals store is byte-identical before
       and after, and no hook was executed.

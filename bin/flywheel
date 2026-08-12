@@ -45,15 +45,18 @@ down (teardown is deliberate, not a sync step). Rows on other hosts are
 reported, not driven.
 
 Before starting any actor, the repo it would sit in must have its
-worktrunk hook approvals granted — every hook template in the repo's
-`.config/wt.toml` present verbatim in the operator's
+worktrunk hook approvals granted — every project hook template worktrunk
+resolves for that repo present verbatim in the operator's
 `~/.config/worktrunk/approvals.toml`. Ungranted, an agent cannot run the
 merge gate and would stop mid-merge with no way to fix it, so no actor
 is started there and `wt config approvals add` is printed instead. The
-grant is the operator's, taken once per repo, interactively: this
-command reads those two files and compares them, and never writes the
-approvals store, asks worktrunk for approval state, or runs a hook.
-`status` reports the same as a row per repo and starts nothing.
+grant is the operator's, taken once per repo, interactively.
+
+Worktrunk is asked, read-only, which hooks a repo configures — its own
+grammar, not ours to parse. The store is read here and compared. Nothing
+asks worktrunk whether a template is approved, nothing writes the store,
+and no hook is ever run. `status` reports a row per repo it can inspect,
+names what it could not inspect and why, and starts nothing.
 
 The manifest is a constrained YAML subset parsed here without a YAML
 dependency: two-space indentation, top-level scalars, `actors:` a list
@@ -230,25 +233,35 @@ def this_host(manifest: dict, override: str | None) -> str:
 # so a repo whose hooks are ungranted is a repo whose merge gate its agents
 # cannot run. Placing an actor there buys a stoppage mid-merge, on an agent
 # that cannot fix it. This check makes the grant a start precondition: it
-# reads the repo's project config and the operator's approvals store and
-# compares them, so the stoppage happens here, loudly, with the remedy.
+# takes the repo's project hook templates from worktrunk, compares them
+# against the operator's approvals store, and refuses the start — so the
+# stoppage happens here, loudly, with the remedy in hand.
 #
-# It READS. It never writes the approvals store, never invokes `wt` to
-# determine approval state, and never runs a hook — a converger that wrote
+# It READS. It never writes the approvals store, never asks `wt` whether
+# a template is approved, and never runs a hook — a converger that wrote
 # the grants was considered and declined, because the machinery would then
 # be approving the machinery's own hooks. See
 # openspec/changes/gated-merge-guarantee/decisions/
 #   approvals-are-an-onboarding-grant.md.
 #
-# The ten hook event tables worktrunk defines (`wt hook --help`). Any other
-# table in a project config is not a hook and is not checked.
-HOOK_EVENTS = (
-    "pre-switch", "post-switch", "pre-start", "post-start", "pre-commit",
-    "post-commit", "pre-merge", "post-merge", "pre-remove", "post-remove",
-)
-
+# The line, drawn once in openspec/changes/merge-gate-remedy/bolt.md under
+# *Where `wt` is the authority, and where it is not*: worktrunk is the
+# authority on its own configuration — the project identifier, and what
+# counts as a hook template. The approvals store is the authority on
+# grants, and that comparison is ours alone.
+#
+# Which hooks a repo configures is worktrunk's own question, and it is
+# asked of worktrunk rather than parsed here: the project-hook grammar has
+# six accepted spellings and is free to grow a seventh. What this file owns
+# is the comparison against the operator's grants.
 APPROVALS_STORE = Path("~/.config/worktrunk/approvals.toml")
 REMEDY = "wt config approvals add"
+
+
+class Indeterminate(Exception):
+    """The check could not be made for one repo, with the reason the fleet
+    composes for the operator. Never escapes as an error: it becomes an
+    indeterminate verdict for that repo, and the pass carries on."""
 
 
 class GateCheck(NamedTuple):
@@ -277,119 +290,214 @@ class GateCheck(NamedTuple):
 
 
 def wt_project(cwd: Path) -> dict:
-    """worktrunk's own answer to "which project is this, and which config
-    file is in force". Raises on any doubt, so the caller fails closed.
+    """worktrunk's own answer to "which project is this, and is there a
+    project config in force". Raises on any doubt, so the caller fails
+    closed.
 
     This asks for identity, not for approval state — the reply carries none
-    (measured). The approval state is the two TOML files, read below.
+    at all (measured). Whether a template is granted is decided further
+    down, by comparing worktrunk's templates against the operator's store.
+    """
+    project = wt_json(["config", "show"], cwd,
+                      "resolve this repo's worktrunk project identity")
+    if not isinstance(project, dict):
+        raise Indeterminate("`wt config show --format json` returned "
+                            "something other than an object")
+    project = project.get("project")
+    return project if isinstance(project, dict) else {}
+
+
+def wt_json(args: list[str], cwd: Path, what: str):
+    """Run one read-only worktrunk query and return its parsed JSON.
+
+    Raises `Indeterminate` on every doubt, with a reason this function
+    composes. worktrunk's own error stream is deliberately not relayed: it
+    is multi-line and ANSI-coloured, so it renders badly inside a flywheel
+    refusal, and its approval-failure text suggests `--yes` — a bypass this
+    loop forbids and must never repeat to an operator, even as a quotation.
     """
     if not shutil.which("wt"):
-        raise RuntimeError("the worktrunk command `wt` is not on PATH")
+        raise Indeterminate("the worktrunk command `wt` is not on PATH, so "
+                            "the fleet cannot ask it which hooks this repo "
+                            "configures")
+    argv = ["wt", *args, "--format", "json", "-C", str(cwd)]
     try:
-        out = subprocess.run(
-            ["wt", "config", "show", "--format", "json", "-C", str(cwd)],
-            capture_output=True, text=True, timeout=30)
+        out = subprocess.run(argv, capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as e:
-        raise RuntimeError(f"`wt config show` could not be run: {e}") from e
+        raise Indeterminate(f"`wt {' '.join(args)}` could not be run "
+                            f"({type(e).__name__}), so the fleet could not "
+                            f"{what}") from e
     if out.returncode != 0:
-        raise RuntimeError(f"`wt config show` exited {out.returncode}: "
-                           f"{out.stderr.strip()[:200]}")
+        # Load-bearing, not incidental: with a project config worktrunk
+        # cannot load, `wt hook show` exits 1 with EMPTY STDOUT. Reading
+        # that as "no hooks configured" would resolve a repo whose gate
+        # config is broken to gate-ready — a false green on a repo whose
+        # gate is definitionally unrunnable.
+        raise Indeterminate(
+            f"`wt {' '.join(args)}` exited {out.returncode} — worktrunk "
+            f"could not load this repo's configuration, so the fleet could "
+            f"not {what}. Run that command in the repo to see what "
+            "worktrunk objects to.")
     try:
         # stdout only — wt writes terminal control bytes to stderr, and
         # folding them in makes the document unparseable.
-        return json.loads(out.stdout).get("project") or {}
-    except (ValueError, AttributeError) as e:
-        raise RuntimeError(
-            f"`wt config show --format json` returned unparseable output: {e}"
-        ) from e
+        return json.loads(out.stdout)
+    except ValueError as e:
+        raise Indeterminate(f"`wt {' '.join(args)} --format json` returned "
+                            f"output the fleet could not parse ({e})") from e
 
 
-def hook_templates(config_path: Path) -> tuple[str, ...]:
-    """Every hook template a project config defines, from the ten hook
-    event tables and from no other table."""
-    data = tomllib.loads(config_path.read_text())
-    found: list[str] = []
-    for event in HOOK_EVENTS:
-        table = data.get(event)
-        if isinstance(table, dict):
-            found += [v for v in table.values() if isinstance(v, str)]
-    return tuple(found)
+def project_hook_templates(cwd: Path) -> tuple[str, ...]:
+    """Every hook template worktrunk resolves from the repo's *project*
+    config, taken from worktrunk's own enumeration.
+
+    The grammar is worktrunk's, not ours, and it is wider than it looks: an
+    event's value may be a bare string, a named table, an inline table, an
+    array of strings, an array mixing strings and tables, or `[[event]]`
+    pipeline blocks. Parsing it here is how the first build of this check
+    reported repos gate-ready whose hooks were entirely ungranted — four of
+    the six spellings were invisible to it. Asking worktrunk to enumerate
+    costs one subprocess and cannot fall behind the grammar.
+
+    Two traps, both measured, both fatal to a hand-written version:
+
+    * A `[[event]]` block's keys are COMMAND NAMES, not metadata. A block
+      written `name = "delta"` / `command = "echo delta"` is two commands —
+      one called `name` running `delta`, one called `command` running
+      `echo delta` — and worktrunk runs both. So records are never filtered
+      on what a key is called; the only filter is `source`.
+    * `needs_approval` is approval state. It is worktrunk's answer to a
+      question the store owns, and the assertion forbids sourcing it here.
+      It is not read.
+
+    Only project hooks need approval; the operator's own user-level hooks
+    do not, and are not counted as gaps.
+    """
+    records = wt_json(["hook", "show"], cwd,
+                      "enumerate the hooks this repo configures")
+    if not isinstance(records, list):
+        raise Indeterminate("`wt hook show --format json` returned something "
+                            "other than a list of hook records")
+    return tuple(r["template"] for r in records
+                 if isinstance(r, dict) and r.get("source") == "project"
+                 and isinstance(r.get("template"), str))
 
 
 def granted_commands(identifier: str) -> tuple[str, ...]:
-    """The operator's grants for one project identifier. A store that does
-    not exist, carries no table for this identifier, or carries an empty
-    array all mean the same thing: no grants. A store that exists but will
-    not parse is a different thing, and raises."""
+    """The operator's grants for one project identifier.
+
+    Absent and malformed are different answers. A store that does not
+    exist, holds no table for this identifier, or holds an empty array all
+    mean "no grants" — an ungranted repo, with a remedy that applies. A
+    store that will not parse, or is not shaped the way this check reads
+    it, means "we could not tell", and raises so the repo comes out
+    indeterminate. The decision record calls this file's shape explicitly
+    unsettled, so a reshape is the named risk, not a hypothetical.
+    """
     store = APPROVALS_STORE.expanduser()
     if not store.is_file():
         return ()
-    table = (tomllib.loads(store.read_text()).get("projects")
-             or {}).get(identifier) or {}
-    return tuple(c for c in table.get("approved-commands", [])
-                 if isinstance(c, str))
+    try:
+        data = tomllib.loads(store.read_text())
+    except (OSError, ValueError) as e:
+        raise Indeterminate(f"the approvals store {store} could not be read "
+                            f"({e})") from e
+
+    def wrong(what: str) -> Indeterminate:
+        return Indeterminate(f"the approvals store {store} is not shaped as "
+                             f"this check reads it: {what}")
+
+    projects = data.get("projects")
+    if projects is None:
+        return ()
+    if not isinstance(projects, dict):
+        raise wrong("`projects` is not a table")
+    table = projects.get(identifier)
+    if table is None:
+        return ()
+    if not isinstance(table, dict):
+        raise wrong(f"the entry for {identifier} is not a table")
+    commands = table.get("approved-commands")
+    if commands is None:
+        return ()
+    if not isinstance(commands, list):
+        raise wrong(f"{identifier}'s `approved-commands` is not an array")
+    if not all(isinstance(c, str) for c in commands):
+        raise wrong(f"{identifier}'s `approved-commands` holds a value that "
+                    "is not a string")
+    return tuple(commands)
+
+
+def repo_key(cwd: Path) -> str:
+    """The repo a working directory belongs to, named without asking
+    worktrunk — because this is also what names a repo when worktrunk is
+    the thing that failed. Walks up for the project config being checked,
+    then for a git root. Two actors in two subdirectories of one repo must
+    land on one key, or the pass reports the same repo twice.
+    """
+    here = cwd.resolve()
+    for d in (here, *here.parents):
+        if (d / ".config" / "wt.toml").is_file() or (d / ".git").exists():
+            return str(d)
+    return str(here)
 
 
 def gate_readiness(cwd: Path, cache: dict[str, GateCheck]) -> GateCheck:
     """Is the repo at `cwd` one whose merge gate its agents can run?
 
     Evaluated once per repo per pass — several actors share one repo in
-    practice, and the answer is about the repo, not the actor. The key is
-    the directory holding the project config that was actually read (or
-    the resolved working directory when there is none), so the key and the
-    thing checked cannot disagree. worktrunk's project config is always
-    `<repo>/.config/wt.toml` — measured: a bare `wt.toml` at a repo root
-    is not recognized — so that directory is the repo, and the key reads
-    as the repo an operator would go and grant.
-    """
-    try:
-        project = wt_project(cwd)
-    except RuntimeError as e:
-        key = str(cwd.resolve())
-        return cache.setdefault(
-            key, GateCheck(key, "indeterminate", reason=str(e)))
+    practice, and the answer is about the repo, not the actor.
 
-    config = project.get("path")
-    key = str(Path(config).parent.parent if config else cwd.resolve())
+    Every failure is contained here and becomes an indeterminate verdict
+    for this one repo. Nothing raises out of this function: the check is
+    consulted from inside `up`, `status` and `reconcile`, and a repo whose
+    approvals store is reshaped must not take down a pass that also has
+    unrelated actors to place, conductors to nudge and sessions to stop —
+    least of all a `reconcile --interval` daemon.
+    """
+    key = repo_key(cwd)
     if key in cache:
         return cache[key]
+    try:
+        check = _gate_readiness(cwd, key)
+    except Indeterminate as e:
+        check = GateCheck(key, "indeterminate", reason=str(e))
+    except Exception as e:  # noqa: BLE001 — fail closed, never fail loudly
+        check = GateCheck(key, "indeterminate",
+                          reason=(f"the check raised an unexpected "
+                                  f"{type(e).__name__}: {e}"))
+    return cache.setdefault(key, check)
 
+
+def _gate_readiness(cwd: Path, key: str) -> GateCheck:
+    project = wt_project(cwd)
     identifier = project.get("identifier")
     # No project config is not a failed check: there is no gate here, so
     # there is nothing an agent could be unable to run.
-    if not project.get("exists") or not config:
-        return cache.setdefault(key, GateCheck(key, "ready", identifier))
+    if not project.get("exists") or not project.get("path"):
+        return GateCheck(key, "ready", identifier)
 
-    try:
-        templates = hook_templates(Path(config))
-    except (OSError, ValueError) as e:
-        return cache.setdefault(key, GateCheck(
-            key, "indeterminate", identifier,
-            reason=f"the project config {config} could not be read: {e}"))
+    # Worktrunk's own enumeration, not our parse of its grammar. A failure
+    # here is indeterminate and never an empty template set — `wt hook
+    # show` exits 1 with empty stdout on a config it cannot load, so "no
+    # hooks" and "unreadable config" are one exit code apart.
+    templates = project_hook_templates(cwd)
     if not templates:
-        return cache.setdefault(key, GateCheck(key, "ready", identifier))
+        return GateCheck(key, "ready", identifier)
     # Templates to check but no identifier to key them on: worktrunk knows
     # of hooks here and we cannot tell whose grants would cover them.
     if not identifier:
-        return cache.setdefault(key, GateCheck(
-            key, "indeterminate", identifier, templates,
-            reason="worktrunk resolved no project identifier for this repo"))
+        raise Indeterminate("worktrunk resolved no project identifier for "
+                            "this repo, so its grants cannot be looked up")
 
-    try:
-        grants = granted_commands(identifier)
-    except (OSError, ValueError) as e:
-        return cache.setdefault(key, GateCheck(
-            key, "indeterminate", identifier, templates,
-            reason=(f"the approvals store "
-                    f"{APPROVALS_STORE.expanduser()} could not be read: {e}")))
+    grants = granted_commands(identifier)
     # Exact equality on the unexpanded template text — the same text
     # worktrunk keys its own grants on, so one grant covers every branch's
     # expansion. Measured: a single added space defeats the match, which is
     # worktrunk's behaviour and therefore has to be this check's too.
     missing = tuple(t for t in templates if t not in grants)
-    return cache.setdefault(key, GateCheck(
-        key, "ready" if not missing else "ungranted",
-        identifier, templates, missing))
+    return GateCheck(key, "ready" if not missing else "ungranted",
+                     identifier, templates, missing)
 
 
 def report_gate(check: GateCheck, reported: set[str], indent: str = "",
@@ -434,18 +542,40 @@ def begin_pass() -> None:
     GATE_REPORTED.clear()
 
 
-def start_targets(manifest: dict, host: str) -> list[Path]:
-    """The working directories this host would start actors into — the
-    manifest's rows for this host, and the conductors' directory that
-    `reconcile` places tracker-driven conductors in. Rows on other hosts
-    are reported, not driven, and their repos are not inspectable here."""
-    targets = [(manifest["root"] / a["cwd"]).resolve()
-               for a in manifest["actors"]
-               if a.get("host") == host and a.get("cwd")]
+def start_targets(manifest: dict, host: str
+                  ) -> tuple[list[Path], list[tuple[str, str]]]:
+    """What this host can inspect, and what it cannot — `(targets, skipped)`.
+
+    A gate row may only be printed for a repo actually looked at. Another
+    host's repo and a working directory absent from this machine have no
+    config to read, and claiming either is gate-ready would be a statement
+    about a gate nobody checked. So they are skipped — and every skip is
+    returned with its reason, because a gate report covering fewer repos
+    than the actor rows imply, with nothing saying why, reads as a clean
+    bill of health for repos nobody checked. That silence is the disease
+    this whole check exists to cure; it does not get to reappear in the
+    report.
+    """
+    targets: list[Path] = []
+    skipped: list[tuple[str, str]] = []
+    rows = [(a.get("name", "?"), a.get("host"), a.get("cwd"))
+            for a in manifest["actors"]]
     cwd_rel = manifest["top"].get("conductors_cwd")
     if cwd_rel:
-        targets.append((manifest["root"] / cwd_rel).resolve())
-    return [t for t in targets if t.is_dir()]
+        rows.append(("(conductors)", host, cwd_rel))
+    for name, a_host, rel in rows:
+        if a_host != host:
+            skipped.append((name, f"placed on {a_host or '?'}, not this host"))
+            continue
+        if not rel:
+            skipped.append((name, "no cwd: in the manifest"))
+            continue
+        cwd = (manifest["root"] / rel).resolve()
+        if not cwd.is_dir():
+            skipped.append((name, f"{rel} is not present on this machine"))
+            continue
+        targets.append(cwd)
+    return targets, skipped
 
 
 def gate_rows(repos: list[Path], indent: str = "") -> None:
@@ -483,11 +613,16 @@ def status(manifest: dict, host: str, session: str, env: dict) -> int:
     # The merge gate its agents would have to run, per repo this host
     # places actors into. Reported, never acted on: status starts nothing,
     # and an ungranted repo is not drift.
-    targets = start_targets(manifest, host)
+    targets, skipped = start_targets(manifest, host)
+    print()
+    print("repo hook approvals")
     if targets:
-        print()
-        print("repo hook approvals")
         gate_rows(targets)
+    if skipped:
+        for name, why in skipped:
+            print(f"{name}: not checked from here — {why}")
+    if not targets and not skipped:
+        print("no actors on this host")
     return 1 if drift else 0
 
 
