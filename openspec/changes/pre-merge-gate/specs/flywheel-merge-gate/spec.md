@@ -45,9 +45,20 @@ for exactly that reason.
 
 `.config/wt.toml` SHALL carry a `[post-start]` entry whose command is
 `wt step copy-ignored`. The hook exists because `check-site.mjs` needs
-`jsdom` from `node_modules`, which no fresh worktree has; the copy is
-chosen over a fresh `npm ci` because it is the cheaper path to the same
-state.
+`jsdom` from `node_modules`, which no fresh worktree has.
+
+The comment describing it SHALL NOT claim the copy is "the cheaper path to
+the same state", or any equivalent. **Both halves are unmeasured.** `npm ci`
+is timed in `finding.md` (2.0 s); `wt step copy-ignored` is timed nowhere,
+so "cheaper" compares a measured number against an unknown. And "the same
+state" is contradicted by this bolt's own recorded residual: the copy
+delivers `jsdom` only if the source worktree has it, where `npm ci` fetches
+it regardless.
+
+What the comment MAY say is what is actually known: `decisions/gate-runs-under-pre-merge.md`
+chose the copy over a fresh `npm ci`, and worktrunk offers it as its
+eliminate-cold-starts step. That is a decision with a citation rather than a
+measurement claimed without one.
 
 Any prose describing this hook SHALL state the source at the precision
 worktrunk states it: `wt step copy-ignored --help` on `wt 5fba0bd` says
@@ -120,10 +131,17 @@ expectation.
 ### Requirement: The configuration's head comment describes the mechanism it configures
 
 The `.config/wt.toml` head comment block SHALL describe the gate as it then
-is: the hooks run after the rebase and before the merge to target, on every
-shape of `wt merge` including the clean fast-forward, with `HEAD` equal to
-the sha that lands and the source worktree as cwd, and a failure aborting
-with nothing landed.
+is: the hooks run after the rebase and before the merge to target, with
+`HEAD` equal to the sha that lands and the source worktree as cwd, and a
+failure aborting with nothing landed.
+
+The shapes claim SHALL carry its qualifier: **on every shape of `wt merge`
+that does not suppress them**, the clean fast-forward included. The bare
+universal is refuted by the very finding cited for it — `finding.md`'s
+`nohooks` and `noverify` rows ran nothing — and `--no-hooks` and
+`--no-verify` are the suppressing shapes. `bolt.md` carried the same bare
+universal for six commits and is corrected at `28fb534`; the wording here
+follows that correction.
 
 Neither of the two sentences the file carries before this change SHALL
 appear anywhere in it afterwards: "during `wt merge` before the commit, on
@@ -182,10 +200,12 @@ instruction to treat an ungated merge as neither a green nor a defect
 licenses shrugging at the exact symptom `finding.md` records as
 indistinguishable from a gated merge.
 
-The scoped reading — that for this bolt's own merge-back a zero-hook result
-is that question answering itself — is
-`openspec/changes/merge-gate-remedy/bolt.md`'s, and SHALL be cited there
-rather than reproduced.
+Where a bolt's own merge-back turns on the answer, how to read that one
+merge belongs to its `bolt.md` and SHALL be **cited** from there rather than
+reproduced. That record's reasoning moves — `merge-gate-remedy`'s previously
+pre-assigned a zero-hook merge-back to the config-locus question and
+withdrew it at `28fb534` as the same false dichotomy — which is precisely
+why standing prose cites the record instead of copying its current view.
 
 The same obligation binds `skills/_reference/herdr.md` under the
 `flywheel-gate-description` capability, and the two files SHALL carry the

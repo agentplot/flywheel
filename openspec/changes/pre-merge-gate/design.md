@@ -13,7 +13,7 @@ the conductor-authorized adjacent edits.
 
 | Fact | Strength | Source |
 | --- | --- | --- |
-| `[pre-merge]` hooks run on every shape of `wt merge`, including the clean fast-forward, after the rebase, with `HEAD` equal to the sha that lands and cwd the source worktree; a failure aborts with exit 1 and nothing landed | **measured**, ten shapes | `openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md` |
+| `[pre-merge]` hooks run after the rebase, with `HEAD` equal to the sha that lands and cwd the source worktree, on every shape of `wt merge` **that does not suppress them** — the clean fast-forward included; a failure aborts with exit 1 and nothing landed. The qualifier is load-bearing: the bare universal is refuted by the `nohooks`/`noverify` rows of this same finding | **measured**, ten shapes | `openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md` |
 | `[pre-commit]` fires only where `wt` itself writes a commit — never on the clean fast-forward, and not even on `--no-ff` | **measured** | same, `noff` and `ff-clean-2` rows |
 | `--no-hooks` and `verify = false` each run **zero** hooks and exit 0 | **measured** | same, `nohooks` and `noverify` rows |
 | Unapproved project hooks in a non-interactive environment abort with exit 1 and nothing landed — never an ungated green | **measured** | same, `lab/evidence/unapproved.txt` |
@@ -23,7 +23,8 @@ the conductor-authorized adjacent edits.
 | `--yes` on `wt config approvals add` fails non-interactively and persists nothing | **measured**, same pass | `bolt.md` |
 | `wt step copy-ignored --help`: `--from` "Defaults to main worktree" | **documented by the binary**, not a measurement of behaviour — `wt 5fba0bd`, read by this spec session | the binary's own help |
 | Worktrunk's own documentation states **both** answers for a pre-\* hook table, in two copies both labelled version 1.0.0 | **documented, and self-contradictory** — see below | the two `hook.md` copies and `wt hook --help`, all quoted below |
-| A trailing `-C` reads the wrong directory and reports no hooks | **PROSE ONLY, not measured** — its sole provenance is `skills/_reference/herdr.md`, added in `b5d308b` | filed for measurement as #64 |
+| A trailing `-C` reads the wrong directory and reports no hooks | **PARTIALLY measured under #64** — `hook show` is unaffected, `wt merge` untested; the prose originates in `skills/_reference/herdr.md`, added in `b5d308b` | #64 |
+| `npm ci` costs 2.0 s; `wt step copy-ignored` is timed **nowhere**, and the copy delivers `jsdom` only if the source worktree has it | `npm ci` **measured**; the comparison and "the same state" **NOT measured** | `finding.md`; this bolt's recorded residual |
 | `wt hook show` listing exactly four project templates on this configuration | **EXPECTED, not measured** — see below | task 2.7 |
 | Which worktree's *config* supplies the hooks when source and target differ | **NOT measured** — the lab ran symmetric config throughout | see below |
 | What order the three `[pre-merge]` entries actually run in **on this tree** | **NOT measured**, and not measurable until the grant lets the hooks run | see below |
@@ -54,18 +55,24 @@ the requirement is written as an expectation until it does.
 ### The two unmeasured facts, and why each is handled the way it is
 
 **Config locus.** The spec forbids resolving it in either direction and
-forbids a standing instruction about how to read a zero-hook merge. The
-reasoning is worth keeping where a builder will read it: the scoped
-reading — "for *this* bolt's merge-back, zero hooks is the asymmetric-config
-question answering itself, neither a green nor a defect" — is correct as an
-instruction about one merge, and it is what `bolt.md` says. Transplanted
-into standing prose it becomes a general licence telling every future agent
-to shrug at an ungated merge. That is the precise symptom `finding.md`
-records as having "no way to tell it apart from a gated merge", and it is
-why this intent exists at all. It would also be a false dichotomy: two other
-causes of a zero-hook merge are measured (`nohooks`, `noverify`) and a third
-is documented in `herdr.md` without ever having been measured. Cite
-`bolt.md`; do not reproduce it.
+forbids a standing instruction about how to read a zero-hook merge.
+
+The reasoning is worth keeping where a builder will read it, and the history
+is the argument. `bolt.md` used to say that a zero-hook merge-back would be
+"the asymmetric-config question answering itself, neither a green nor a
+defect". **It withdrew that at `28fb534`** as a false dichotomy — the same
+error this change already refused to carry into standing prose. At least
+four causes produce zero hooks: `--no-hooks` and `--no-verify` (measured), a
+trailing `-C` (partially measured under #64 — `hook show` unaffected,
+`wt merge` untested), and only then the config locus. A zero-hook merge is
+evidence of nothing until the others are excluded, which is why this bolt's
+merge-backs now run from inside the worktree with no `-C` at all.
+
+As standing prose, pre-assigning the cause would be a general licence
+telling every future agent to shrug at an ungated merge — the precise
+symptom `finding.md` records as having "no way to tell it apart from a gated
+merge", and the reason this intent exists. **Cite `bolt.md`; do not
+reproduce its reasoning**, which has now moved once and may move again.
 
 **Execution order.** Dropped, and the conclusion is unchanged under every
 reading. The rationale, however, has now been wrong twice in this bolt in

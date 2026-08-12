@@ -75,3 +75,40 @@ bolt. Locate every site by heading or quoted phrase.
       slip in.
 - [x] 4.4 Do not merge. Do not push. The merge-back is the conductor's, it
       carries both changes together, and it waits on the grant.
+
+## 5. Comment corrections after the code-review (comments only — the freeze holds)
+
+**The freeze protects template strings, not the file.** Approvals key on the
+command text, measured twice in this bolt: a template moved between hook
+tables with unchanged text kept its grant, and the negative control was a
+trailing space *inside the command*. Both edits below are in comments, which
+are part of no template. If any fix here would require touching a command
+string, **stop and report** — that re-takes the operator's grant and is the
+conductor's call.
+
+- [ ] 5.1 Capture the baseline first: run `wt hook show` and save its exact
+      output before editing anything.
+- [ ] 5.2 The `[post-start]` comment: remove "the cheaper path to the same
+      state". Neither half is measured — `npm ci` is timed in `finding.md`
+      but `wt step copy-ignored` is timed nowhere, and "the same state" is
+      contradicted by this bolt's own residual, since the copy delivers
+      `jsdom` only if the source worktree has it. Say instead that
+      `decisions/gate-runs-under-pre-merge.md` chose the copy over a fresh
+      `npm ci`, and that worktrunk offers it as its eliminate-cold-starts
+      step.
+- [ ] 5.3 The head comment: qualify the shapes claim to **"on every shape of
+      `wt merge` that does not suppress them"**, the clean fast-forward
+      included, naming `--no-hooks` and `--no-verify` as the suppressing
+      shapes. The bare universal is refuted by the `nohooks` and `noverify`
+      rows of the very finding cited for it. Take the corrected wording from
+      `openspec/changes/merge-gate-remedy/bolt.md` at `28fb534`.
+- [ ] 5.4 Reflect the bolt record's other correction: it no longer says a
+      zero-hook merge-back is the config-locus question answering itself.
+      Four causes produce zero hooks, and this bolt's merge-backs now run
+      from inside the worktree with no `-C`. **Cite the record; do not
+      reproduce its scoped reasoning as standing prose** — that reasoning
+      has already moved once.
+- [ ] 5.5 **Prove the grant is untouched**: run `wt hook show` again and
+      confirm it lists the same four templates **byte-identical** to the
+      5.1 baseline. A diff of one character means a template changed —
+      stop and report rather than adjusting.
