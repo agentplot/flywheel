@@ -2,6 +2,9 @@
 
 - **Item:** #13
 - **Raised by:** `site-refresh-build-1`, rebuilding the landing page under `bolt/site-refresh` (#12); triaged into this intent by dispatch.
+- **Closed by:** `../decisions/work-object-names.md` (the triple) and
+  `../decisions/landing-pass-licence.md` (the hero-copy and
+  slash-command licences the call carried).
 
 ## The question
 

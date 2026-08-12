@@ -54,6 +54,9 @@ The operator worked the page and closed all three decisions
   commands change; 10 inbound files / 15 lines follow; the two
   never-applied `type:proposal-*` labels are renamed with them.
 
-Outcomes and pointers posted on #13. The decision record under
-`decisions/` and the landing pass are the next work, proposed to the
-conductor in this session's report.
+Outcomes and pointers posted on #13. The decisions are recorded at
+`../../decisions/work-object-names.md` (the triple) and
+`../../decisions/landing-pass-licence.md` (the hero-copy and
+slash-command licences); the question record points to both. The
+landing pass is the next work, proposed to the conductor in this
+session's report.
