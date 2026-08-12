@@ -24,14 +24,21 @@ start, with the exact remedy in hand, rather than mid-merge.
 ## What Changes
 
 - `bin/flywheel` gains a **hook-approval precondition** on every repo it is
-  about to start an actor into: every hook template defined in that repo's
-  `.config/wt.toml` must have a matching entry, byte-for-byte, in the
-  `[projects."<identifier>"]` table of `~/.config/worktrunk/approvals.toml`.
+  about to start an actor into: every project hook template worktrunk resolves
+  from that repo's `.config/wt.toml` must have a matching entry, byte-for-byte,
+  in the `[projects."<identifier>"]` table of
+  `~/.config/worktrunk/approvals.toml`. Worktrunk's hook grammar accepts five
+  shapes, not one, so the templates are taken from worktrunk's own enumeration
+  of its configured hooks rather than from a hand-written parse of the file —
+  the authority line the bolt record draws. The approval verdict is still ours,
+  read from the store.
 - **`flywheel up` refuses to start any actor into a repo that fails the
   check.** It names the ungranted templates and prints the exact remedy —
   `wt config approvals add`, run interactively in that repo — instead of a
   generic failure. Actors whose repos pass are started as they are today.
-- **`flywheel status` reports the check as a row per repo**, starting nothing.
+- **`flywheel status` reports the check as a row per repo it can inspect from
+  here**, starting nothing — and names any actor whose repo it skipped, and
+  why, so the gate rows are never read as covering more than they do.
 - The same precondition guards **`flywheel reconcile`**'s actor starts —
   manifest rows and tracker-driven conductors alike. `reconcile` is the pass
   that actually places actors on an interval; a guard on `up` alone would

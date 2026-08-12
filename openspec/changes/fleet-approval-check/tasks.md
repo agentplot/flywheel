@@ -56,9 +56,15 @@ a thing to build around.
       `wt config show --format json -C <path>` per repo, per `design.md`
       decision 1. Treat `project.exists: false` as "no hooks", not as an
       error. Done when a repo outside any project resolves to gate-ready.
-- [x] 2.3 Collect hook templates from exactly the ten hook event tables the
-      spec names, and from no other table. Done when a project config carrying
-      a non-hook table contributes nothing from it.
+- [ ] 2.3 Collect hook templates from worktrunk's own enumeration of the repo's
+      configured hooks — `wt hook show --format json -C <path>`, taking
+      `template` from every record whose `source` is `"project"`. Do NOT parse
+      the hook grammar by hand: it accepts five shapes (`design.md`, *The
+      hook-template grammar*), and a parser covering only the named-table form
+      reports a repo gate-ready whose hooks are entirely ungranted. Ignore
+      `needs_approval` — that field is approval state, and the store is the
+      authority on grants. Done when a fixture in each of the five shapes
+      yields every one of its commands, and a user-level hook yields none.
 - [x] 2.4 Compare with exact string equality on the unexpanded template text,
       against the `approved-commands` array of the `[projects."<identifier>"]`
       table. A missing store file, a missing table, and an empty array all mean
@@ -72,6 +78,21 @@ a thing to build around.
 - [x] 2.6 Cache the result per pass, keyed on the project-config path's parent
       (or the resolved working directory when there is no project config), so
       a repo is evaluated and reported once however many actors resolve to it.
+- [ ] 2.7 Treat a non-zero exit from the hook enumeration as **indeterminate**,
+      never as an empty template set. Measured: with a project config worktrunk
+      cannot load, `wt hook show --format json` exits 1 with empty stdout — so
+      "no records" and "config unreadable" are indistinguishable without the
+      exit code, and reading the first as gate-ready is a false green on a repo
+      whose gate is definitionally unrunnable. Done when a malformed project
+      config yields indeterminate and a repo with genuinely no project hooks
+      yields gate-ready.
+- [ ] 2.8 Contain every failure to the repo it concerns: a store that is
+      unreadable or not shaped as expected, and a failed worktrunk query, make
+      that one repo indeterminate and let the pass finish reporting the others.
+      No unhandled exception may escape the check into `up`, `status` or
+      `reconcile`. Summarise a worktrunk failure rather than relaying its raw
+      error stream. Done when a reshaped store leaves all three commands
+      running and reporting.
 
 ## 3. Wire it into the three commands
 
@@ -86,10 +107,16 @@ a thing to build around.
       repos in the same pass, and the command exits non-zero when it refused
       any start for this reason. Done when a mixed manifest starts one actor,
       refuses the other, and exits non-zero.
-- [x] 3.3 `flywheel status`: add one row per repo the manifest's actors resolve
-      to, showing gate-readiness, with ungranted templates and the same remedy
-      beneath a failing row. Leave the existing per-actor rows and the drift
+- [ ] 3.3 `flywheel status`: add one row per repo **it can inspect from here** —
+      this host's actors whose working directories resolve on this machine —
+      showing gate-readiness, with ungranted templates and the same remedy
+      beneath a failing row. Claim nothing about a repo on another host or a
+      directory that is absent. Leave the existing per-actor rows and the drift
       exit code intact. Start nothing.
+- [ ] 3.3a `flywheel status`: name every actor whose repo was skipped from the
+      gate rows and why — on another host, or its directory not present here.
+      Done when a reader can tell from the output alone which repos were
+      checked and which were not; silently omitting them is the defect.
 - [x] 3.4 `flywheel reconcile`: apply the same check to both start paths — the
       manifest rows it delegates to `up`, and the tracker-driven conductors it
       starts itself. A refused repo does not stop the rest of the pass: nudges
@@ -149,3 +176,33 @@ a thing to build around.
       merge around it.
 - [x] 6.4 Comment on `#36` naming what was built and what was measured in
       task 1, including any neighbour that had moved.
+
+## 7. Re-verify after the code-review remediation
+
+The adversarial code-review found the extraction reported gate-ready on hooks
+it could not see. These tasks are what prove that class of defect is gone —
+run them against the rebuilt check, not against the reasoning about it.
+
+- [ ] 7.1 Build one fixture per accepted grammar shape — bare string, named
+      table, inline table, array of strings, mixed array, `[[event]]` pipeline
+      blocks — each ungranted, and confirm every command in every shape is
+      reported as a gap. Isolate with a relocated `HOME`; **never** write the
+      operator's `~/.config/worktrunk/approvals.toml`.
+- [ ] 7.2 Cross-check each fixture against `wt hook show --format json`: the
+      set of templates the check reports SHALL equal the set of `template`
+      values whose `source` is `"project"`. A shape where the two disagree is a
+      defect in the check, not in the fixture.
+- [ ] 7.3 Confirm a `[[event]]` block's keys are read as command names: a block
+      written `name = "x"` / `command = "y"` yields two commands, `x` and `y`,
+      matching worktrunk's enumeration exactly.
+- [ ] 7.4 Confirm a user-level hook is never reported as a gap, and that a repo
+      whose only hooks are user-level is gate-ready.
+- [ ] 7.5 Confirm a malformed project config is indeterminate, not gate-ready,
+      and that a reshaped approvals store leaves `up`, `status` and `reconcile`
+      running rather than raising.
+- [ ] 7.6 Confirm `flywheel status` on a manifest with an off-host actor and an
+      absent working directory names both as skipped, with reasons, and claims
+      gate-readiness for neither.
+- [ ] 7.7 Re-run the whole verification group 5 against the rebuilt check, and
+      re-confirm 5.4: the operator's approvals store is byte-identical before
+      and after, and no hook was executed.

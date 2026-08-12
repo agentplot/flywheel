@@ -37,10 +37,58 @@ Every claim below was produced by running the command named.
 | identifier here | `github.com/agentplot/flywheel`, from both HTTPS and SSH remote forms (checked across the WilldanGroup repos on this machine) |
 | identifier with no remote | worktrunk falls back to the repo's **absolute path** (observed on a local-only repo) |
 | outside any repo | `project.exists: false`, `identifier: null`, no error |
-| hook event tables | exactly ten, enumerated by `wt hook --help`: `pre-`/`post-` × `switch`, `start`, `commit`, `merge`, `remove` |
+| hook **events** | exactly ten, enumerated by `wt hook --help`: `pre-`/`post-` × `switch`, `start`, `commit`, `merge`, `remove` |
+| `wt hook show --format json` | one record per configured command: `name`, `type`, `source`, `template`, `needs_approval` |
+| `source` | `"project"` or `"user"`; user hooks carry `needs_approval: false` — the help's table says approval is *Required* for project hooks and *Not required* for user hooks |
+| broken project config | `wt hook show --format json` exits **1** with empty stdout — it does not report zero hooks |
+| no project config | exits 0, emitting only `source: "user"` records |
 
-The build session re-runs these; see `tasks.md`, task 1. The last two rows are
-the load-bearing ones for the decision below.
+The build session re-runs these; see `tasks.md`, task 1.
+
+### The hook-template grammar
+
+The row above measures which hook **events** exist. It does not measure which
+**value shapes** an event accepts, and an earlier revision of this design
+generalised from the one shape this repo happens to use — a named table. That
+was wrong, and it was the root of a false green: a repo whose hooks are written
+in any other shape read as "no hooks configured" and resolved gate-ready.
+
+Measured directly against `wt 5fba0bd`, in isolated fixtures under a relocated
+`HOME` so the operator's store was never touched. The project-hook grammar is:
+
+```
+<event> = String | Table<name → String> | Array<String | Table<name → String>>
+```
+
+The binary states it itself. Given `pre-merge = [["echo a"]]` it refuses to load
+the config with:
+
+```
+invalid type: sequence, expected a command string "cargo build" or a named table { build = "cargo build" }
+```
+
+Every accepted shape, and what `wt hook show --format json` returns for it:
+
+| fixture | shape | records |
+|---|---|---|
+| `pre-merge = "echo bare"` | bare string | 1, `name: null` |
+| `[pre-merge]` + two keys | named table | 2, named |
+| `pre-merge = { gamma = "…" }` | inline table | 1, named |
+| `pre-merge = ["echo one", "echo two"]` | array of strings | 2, `name: null` |
+| `pre-merge = ["echo a", { b = "echo b" }]` | mixed array | 2, one anonymous one named |
+| two `[[pre-merge]]` blocks | pipeline | one record per key across all blocks |
+
+`[[event]]` blocks are TOML's array-of-tables spelling of the Array-of-Table
+branch, which is why they need no separate grammar rule. They are the form
+`wt hook --help` documents under *Hook forms*, and `wt --yes hook pre-merge`
+runs them in block order — measured, not inferred.
+
+One trap worth recording, because the first fixture written here fell in it: a
+`[[event]]` block's keys are **command names**, not metadata. A block written
+`name = "delta"` / `command = "echo delta"` is not a step called `delta` — it is
+two commands, one called `name` running `delta` and one called `command`
+running `echo delta`, and worktrunk enumerates both. Any hand-written parser has
+to know that. This is precisely why the check asks worktrunk instead.
 
 ## Goals / Non-Goals
 
@@ -67,37 +115,47 @@ the load-bearing ones for the decision below.
 
 ## Decisions
 
-### 1. Ask worktrunk for the identifier; read the two TOML files for the state
+### 1. Worktrunk is the authority on its own configuration; the store is the authority on grants
 
-The check resolves a repo's project identifier and project-config path with
-one read-only `wt config show --format json -C <path>` per candidate repo, then
-parses that config file and the approvals store itself with `tomllib` and
-compares strings.
+This is the conductor's ruling, drawn once in
+`openspec/changes/merge-gate-remedy/bolt.md` under *Where `wt` is the authority,
+and where it is not*, and read from disk at this revision. #36 hit the line
+twice — at the project identifier and at the hook-template grammar — so the
+bolt drew it rather than leaving each call to be re-argued.
 
-*Why not derive the identifier from the git remote?* It is a reimplementation
-of a worktrunk rule with a non-obvious branch: measured above, a repo with no
-remote keys on its **absolute path**, not on any `github.com/...` form. A
-divergent derivation fails loud rather than silent — a wrong key finds no
-table, so the check reports "ungranted" and refuses a start it should have
-allowed — but that is a fleet stoppage for a reason that is not true, which is
-the failure mode this whole intent exists to remove.
+**From worktrunk, read-only:** the project identifier, the project config's
+location, and the enumeration of configured hooks with their template text —
+`wt config show --format json -C <path>` for the first two,
+`wt hook show --format json -C <path>` for the third, taking `template` from
+each record whose `source` is `"project"`.
+
+**From the approvals store, ours to read and compare:** whether each of those
+templates is granted. Parsed with `tomllib`, compared with exact string
+equality. `wt hook show`'s `needs_approval` field is approval state and is
+exactly what the assertion forbids sourcing from worktrunk — it is ignored.
+
+*Why not re-derive either by hand?* Both proved to have non-obvious branches
+that a hand-written version gets wrong silently. The identifier: a repo with no
+remote keys on its **absolute path**, not on any `github.com/...` form. The
+grammar: five accepted shapes, one of which (`[[event]]` blocks) treats its keys
+as command names — measured above, and the trap the first fixture here fell
+into. Re-deriving either is the reimplementation of `wt` that #36's own item
+body disclaims, and it goes stale silently the day worktrunk changes.
 
 *Why this does not cross the assertion's boundary.* The assertion forbids
 invoking `wt` **to determine approval state**, and forbids writing the store.
-`wt config show --format json` returns no approval state at all — measured, its
-`user.config.projects` is `{}` and the approvals store is not among the files
-it reports. The approval state still comes from reading the two TOML files and
-comparing them, exactly as asserted. The boundary's purpose is visible in what
-it rules out: shelling `wt config approvals add` and scraping its output, which
-*is* asking worktrunk for approval state.
+Neither call returns approval state that this check consumes: `wt config show`
+returns none at all (measured — its `user.config.projects` is `{}`), and
+`wt hook show`'s one approval field is discarded. The approval determination
+remains a comparison against the store, exactly as asserted. The boundary's
+purpose is visible in what it still rules out: shelling `wt config approvals
+add` and scraping its output, or trusting `needs_approval` — both of which
+*are* asking worktrunk for approval state.
 
-**This is the one call the proposal-review should rule on.** It is flagged in
-the session report rather than buried here.
-
-*Alternative held in reserve:* if review rejects the subprocess, derive
-`<host>/<owner>/<repo>` from `origin` and fall back to the repo root's absolute
-path when there is no remote. Same spec, same scenarios; only the *Indeterminate
-check* requirement loses its "worktrunk unavailable" trigger.
+*What the enumeration must not swallow.* `wt hook show --format json` exits **1**
+with empty stdout when the project config cannot be loaded (measured). Treating
+that as "no hooks" would resolve a repo with an unloadable gate config to
+gate-ready — a false green. The exit code is load-bearing, not incidental.
 
 ### 2. The guard sits at the actor-start boundary, so `reconcile` is covered
 
@@ -142,13 +200,18 @@ The repo's identity for caching is the worktrunk project config path's parent,
 or the resolved working directory when there is no project config — not the git
 toplevel, so that the cache key and the thing checked cannot disagree.
 
-### 4. A no-hooks repo passes
+### 4. A no-project-hooks repo passes; an unreadable one does not
 
-If a repo defines no hook templates, there is no gate for an agent to be unable
+If a repo resolves no project hook, there is no gate for an agent to be unable
 to run. Refusing to start actors there would block fleets that use no worktrunk
-hooks at all, for no gain. This is why the *no worktrunk project config* case
-resolves to gate-ready rather than to the indeterminate branch — stated as its
-own scenario so the two are not confused.
+hooks at all, for no gain. So a repo with no project config, and a repo whose
+config carries only user-level hooks, both resolve gate-ready.
+
+The neighbouring case resolves the other way, and the distinction is the whole
+point: a project config worktrunk **cannot load** is indeterminate, not
+gate-ready. Both present as "the enumeration returned nothing", and only the
+exit code tells them apart. Three separate scenarios in the spec keep them from
+collapsing into each other.
 
 ### 5. Exact string equality, unexpanded
 
@@ -158,11 +221,31 @@ comparing loosely would report granted when worktrunk will refuse. Equality on
 the raw string is both correct and the only thing that matches worktrunk's own
 behaviour.
 
-Note the standing caveat from `questions/hook-approvals-never-granted.md`:
-"approvals key on template text, so moving a check between tables re-keys
-nothing" is read from the head comment of `.config/wt.toml` and is **not
-measured**. The spec states it as a requirement scenario; task 1 measures it
-rather than inheriting it.
+The corollary — that moving a granted template between hook events preserves
+its grant — is now measured rather than inherited from the head comment of
+`.config/wt.toml`. `bolt.md` records the run: granted under `[pre-commit]` the
+hook runs; the same text under `[pre-merge]` with the store untouched, it still
+runs; and the negative control, one added trailing space, breaks it. That
+upgrades what `questions/hook-approvals-never-granted.md` marks provisional, and
+it is why the spec's scenario on the table move states a measured fact.
+
+### 6. `status` reports what it can inspect, and names what it skipped
+
+`status` runs on one host and can only read config that is present on it.
+Another host's repo is not inspectable from here, and an actor whose working
+directory does not resolve on this machine has no config to read. So the gate
+rows cover this host's resolvable repos and no more — anything else would be a
+claim about a gate the command never looked at, which is the one thing this
+capability is built to prevent.
+
+That narrowing creates its own hazard, which is why the spec pairs it with a
+requirement rather than leaving it implicit: the per-actor rows and the gate
+rows then disagree about how many repos exist. A reader seeing four actor rows
+and two gate rows, with nothing saying why, reads the two green gate rows as
+covering the fleet. Every skipped actor is therefore accounted for by a stated
+reason — placed on another host, or its directory absent here. A gate report
+that quietly covers less than it appears to is this intent's own disease, and it
+is not allowed to reappear in the report itself.
 
 ## Risks / Trade-offs
 
@@ -171,10 +254,18 @@ rather than inheriting it.
   matches, so the fleet refuses starts and prints the remedy rather than
   starting agents into an ungated repo. The parse failure is reported as an
   indeterminate check, not as ungranted templates.
-- **`wt config show --format json`'s schema is also internal** → Same
-  fail-closed direction: a missing `project.identifier` is an indeterminate
-  check. Decision 1 records the dependency-free alternative if this proves
-  unstable.
+- **Both worktrunk JSON schemas are internal too** → Same fail-closed
+  direction: a missing `project.identifier`, a non-zero exit, or records without
+  a `template` field are an indeterminate check, never gate-ready. The
+  dependency this accepts is deliberate — decision 1 records why re-deriving
+  either fact by hand proved worse, and both failure modes are measured rather
+  than assumed.
+- **The grammar could grow a sixth shape** → This is the risk that already bit
+  once, when a definition was generalised from the single shape this repo uses.
+  Sourcing templates from worktrunk's own enumeration is what makes a new shape
+  a non-event: a shape worktrunk resolves is a record it emits, and the check
+  reads records. A hand-written parser would silently under-report it as a
+  gate-ready repo.
 - **A repo can be granted and still fail to merge** → The check proves the
   grants exist; it does not prove the hooks pass. That is what the gate itself
   is for, and it is out of scope.
@@ -193,9 +284,12 @@ rather than inheriting it.
 
 ## Open Questions
 
-None that gate the build. The two live judgment calls — the `wt config show`
-subprocess (decision 1) and the `reconcile` widening (decision 2) — are stated
-as decisions with their reversal spelled out, not deferred as questions,
-because leaving either open would change the specs and the task breakdown.
-Both are flagged in the session report for the conductor and the
-proposal-review.
+None that gate the build. The two calls that were live when this change was
+first written are both settled: reading worktrunk for its own configuration is
+the conductor's ruling in `bolt.md` (decision 1), and the `reconcile` widening
+(decision 2) stands. Neither is deferred.
+
+One thing is deliberately left unmeasured, and it is safe to leave: whether
+worktrunk's grammar will grow a shape beyond the five measured here. The check
+does not depend on the answer, because it reads worktrunk's enumeration rather
+than the grammar — see the last risk above.
