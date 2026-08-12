@@ -56,15 +56,6 @@ apply:
   instruction: |
     Work the READY set to empty, then stop at the queue.
 
-    THIS LOOP RUNS AS ONE DYNAMIC WORKFLOW - that is what /opsx:apply
-    launches. Encode the steps below as the workflow's script rather
-    than performing them inline: QUERY and FOLD are stages; each WORK
-    batch is a stage whose agent charges the herdr session and waits
-    on it; the script loops rounds until the ready set is empty. Never
-    write a side workflow for a single item - the loop IS the
-    workflow, and the sessions it launches are the permitted exception
-    to herdr-only agents.
-
     The tracker is the org's, named by the `tracker:` line in the org's
     fleet.yaml; every tracker write runs as the app
     (`GH_TOKEN=$(<plugin-root>/bin/flywheel-token --org <org>)` — the
