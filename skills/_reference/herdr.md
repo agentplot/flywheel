@@ -273,6 +273,13 @@ the operator's approval, and nothing else moves it):
   --title "<the batch, imperatively>" <item> <item> ...
 ```
 
+A quick bolt's lone born-ready item goes on the board itself — the
+approval-carrier where an epic would be:
+
+```bash
+<plugin-root>/bin/flywheel-board --org <org> --repo <tracker> --status Ready <item>
+```
+
 Finding the epics the operator has released:
 
 ```bash

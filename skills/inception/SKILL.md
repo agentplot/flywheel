@@ -159,9 +159,11 @@ which you chose:
 3. **Item on a running bolt** — construction-scoped work a live bolt
    covers: queue it on the bolt's milestone.
 4. **Quick bolt** — small, fully defined work gets a `bolt/<slug>`
-   milestone and one ready item on the operator's word at triage.
-   Something that is genuinely one shell command is still one shell
-   command; run it and say so.
+   milestone and one ready item on the operator's word at triage, put
+   on the board at Status Ready (`flywheel-board`) — the lone item
+   carries the approval where an epic would. Something that is
+   genuinely one shell command is still one shell command; run it and
+   say so.
 5. **Dropped** — say so; record nothing.
 
 Conductors are started by the fleet layer, never by dispatch.

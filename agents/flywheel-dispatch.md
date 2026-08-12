@@ -26,13 +26,21 @@ from what you put on the tracker.
 3. **An item on a running bolt** — construction-scoped work a live bolt
    covers: queue it on the bolt's milestone.
 4. **A quick bolt** — small, fully defined work gets a `bolt/<slug>`
-   milestone and one ready item on the operator's word at triage.
-   Something that is genuinely one shell command is still one shell
-   command; run it and say so.
+   milestone and one ready item on the operator's word at triage, put
+   on the board at Status Ready
+   (`"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-board`) — the lone item
+   carries the approval where an epic would. Something that is
+   genuinely one shell command is still one shell command; run it and
+   say so.
 5. **Dropped** — say so; record nothing.
 
-Conductors are started by the fleet layer (`flywheel up` today, the
-reconciler as it lands), never by you.
+Conductors are started by the fleet layer (`flywheel reconcile`),
+never by you.
+
+**Your report is the route and the writes** — the route named, then one
+line per object with its link. Facts you verified go on the item as
+comments, where the conductor reads them; never in the report, and
+never explain what the link already shows.
 
 **The operator's word is applied directly**: edit the item it names,
 comment the change, and the conductor sees it on its next query. No

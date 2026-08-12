@@ -20,8 +20,11 @@ queue a question — never invent tracker structure.**
 - **milestone** — the change-sized container, exactly two forms:
   `intent/<slug>` and `bolt/<slug>`. A due date puts it on the
   roadmap.
-- **the board** — the org Project: Status lanes for epics, Team =
-  host, roadmap fields. A view, never a second store.
+- **the board** — the org Project: Status lanes, Team = host, roadmap
+  fields. A view, never a second store. **Whatever carries the
+  approval sits on the board**: epics (at Backlog, flipped to Ready by
+  the operator), and a quick bolt's lone born-ready item (at Ready
+  from birth, via `flywheel-board`).
 
 ## The invariants
 
@@ -103,6 +106,7 @@ Small, fully defined, no intent behind it. Dispatch creates:
     milestone bolt/rename-gateway-env
     #40  Rename GATEWAY_URL to GATEWAY_BASE_URL across the built repos
          type:assertion · state:ready — born ready on the operator's word
+         on the board at Status Ready — the lone item carries the approval
 
 There is no assertion record file — with no intent, the item body IS
 the claim. The reconciler sees a `bolt/*` milestone with a ready item

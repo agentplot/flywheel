@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""flywheel-board — put items on the org Project board.
+
+  flywheel-board --org ORG --repo REPO [--project Flywheel] [--status NAME] \\
+      ITEM_NUMBER ...
+
+Adds each item to the Project and, with --status, sets its Status. The
+board rule: whatever carries the approval sits on the board — epics
+(flywheel-epic adds them at Backlog), and a quick bolt's lone
+born-ready item (added at Ready by dispatch at triage, so the roadmap
+and the reconciler's Ready query see it like any released batch).
+Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _flywheel_gh import (GraphqlError, add_to_project, find_project, gh,
+                          project_single_select, resolve_token,
+                          set_item_option)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--org", required=True)
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--project", default="Flywheel", metavar="TITLE")
+    ap.add_argument("--status", metavar="NAME")
+    ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
+    args = ap.parse_args()
+
+    token = resolve_token(args.org)
+    project_id = find_project(token, args.org, args.project)
+    if not project_id:
+        sys.exit(f"flywheel-board: no project titled '{args.project}' — "
+                 "run flywheel-setup first")
+    field_id = options = None
+    if args.status:
+        field_id, options = project_single_select(token, project_id, "Status")
+        if args.status not in options:
+            sys.exit(f"flywheel-board: the Status field has no "
+                     f"'{args.status}' option (have: {', '.join(options)})")
+    for n in args.items:
+        issue = gh(token, "api", f"/repos/{args.org}/{args.repo}/issues/{n}")
+        item_id = add_to_project(token, project_id, issue["node_id"])
+        if args.status:
+            set_item_option(token, project_id, item_id, field_id,
+                            options[args.status])
+        print(f"#{n} on '{args.project}'"
+              + (f" · Status {args.status}" if args.status else ""))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except GraphqlError as e:
+        sys.exit(f"flywheel-board: graphql: {e}")
