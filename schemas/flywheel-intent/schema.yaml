@@ -185,6 +185,18 @@ apply:
   instruction: |
     Work the READY set to empty, then stop at the queue.
 
+    This instruction is what the dynamic workflow is built from
+    (`/opsx:apply build a dynamic workflow with the instructions for
+    <change>`). One execution rule binds every stage the workflow
+    runs: a WORK stage's agent never does the batch's work itself -
+    its job is to drive herdr: start the session the batch names,
+    deliver the work order, wait on it, and return the outcome. The
+    operator supervises herdr sessions, and a session that needs the
+    operator - a plannotator round, a lavish page, a plan-mode
+    approval - can only reach them from a real pane; an in-process
+    subagent cannot. Subagents may read and report (QUERY, ANALYSE,
+    synthesis); sessions do the work.
+
     The tracker is the org's, named by the `tracker:` line in the org's
     fleet.yaml; every tracker write runs as the app
     (`GH_TOKEN=$(<plugin-root>/bin/flywheel-token --org <org>)` — the

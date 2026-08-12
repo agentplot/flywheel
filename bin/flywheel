@@ -384,6 +384,7 @@ def tracker_state(top: dict) -> dict:
     # milestone's conductor before any item is relabelled — the flip
     # alone is work. (Board query: any Ready item with a milestone.)
     ready_batches: dict[str, str | None] = {}
+    ready_board_nums: set[int] = set()
     project_id = find_project(token, org, top.get("project", "Flywheel"))
     after = None
     while project_id:
@@ -407,9 +408,42 @@ def tracker_state(top: dict) -> dict:
                     and c.get("state") == "OPEN" and c.get("milestone")):
                 ready_batches.setdefault(c["milestone"]["title"],
                                          (n.get("team") or {}).get("name"))
+                ready_board_nums.add(c["number"])
         if not items["pageInfo"]["hasNextPage"]:
             break
         after = items["pageInfo"]["endCursor"]
+
+    # Context for the conductor's launch prompt: the change record is
+    # thin by design — the detail lives on the tracker — so the prompt
+    # carries the Ready batches' bodies and sub-issues, and the loose
+    # ready items, alongside the trigger line.
+    context: dict[str, list[str]] = {}
+    for i in issues:
+        milestone = i.get("milestone")
+        if not milestone or milestone.get("state") != "open":
+            continue
+        ms = milestone["title"]
+        labels = {l["name"] for l in i["labels"]}
+        kind = ("unit" if "unit" in labels
+                else "elaboration" if "elaboration" in labels else None)
+        if kind and i["number"] in ready_board_nums:
+            lines = [f"{kind} #{i['number']} (Ready on the board): "
+                     f"{i['title']}"]
+            body = (i.get("body") or "").strip()
+            if body:
+                lines.append("  " + body[:600].replace("\n", "\n  "))
+            subs = gh(token, "api",
+                      f"/repos/{org}/{repo}/issues/{i['number']}/sub_issues")
+            if subs:
+                lines.append("  sub-issues: " + "; ".join(
+                    f"#{s['number']} {s['title']} "
+                    f"[{','.join(l['name'] for l in s['labels'])}]"
+                    for s in subs))
+            context.setdefault(ms, []).extend(lines)
+        elif not kind and "state:ready" in labels:
+            context.setdefault(ms, []).append(
+                f"ready item #{i['number']}: {i['title']} "
+                f"[{','.join(sorted(labels))}]")
 
     # Composition is due where queued items sit with no open batch to
     # carry them to the board. (v1 reads "no open batch on the
@@ -420,7 +454,7 @@ def tracker_state(top: dict) -> dict:
     return {"ready_ms": ready_ms, "inprog_ms": inprog_ms,
             "needs_operator": needs_operator, "ready_batches": ready_batches,
             "compose_ms": compose_ms, "closed_ms": closed_ms,
-            "no_milestone": no_milestone}
+            "no_milestone": no_milestone, "context": context}
 
 
 def reconcile(manifest: dict, host: str, session: str, env: dict,
@@ -464,6 +498,17 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
         if kind in ("intent", "bolt") and slug:
             wanted[f"{kind}-{slug}"] = (ms, "ready")
 
+    def change_schema(slug: str) -> str | None:
+        """The schema the change binds, or None when it has no change dir."""
+        binding = (manifest["root"] / (cwd_rel or ".") / "openspec" /
+                   "changes" / slug / ".openspec.yaml")
+        if not binding.is_file():
+            return None
+        for line in binding.read_text().splitlines():
+            if line.strip().startswith("schema:"):
+                return line.partition(":")[2].strip().strip("'\"")
+        return None
+
     def job_prompt(ms: str, job: str) -> str:
         slug = ms.partition("/")[2]
         if job == "archive":
@@ -476,9 +521,25 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
             return (f"Your change: {slug}; your milestone is {ms}. "
                     "Unbatched queued items await composition — compose "
                     "proposed batches, present the queue, then stop.")
-        return (f"Your change: {slug}; your milestone is {ms}. Released "
-                "work is on the tracker — work the ready set to empty, "
-                "then stop at the queue.")
+        # The ready job: the trigger line comes first and unchanged —
+        # "dynamic workflow", the slug, and the schema are what make
+        # /opsx:apply build the loop rather than leave the agent to
+        # improvise its shape. The tracker context rides below it.
+        ctx = "\n".join(state["context"].get(ms, []))
+        ctx_block = f"\nContext from the tracker ({ms}):\n{ctx}" if ctx else ""
+        schema = change_schema(slug)
+        if schema is None:
+            kind = ms.partition("/")[0]
+            bind = ("flywheel-intent" if kind == "intent"
+                    else "the bolt-* member the released work warrants")
+            return (f"Your change: {slug} (milestone {ms}) does not exist "
+                    f"yet. Create it the standard way — /opsx:new {slug} "
+                    f"(or /opsx:ff {slug}), binding {bind} — then launch "
+                    "your loop: /opsx:apply build a dynamic workflow with "
+                    f"the instructions for {slug}.{ctx_block}")
+        return (f"/opsx:apply build a dynamic workflow with the "
+                f"instructions for {slug} (schema {schema})"
+                f"{ctx_block}")
 
     for name, (ms, job) in sorted(wanted.items()):
         if name in alive:
