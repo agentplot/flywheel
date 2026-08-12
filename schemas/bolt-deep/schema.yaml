@@ -61,7 +61,9 @@ apply:
     <change>`). One execution rule binds every stage the workflow
     runs: a WORK stage's agent never does the batch's work itself -
     its job is to drive herdr: start the session the batch names,
-    deliver the work order, wait on it, and return the outcome. The
+    deliver the work order — one prompt, the type's invocation as
+    its first line, the brief below — wait on it, and return the
+    outcome. The
     operator supervises herdr sessions, and a session that needs the
     operator - a plannotator round, a lavish page, a plan-mode
     approval - can only reach them from a real pane; an in-process

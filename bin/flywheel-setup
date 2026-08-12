@@ -31,9 +31,11 @@ sibling `flywheel-token` from `FLYWHEEL_GH_*`):
     the batch is the single scheduling source), month zoom, milestone
     markers, slice by Quarter; Triage table `is:open no:milestone`,
     oldest first; Waiting-on-me table `is:open
-    label:needs-operator`; optionally In-flight (`is:open
-    label:state:in-progress`) and Landed (`is:closed
-    label:closed:done`, sliced by Quarter). Status options ordered
+    label:needs-operator`; In-flight table `is:open
+    label:state:in-progress` — the one place running construction is
+    visible, since a consumed approval leaves the board's lanes; and
+    Landed table `is:closed label:closed:done`, sliced by Quarter.
+    Status options ordered
     Backlog, Ready first; Team options with the default host first,
     because the tools default to the first option;
   - its fields: Team (single select, from --team), Quarter (single

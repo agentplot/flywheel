@@ -114,9 +114,15 @@ Recovery from a mangled rename: send `/rename <name>` alone, confirm the
 title, then read the pane to find out whether the work order ever submitted.
 Re-send it if not; never assume it did.
 
-**A slash command typed as prose inside a work order body never loads the skill.**
-Send it as its own prompt. This is how a spec agent came to run without
-`/opsx:apply` loaded.
+**A work order is one prompt, invocation first.** When the type has a
+canonical invocation — `/opsx:ff <slug>` for spec-writing, the
+`/opsx:apply build a dynamic workflow …` trigger for a conductor's loop —
+it is the work order's FIRST line, and the brief rides below it in the
+same prompt. A slash command buried mid-body never loads the skill (this
+is how a spec agent came to run without `/opsx:apply` loaded), and a
+command sent bare with the brief chasing it as a second prompt is the
+same defect mirrored: the invocation fires without its work order, and
+the session improvises from the command alone.
 
 **Never queue a second prompt before the first one's effect is observed.**
 
