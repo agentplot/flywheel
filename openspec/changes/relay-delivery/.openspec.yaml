@@ -1,0 +1,6 @@
+schema: flywheel-intent
+created: 2026-08-12
+# An intent change is a design record — decisions, questions, assertions and
+# session trails. Spec deltas are construction's output, written in the
+# built repo's own spec-driven change once a bolt releases these assertions.
+skip_specs: true
