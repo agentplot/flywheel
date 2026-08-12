@@ -47,8 +47,10 @@ Worktrunk's own path does the same job and fires this repo's lifecycle hooks:
 wt switch --create <branch> --base <base> --no-cd
 ```
 
-No `--no-hooks`. This repo configures no `wt` lifecycle hooks today, so the
-flag suppresses nothing and would silently skip the first one added.
+No `--no-hooks`. With this repo's checks registered under `[pre-merge]`, the
+flag skips the merge gate: on `wt merge` it runs **zero** hooks and exits 0,
+measured. That it also skips the `[post-start]` warm-up is the smaller
+reason and not the one that matters.
 
 A herdr-created worktree fires no `wt` lifecycle hooks. Run the repo's hook
 yourself right after creating one:
@@ -212,18 +214,45 @@ wt merge --no-remove -C <worktree-path>              # to the default branch
 wt merge <bolt-branch> --no-remove -C <worktree-path>  # merge-back to the bolt branch
 ```
 
-The gate runs the repo's `.config/wt.toml` checks on the exact rebased tree
-that lands, so the green is produced by the tool rather than claimed by the
-agent that wrote the work. `--no-remove` keeps the worktree; teardown is a
-separate step.
+The gate is the repo's `[pre-merge]` hooks. `wt merge` runs them after the
+rebase and before the merge to the target, on every shape of merge including
+the clean fast-forward, with `HEAD` equal to the sha that lands; a failure
+aborts with exit 1 and nothing landed. That is measured across ten merge
+shapes against worktrunk 0.57.0 —
+`openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md`
+— and it is what makes the green produced by the tool rather than claimed by
+the agent that wrote the work. `--no-remove` keeps the worktree; teardown is
+a separate step.
+
+Which worktree's *configuration* supplies those hooks, when the source and
+the target carry different `.config/wt.toml` files, has **not** been
+measured: that lab measured cwd — the source worktree — and ran symmetric
+configuration throughout, so no row of it distinguishes the two. Assume
+neither side. Where a bolt's own merge-back turns on the answer, the reading
+for that one merge belongs to its `bolt.md` and is cited from there.
 
 `wt merge` on this machine squashes by default and generates the message with
 a headless `claude` that is not logged in. Pass `--no-squash` unless a
 squash is what you want.
 
-Hook approval is the operator's one-time `wt config approvals add`. **Never
-bypass with `--yes`.** One writer to the base branch at a time — serialize
-merges.
+Hook approval is the operator's one-time `wt config approvals add`, keyed on
+the verbatim template text. **Never bypass with `--yes`.** Two different
+commands, two different facts, and they are not interchangeable: `--yes` on
+`wt merge` **runs** the hooks without persisting the approval — a trust
+bypass rather than a gate bypass, which is exactly what makes it tempting —
+while `--yes` on `wt config approvals add` **fails** non-interactively and
+persists nothing, so it is not a route to the grant either.
+
+An agent that hits `Cannot prompt for approval in non-interactive
+environment` **stops and reports to its conductor**, and the merge waits on
+the operator's grant. Running the repo's check scripts by hand on the
+landing tree and reporting them green is not a substitute gate: that is
+verification by assertion, precisely the asserted-green `wt merge` exists to
+eliminate, however honest the hands. Treat the stoppage as a work stoppage
+and not a hazard — unapproved hooks abort with exit 1 and nothing landed, so
+a missing grant never produces an ungated green.
+
+One writer to the base branch at a time — serialize merges.
 
 On gate failure the merge aborts with nothing landed and the worktree intact.
 Send the failure output back to the worktree's agent, have it fix and re-run

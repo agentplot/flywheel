@@ -1,8 +1,9 @@
 { pkgs, config, ... }:
 
 {
-  # Two gates and a preview server, and that is the whole reason this repo has
-  # a devenv. node runs both checks and the mermaid bundle they parse with;
+  # Three gates and a preview server, and that is the whole reason this repo
+  # has a devenv. node runs two of the three checks and the mermaid bundle the
+  # site check parses with, while sh runs the manifest validator;
   # python3 serves site/ locally, because the page must work as plain static
   # files or GitHub Pages will not serve it either.
   packages = [
@@ -10,10 +11,10 @@
     pkgs.python3
   ];
 
-  # `devenv shell -- gates` — the same two commands .config/wt.toml runs before
-  # a merge and .github/workflows/gates.yml runs on every push. Three callers,
-  # one definition, so a green claim in one place means the same thing in the
-  # others.
+  # `devenv shell -- gates` — the same three commands .config/wt.toml runs
+  # before a merge and .github/workflows/gates.yml runs on every push. Three
+  # callers, one definition, so a green claim in one place means the same thing
+  # in the others.
   scripts.gates = {
     description = "Run every gate: plugin manifests, shipped paths, the site";
     exec = ''

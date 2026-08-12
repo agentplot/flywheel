@@ -6,7 +6,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-# The same four checks .config/wt.toml runs before a merge, plus the eval suite
+# The same three checks .config/wt.toml runs before a merge, plus the eval suite
 # once there is one. Nothing here is CI-only: a green run means exactly what a
 # green `devenv shell -- gates` means locally.
 jobs:
