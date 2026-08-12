@@ -299,6 +299,13 @@ def start_actor(name: str, profile: str, model: str | None, cwd: Path,
         print(f"  agent start failed: {start.stderr.strip()}")
         close_tab()
         return False
+    # The pane's claude takes tens of seconds to reach its composer;
+    # a prompt sent earlier strands unsubmitted or is lost outright.
+    # Wait for the session to report interactive_ready before charging.
+    for _attempt in range(30):
+        if herdr_agents(env).get(name, {}).get("interactive_ready"):
+            break
+        time.sleep(4)
     if prompt:
         if not send_prompt(name, prompt, env):
             print(f"  {name} is alive but uncharged; prompt it by hand")
