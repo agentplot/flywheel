@@ -1,6 +1,6 @@
 name: bolt-default
 version: 2
-description: Flywheel construction tracking, default depth - one change per
+description: Flywheel construction tracking, the default bolt type - one change per
   bolt; the released assertions are its items on the org's tracker; per-repo
   bolt branches; the loop schedules an independent proposal-review, an
   adversarial code-review, and batched acceptance. Picked for normal work
@@ -103,7 +103,7 @@ apply:
       close it `closed:done`; archive the built repos' spec-driven
       changes. Then re-query.
 
-    This member's depth, scheduled by the loop: an independent
+    This bolt type's review steps, scheduled by the loop: an independent
     proposal-review reads every assertion in the batch before its build,
     an adversarial code-review reads the built batch after it, and the
     batched acceptance run passes on the bolt branch before anything

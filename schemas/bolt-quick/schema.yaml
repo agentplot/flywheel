@@ -1,6 +1,6 @@
 name: bolt-quick
 version: 2
-description: Flywheel construction tracking, quick depth - one change per
+description: Flywheel construction tracking, the quick bolt type - one change per
   bolt; the released assertions are its items on the org's tracker; per-repo
   bolt branches; the loop schedules no review step. Picked for small,
   mechanical work where a wrong claim is cheap to catch.
@@ -102,9 +102,9 @@ apply:
       close it `closed:done`; archive the built repos' spec-driven
       changes. Then re-query.
 
-    This member's depth: the loop schedules no review step. It is picked
-    for small, mechanical work where a wrong claim is cheap to catch; the
-    merge gates run unweakened at every landing whatever the depth.
+    This bolt type schedules no review step. It is picked for small,
+    mechanical work where a wrong claim is cheap to catch; the merge
+    gates run unweakened at every landing whatever the bolt type.
     Design-level findings - the design is wrong, not the build - are
     queued as items on the source intent's milestone, never fixed from
     here.

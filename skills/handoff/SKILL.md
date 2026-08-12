@@ -27,10 +27,11 @@ Copy `plan-template.md` (beside this skill) into your session directory
 as `bolt-plan.md` and fill it from the assertion records themselves —
 never re-derived from memory. One section per bolt — a handoff cuts
 more than one when assertions land in unrelated repos or warrant
-different depths. Each section carries: the bolt (`bolt/<slug>`, new
-milestone or a live bolt joined), the **member** — `bolt-default`,
-`bolt-quick`, `bolt-deep`, because the member picked at creation IS the
-review depth — the **owner** read from the items' assignee, the repos,
+different bolt types. Each section carries: the bolt (`bolt/<slug>`,
+new milestone or a live bolt joined), the **bolt type** — `bolt-quick`,
+`bolt-default`, `bolt-deep`, the `bolt-*` schema member the change will
+bind, which is what sets the review steps the bolt's loop schedules —
+the **owner** read from the items' assignee, the repos,
 the assertions by item number and record path, the sequencing to wire,
 and any ADR the bolt conductor should write directly.
 
@@ -72,5 +73,5 @@ your work order, queue a question — never invent tracker structure.
 
 ## What you report
 
-The plan as approved and executed — bolts, members, owners, item
+The plan as approved and executed — bolts, types, owners, item
 numbers moved — and anything held back.

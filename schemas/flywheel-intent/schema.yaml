@@ -243,7 +243,7 @@ apply:
       closed. When any exist, queue one `type:handoff` item naming
       exactly that set - or extend the open unstarted handoff item with
       the newcomers. The handoff session it charges plans the bolt:
-      member (= review depth), owner, sequencing, the milestone move.
+      bolt type, owner, sequencing, the milestone move.
     - COMPOSE the queue into proposed batches (`flywheel-batch`) -
       elaborations of design work, units of settled assertions - grouped
       by thread: a prototype, the questions it answers, and the

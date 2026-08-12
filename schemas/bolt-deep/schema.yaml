@@ -1,6 +1,6 @@
 name: bolt-deep
 version: 2
-description: Flywheel construction tracking, deep depth - one change per
+description: Flywheel construction tracking, the deep bolt type - one change per
   bolt; the released assertions are its items on the org's tracker; per-repo
   bolt branches; the loop schedules a persona read before the build,
   adversarial and human review after it, and personas exercising the
@@ -103,7 +103,8 @@ apply:
       close it `closed:done`; archive the built repos' spec-driven
       changes. Then re-query.
 
-    This member's depth, scheduled by the loop — it is picked when the
+    This bolt type's review steps, scheduled by the loop — it is picked
+    when the
     built thing has users who are not the author: a persona
     proposal-review reads the batch BEFORE the build; after it, both an
     adversarial code-review and the operator's human-code-review round; a

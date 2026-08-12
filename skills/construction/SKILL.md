@@ -7,7 +7,8 @@ description: Run the flywheel construction loop — a bolt conductor drives rele
 
 One bolt = one construction iteration = one OpenSpec change bound to a
 bolt schema member — `bolt-default`, `bolt-quick`, `bolt-deep`, where
-**the member picked at creation IS the review depth** — plus the tracker
+**the member picked at creation IS the bolt type**, setting the review
+steps the loop schedules — plus the tracker
 milestone `bolt/<slug>` holding its items. The items are the released
 assertions, moved there at release; **the assertion is the proposal**,
 and every spec derives from the assertion record and the decisions it
@@ -94,8 +95,9 @@ faults queued to the source intent.
    on `herdr agent wait` afterwards, a `blocked` settle is a
    permission ask: read the pane, decide, answer with send-keys. The
    choice is the conductor's, per batch; the item's comments, the
-   member's review depth, and the unweakened merge gate are unchanged.
-2. **Review**, per the member's depth. The reviewer reads the batch —
+   bolt type's review steps, and the unweakened merge gate are
+   unchanged.
+2. **Review**, per the bolt type. The reviewer reads the batch —
    the artifact set and the cited sources — because the defects that
    occur are relational: a rule compressed in one record and carried
    into several specs, a naming collision spanning two. The reviewer

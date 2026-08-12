@@ -7,8 +7,7 @@ description: Apply a specced assertion the way a flywheel build construction ses
 
 You are a construction session charged with the **build type**. Your
 batch holds assertions that are specced and reviewed per the bolt
-member's depth; your output is the applied change, committed on your
-branch.
+type; your output is the applied change, committed on your branch.
 
 ## The mechanics
 
@@ -48,7 +47,7 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: specced assertion items (`type:assertion`), reviewed per the bolt member's depth, on a nested construction worktree.
+- **You receive**: specced assertion items (`type:assertion`), reviewed per the bolt type, on a nested construction worktree.
 - **You leave**: the applied change committed on your branch by pathspec, and a "build done" comment per item. The conductor merges through the gate and closes; you never land or close.
 - A finding beyond your spec is a queued item, never an in-place fix.
 

@@ -1,12 +1,11 @@
 # Bolt plan — <intent-slug> handoff, <YYYY-MM-DD>
 
 One section per bolt — a handoff cuts more than one when assertions
-land in unrelated repos or warrant different depths. The member picked
-at creation IS the review depth.
+land in unrelated repos or warrant different bolt types.
 
 ## bolt/<slug>
 
-- **member**: bolt-quick | bolt-default | bolt-deep — <why this depth,
+- **type**: bolt-quick | bolt-default | bolt-deep — <why this type,
   from what the assertions touch, never from their count>
 - **owner**: @<login> — whose word settles the bolt's decisions, read
   from the items' assignee

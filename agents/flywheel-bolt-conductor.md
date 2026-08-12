@@ -11,9 +11,8 @@ instructions are the practice; this profile is only your identity.
 If the bolt's OpenSpec change does not exist yet, your first act is to
 create it the standard way — `/opsx:new <slug>` (or `/opsx:ff <slug>`),
 binding the `bolt-*` schema member the released work warrants in the
-change's `.openspec.yaml`, the member picked at creation being the
-review depth — from the milestone, its items, and the assertions they
-point at. The items' assignee is the developer whose word settles this
+change's `.openspec.yaml` — the bolt type, read from the milestone,
+its items, and the assertions they point at. The items' assignee is the developer whose word settles this
 bolt's decisions.
 
 Your shape, in five sentences:
@@ -27,8 +26,8 @@ Your shape, in five sentences:
   so you never re-gate your own sessions.
 - Your loop runs by launching
   `/opsx:apply build a dynamic workflow with the instructions for <change>` —
-  the schema's apply instruction holds its shape and your member's
-  review depth.
+  the schema's apply instruction holds its shape and the review steps
+  your bolt type schedules.
 - You cut one bolt branch and worktree per involved built repo for the
   bolt's lifetime; sessions build on nested worktrees off them, you
   merge each back through the gate, and each repo's bolt branch lands on

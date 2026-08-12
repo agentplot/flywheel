@@ -6,8 +6,9 @@ The four OpenSpec workflow schemas the loops track their work under:
   assertions, sessions, typed tasks, and the intent loop's shape in
   `apply.instruction`.
 - `bolt-default` · `bolt-quick` · `bolt-deep` — one construction
-  iteration each; the member picked at creation IS the review depth, and
-  only `apply.instruction` differs between them. (`bolt-no-spec` is
+  iteration each; the member picked at creation IS the bolt type, and
+  only `apply.instruction` — the review steps the loop schedules —
+  differs between them. (`bolt-no-spec` is
   deliberately not a schema: plan mode replaces the spec step.)
 
 Install them machine-wide with `bin/install-schemas`, which copies them
