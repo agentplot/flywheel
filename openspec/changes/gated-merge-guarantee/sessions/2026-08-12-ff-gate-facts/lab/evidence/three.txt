@@ -1,0 +1,14 @@
+◎ Running pre-merge project:manifests
+  sh /tmp/wtlab/mark.sh pre-merge-manifests
+◎ Running pre-merge project:paths
+  sh /tmp/wtlab/mark.sh pre-merge-paths
+◎ Running pre-merge project:site
+  sh /tmp/wtlab/mark.sh pre-merge-site
+◎ Merging 1 commit to main @ 2dcda03 (no commit/squash/rebase needed)
+  * 2dcda03 one
+   payload.txt | 2 +-
+   1 file changed, 1 insertion(+), 1 deletion(-)
+✓ Merged to main (1 commit, 1 file, +1, -1)
+◎ Removing three worktree & branch in background (same commit as main, _)
+▲ Cannot change directory — ran /nix/store/i5zr65bbyaxdvzgq750ydp7c3g6pwl2d-worktrunk-0.57.0/bin/wt; shell integration wraps wt
+↳ To change directory, run wt switch main

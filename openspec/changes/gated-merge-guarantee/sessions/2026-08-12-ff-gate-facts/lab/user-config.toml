@@ -1,0 +1,9 @@
+worktree-path = "{{ repo_path }}/../{{ repo }}.{{ branch | sanitize }}"
+
+[merge]
+squash = false
+commit = true
+rebase = true
+remove = true
+verify = true
+ff = true

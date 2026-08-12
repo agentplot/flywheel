@@ -1,0 +1,8 @@
+◎ Running pre-merge project:manifests
+  sh /tmp/wtlab/mark.sh pre-merge-manifests
+◎ Running pre-merge project:paths
+  sh /tmp/wtlab/mark.sh pre-merge-paths
+◎ Running pre-merge project:site
+  sh /tmp/wtlab/mark.sh pre-merge-site
+✗ pre-merge command failed: paths: exit status: 1
+↳ To skip pre-merge hooks, re-run with --no-hooks

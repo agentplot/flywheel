@@ -1,0 +1,5 @@
+▲ proj needs approval to execute 1 command:
+○ pre-merge mark:
+  sh /tmp/wtlab/mark.sh pre-merge
+✗ Cannot prompt for approval in non-interactive environment
+↳ To skip prompts in CI/CD, add --yes; to pre-approve commands, run wt config approvals add

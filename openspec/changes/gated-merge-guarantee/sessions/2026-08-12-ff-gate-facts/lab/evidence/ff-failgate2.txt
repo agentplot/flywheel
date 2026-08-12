@@ -1,0 +1,4 @@
+◎ Running pre-merge project:mark
+  sh /tmp/wtlab/mark.sh pre-merge
+✗ pre-merge command failed: mark: exit status: 1
+↳ To skip pre-merge hooks, re-run with --no-hooks

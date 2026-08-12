@@ -1,0 +1,6 @@
+◎ Running pre-merge project:mark
+  sh /tmp/wtlab/mark.sh pre-merge
+○ Already up to date with main (no new commits, no rebase needed)
+◎ Removing noop worktree & branch in background (same commit as main, _)
+▲ Cannot change directory — ran /nix/store/i5zr65bbyaxdvzgq750ydp7c3g6pwl2d-worktrunk-0.57.0/bin/wt; shell integration wraps wt
+↳ To change directory, run wt switch main

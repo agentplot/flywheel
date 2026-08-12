@@ -1,0 +1,21 @@
+◎ Running pre-commit project:mark
+  sh /tmp/wtlab/mark.sh pre-commit
+◎ Squashing 2 commits into a single commit (1 file, +1, -1)...
+◎ Generating squash commit message...
+↳ Using fallback commit message. For LLM setup guide, run wt config --help
+  Squash commits from squash
+  
+  Combined commits:
+  - one
+  - two
+✓ Squashed @ 7b63f10
+◎ Running pre-merge project:mark
+  sh /tmp/wtlab/mark.sh pre-merge
+◎ Merging 1 commit to main @ 7b63f10 (no rebase needed)
+  * 7b63f10 Squash commits from squash
+   payload.txt | 2 +-
+   1 file changed, 1 insertion(+), 1 deletion(-)
+✓ Merged to main (1 commit, 1 file, +1, -1)
+◎ Removing squash worktree & branch in background (same commit as main, _)
+▲ Cannot change directory — ran /nix/store/i5zr65bbyaxdvzgq750ydp7c3g6pwl2d-worktrunk-0.57.0/bin/wt; shell integration wraps wt
+↳ To change directory, run wt switch main
