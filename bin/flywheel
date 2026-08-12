@@ -307,6 +307,106 @@ def wt_project(cwd: Path) -> dict:
     return project if isinstance(project, dict) else {}
 
 
+def toml_fault(path: Path) -> str | None:
+    """Why this file will not parse, or None. Reads the file itself — the
+    same file the check already reads — never a tool's error stream."""
+    if not path.is_file():
+        return None
+    try:
+        tomllib.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        return str(e)
+    return None
+
+
+def store_fault() -> str | None:
+    """Whether the operator's approvals store is itself what worktrunk
+    choked on — for attribution only, never for a verdict.
+
+    worktrunk reads this store to compute its own approval state, so a
+    malformed store makes worktrunk refuse to enumerate a repo's hooks. The
+    exit code then looks exactly like a broken project config, and sending
+    an operator to `.config/wt.toml` — version-controlled, shared, and in
+    that case blameless — is a misdirection at the moment they have least
+    context.
+
+    Measured against `wt 5fba0bd`, the store's schema is strict at both
+    levels: `projects` is the only key it accepts at the top, and
+    `approved-commands` the only key inside a project's table. Both
+    rejections are worded as `unknown field`. That strictness is what lets
+    this attribute the fault instead of guessing.
+
+    Deliberately NOT used to decide gate-readiness: a future worktrunk that
+    accepts a new key here would make this probe call a healthy store
+    malformed, and that must never refuse a start on its own. It only ever
+    changes the wording of a message that is already indeterminate.
+    """
+    store = APPROVALS_STORE.expanduser()
+    if not store.is_file():
+        return None
+    fault = toml_fault(store)
+    if fault:
+        return f"{store} could not be parsed ({fault})"
+    try:
+        data = tomllib.loads(store.read_text())
+    except (OSError, ValueError):  # pragma: no cover — toml_fault caught it
+        return None
+
+    def bad(what: str) -> str:
+        return f"{store} is not shaped as worktrunk reads it: {what}"
+
+    unknown = [k for k in data if k != "projects"]
+    if unknown:
+        return bad(f"unknown top-level key `{unknown[0]}`")
+    projects = data.get("projects")
+    if projects is None:
+        return None
+    if not isinstance(projects, dict):
+        return bad("`projects` is not a table")
+    for ident, table in projects.items():
+        if not isinstance(table, dict):
+            return bad(f"the entry for {ident} is not a table")
+        stray = [k for k in table if k != "approved-commands"]
+        if stray:
+            return bad(f"unknown key `{stray[0]}` under {ident}")
+        commands = table.get("approved-commands")
+        if commands is None:
+            continue
+        if not isinstance(commands, list):
+            return bad(f"{ident}'s `approved-commands` is not an array")
+        if not all(isinstance(c, str) for c in commands):
+            return bad(f"{ident}'s `approved-commands` holds a non-string")
+    return None
+
+
+def wt_failure_reason(args: list[str], code: int, cwd: Path, what: str) -> str:
+    """Name the file that is actually at fault when worktrunk exits non-zero.
+
+    worktrunk loads two files here — the repo's project config and the
+    operator's approvals store — and its exit code alone does not say
+    which. The check already reads both, so it asks them rather than
+    reaching for worktrunk's stderr. Where neither can be faulted, it names
+    both instead of picking one: this is the state whose whole purpose is
+    telling an operator which way it broke, and a confident wrong answer is
+    worse here than an honest pair.
+    """
+    cmd = f"`wt {' '.join(args)}`"
+    fault = store_fault()
+    if fault:
+        return (f"{cmd} exited {code} — worktrunk also loads the approvals "
+                f"store, and {fault}. That file is the fault, not this "
+                f"repo's configuration.")
+    config = Path(repo_key(cwd)) / ".config" / "wt.toml"
+    fault = toml_fault(config)
+    if fault:
+        return (f"{cmd} exited {code} — this repo's {config} could not be "
+                f"parsed ({fault}), so the fleet could not {what}.")
+    return (f"{cmd} exited {code}, so the fleet could not {what}. Both this "
+            f"repo's {config} and the approvals store "
+            f"{APPROVALS_STORE.expanduser()} parse here, so run that command "
+            "in the repo to see which worktrunk objects to.")
+
+
 def wt_json(args: list[str], cwd: Path, what: str):
     """Run one read-only worktrunk query and return its parsed JSON.
 
@@ -328,16 +428,12 @@ def wt_json(args: list[str], cwd: Path, what: str):
                             f"({type(e).__name__}), so the fleet could not "
                             f"{what}") from e
     if out.returncode != 0:
-        # Load-bearing, not incidental: with a project config worktrunk
-        # cannot load, `wt hook show` exits 1 with EMPTY STDOUT. Reading
-        # that as "no hooks configured" would resolve a repo whose gate
-        # config is broken to gate-ready — a false green on a repo whose
-        # gate is definitionally unrunnable.
-        raise Indeterminate(
-            f"`wt {' '.join(args)}` exited {out.returncode} — worktrunk "
-            f"could not load this repo's configuration, so the fleet could "
-            f"not {what}. Run that command in the repo to see what "
-            "worktrunk objects to.")
+        # Load-bearing, not incidental: with a config worktrunk cannot
+        # load, `wt hook show` exits 1 with EMPTY STDOUT. Reading that as
+        # "no hooks configured" would resolve a repo whose gate config is
+        # broken to gate-ready — a false green on a repo whose gate is
+        # definitionally unrunnable.
+        raise Indeterminate(wt_failure_reason(args, out.returncode, cwd, what))
     try:
         # stdout only — wt writes terminal control bytes to stderr, and
         # folding them in makes the document unparseable.
@@ -378,9 +474,23 @@ def project_hook_templates(cwd: Path) -> tuple[str, ...]:
     if not isinstance(records, list):
         raise Indeterminate("`wt hook show --format json` returned something "
                             "other than a list of hook records")
-    return tuple(r["template"] for r in records
-                 if isinstance(r, dict) and r.get("source") == "project"
-                 and isinstance(r.get("template"), str))
+    templates = []
+    for record in records:
+        if not isinstance(record, dict) or record.get("source") != "project":
+            continue
+        template = record.get("template")
+        # A project hook whose template is not a string is a shape this
+        # check does not understand. Dropping it quietly is how the first
+        # build of this check went wrong: a hook worktrunk would run,
+        # answered with silence and a gate-ready verdict. Every sibling
+        # shape surprise says "we could not tell", and so does this one.
+        if not isinstance(template, str):
+            raise Indeterminate(
+                "`wt hook show` reported a project hook whose template is "
+                f"not a string ({type(template).__name__}), a shape this "
+                "check does not understand")
+        templates.append(template)
+    return tuple(templates)
 
 
 def granted_commands(identifier: str) -> tuple[str, ...]:

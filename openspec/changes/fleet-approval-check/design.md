@@ -196,9 +196,12 @@ row and its `conductors_cwd:` both resolve to `flywheel/main` (read from
 and not in git). Reporting per actor would print the same four templates once
 per actor. The spec requires one evaluation and one report per repo.
 
-The repo's identity for caching is the worktrunk project config path's parent,
-or the resolved working directory when there is no project config — not the git
-toplevel, so that the cache key and the thing checked cannot disagree.
+The repo's identity for caching is found by walking up from the working
+directory to the first ancestor holding either a `.config/wt.toml` or a `.git`,
+falling back to the resolved working directory. It is deliberately not asked of
+worktrunk: this key also has to name a repo when worktrunk is the thing that
+failed, which is exactly when an indeterminate verdict needs reporting once
+rather than once per actor.
 
 ### 4. A no-project-hooks repo passes; an unreadable one does not
 
@@ -275,12 +278,25 @@ is not allowed to reappear in the report itself.
   build session must land this on a branch and **not** merge it, and the
   conductor must know that landing it before `#33` stops the fleet. Recorded
   in `tasks.md` as an explicit hand-off note rather than left to be discovered.
-- **Grouping by project-config parent rather than git toplevel** → A repo whose
-  actors sit in different worktrees of the same repository is evaluated once
-  per worktree. That is correct, not wasteful: each worktree has its own
-  `.config/wt.toml` content, and this bolt's own sequencing turns on exactly
-  that (`bolt.md`, *Merge criteria*: a grant taken in `main` lists three
+- **Grouping by the nearest config-or-git ancestor rather than git toplevel** →
+  A repo whose actors sit in different worktrees of the same repository is
+  evaluated once per worktree. That is correct, not wasteful: each worktree has
+  its own `.config/wt.toml` content, and this bolt's own sequencing turns on
+  exactly that (`bolt.md`, *Merge criteria*: a grant taken in `main` lists three
   templates, one taken in the construction worktree lists four).
+
+  **The measured cost of that key, so the trade is met whole.** Because the walk
+  stops at the first `.config/wt.toml` *or* `.git` it meets, a subdirectory
+  carrying its own `.config/wt.toml` but no `.git` takes a key of its own:
+  measured, actors at `<repo>` and `<repo>/nested` produce two cache entries and
+  two reports for what a person would call one repository. The error is always
+  in this direction. The key is by construction an ancestor-or-self of the
+  working directory it was derived from and the walk stops at the first marker,
+  so two distinct repos can never collapse onto one key — the check can say the
+  same thing twice, and can never apply one repo's verdict to another. Duplicate
+  reporting is untidy; a merged key would be a false green, which is the failure
+  this capability exists to prevent. The trade is taken deliberately in the
+  fail-closed direction, and the duplicate is the price.
 
 ## Open Questions
 
