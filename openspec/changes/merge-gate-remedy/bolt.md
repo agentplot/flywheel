@@ -203,6 +203,16 @@ and it also binds this bolt's own merges.
 lands on `main` through the full release gate — full hooks, never
 weakened, one writer to main at a time.
 
+**Nothing lands on `main` carrying a sentence known to be false**, however
+low its severity is priced. This bolt exists because a repository claimed a
+gate it did not run; a defect that is merely a smaller version of that claim
+is still that claim. The rule was applied to #36's F1 — a message
+misdirecting an operator to a blameless version-controlled file — and then
+to F4, the same function telling the operator one file is faultless when
+both are, which was found late and priced as low. Consistency here is not
+fastidiousness: a severity bar for false statements is how a codebase
+relearns to tolerate them.
+
 **Three spec-driven changes land with it, not two**, and all three are
 archived after: `pre-merge-gate` (#34, the config), `gate-prose-correction`
 (#35, the prose), and `fleet-approval-check` (#36, the fleet check). #34
