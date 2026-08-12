@@ -64,7 +64,10 @@ queue a question — never invent tracker structure.**
    settled and unbolted when its item is open on `intent/<slug>`, has
    no parent batch, and has no open blockers. Whenever such assertions
    exist at the queue, the conductor births one `type:handoff` item
-   naming exactly that set, or extends the open unstarted one.
+   naming exactly that set, or extends the open unstarted one — and
+   while that handoff's unit still sits at Backlog, newcomers join it:
+   the item's set amended, the assertions attached as sub-issues. The
+   flip seals the batch; the next settled wave births the next handoff.
 7. **Blocked on the operator's word**: comment the one-line question
    on the item, add `needs-operator`, keep working what it does not
    gate. Whoever applies the answer removes the label.
