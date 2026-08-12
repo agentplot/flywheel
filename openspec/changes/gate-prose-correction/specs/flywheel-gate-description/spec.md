@@ -53,11 +53,13 @@ worktree's config governs, and SHALL NOT state or imply that the target's
 does.
 
 The reference SHALL NOT carry a standing instruction about how to read a
-merge that runs zero hooks. Zero hooks has other measured causes — the
-`nohooks` and `noverify` rows of `finding.md` both ran nothing, and a
-trailing `-C` reads the wrong directory and reports no hooks, which this
-same file already warns about — so naming the asymmetric-config question as
-*the* explanation is a false dichotomy. More importantly, a standing
+merge that runs zero hooks. Zero hooks has at least two other **measured**
+causes — the `nohooks` and `noverify` rows of `finding.md` both ran nothing
+and exited 0 — and one further candidate that is documented but **not
+measured**: this same file's warning that a trailing `-C` reads the wrong
+directory and reports no hooks, whose only provenance is that prose, added
+in `b5d308b`. So naming the asymmetric-config question as *the* explanation
+is a false dichotomy. More importantly, a standing
 instruction to treat an ungated merge as neither a green nor a defect is a
 general licence to shrug at the exact symptom `finding.md` records as having
 no way to tell apart from a gated merge, which is the reason this intent
@@ -86,8 +88,9 @@ other is the defect this pair of requirements exists to prevent.
 - **WHEN** an agent sees a merge complete with no hooks having run
 - **THEN** the reference gives it no standing instruction to accept that as
   normal
-- **AND** the causes the tree has actually been measured for — `--no-hooks`,
-  `verify = false`, a trailing `-C` — remain available to it as candidates
+- **AND** the measured causes — `--no-hooks` and `verify = false` — remain
+  available to it as candidates, alongside the documented-but-unmeasured
+  trailing `-C`, each at its own strength
 
 ### Requirement: An agent that cannot run the gate stops and reports
 
@@ -98,12 +101,22 @@ is the operator's one-time `wt config approvals add`. **Never bypass with
 reports the failure to its conductor, and the merge waits for the operator's
 grant.
 
-Both named non-options SHALL be named as non-options: `--yes` fails
-non-interactively and persists nothing — measured, recorded in
-`openspec/changes/merge-gate-remedy/bolt.md` — so it is a trust bypass
-rather than a shortcut; and hand-running the underlying check scripts on the
-landing tree is verification by assertion, precisely the asserted-green that
-`wt merge` exists to eliminate, however honest the hands.
+Both named non-options SHALL be named as non-options, and the two distinct
+`--yes` facts SHALL NOT be merged into one, because they belong to different
+commands:
+
+- `--yes` on `wt merge` **runs** the hooks without persisting the approval
+  (`finding.md`, the `yesbypass` evidence). That is the trust bypass the
+  loop forbids — it is not a gate bypass, which is exactly why it is
+  tempting.
+- `--yes` on `wt config approvals add` **fails** non-interactively and
+  persists nothing (`finding.md`'s corrections to the record, and re-measured
+  this bolt per `openspec/changes/merge-gate-remedy/bolt.md`). So it is not
+  a route to the grant either.
+
+And hand-running the underlying check scripts on the landing tree is
+verification by assertion, precisely the asserted-green that `wt merge`
+exists to eliminate, however honest the hands.
 
 The stoppage SHALL be described as a work stoppage rather than a hazard: the
 failure is already closed — exit 1, nothing landed — so a missing approval
@@ -220,8 +233,10 @@ is known at, distinguishing three cases.
 
 Measured, recorded in `openspec/changes/merge-gate-remedy/bolt.md`:
 `wt config approvals add` enumerates `[post-start]` templates,
-`wt step copy-ignored` included; and `--yes` fails non-interactively and
-persists nothing.
+`wt step copy-ignored` included; and `--yes` **on that same subcommand**
+fails non-interactively and persists nothing. The separate fact that `--yes`
+**on `wt merge`** runs the hooks without persisting the approval is
+`finding.md`'s (`yesbypass`), and the two SHALL NOT be stated as one.
 
 Expected but not yet measured: that a worktree carrying the new
 configuration lists exactly four project hook templates. No committed tree

@@ -15,14 +15,16 @@ The two co-land.
 | `[pre-merge]` hooks run on every shape of `wt merge`, including the clean fast-forward, after the rebase, with `HEAD` equal to the sha that lands and cwd the source worktree; a failure aborts with exit 1 and nothing landed | **measured**, ten shapes | `openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md` |
 | `--no-hooks` on `wt merge` runs **zero** hooks and exits 0 — with `[pre-merge]` configured, it skips the gate | **measured** | same, `nohooks` row |
 | `verify = false` does the same | **measured** | same, `noverify` row |
-| A trailing `-C` reads the wrong directory and reports no hooks | **measured**, and already documented | `skills/_reference/herdr.md`, the `-C` paragraph |
+| A trailing `-C` reads the wrong directory and reports no hooks | **PROSE ONLY, not measured** — its sole provenance is `skills/_reference/herdr.md`, added in `b5d308b` | filed for measurement as #64 |
 | Unapproved project hooks in a non-interactive environment abort with exit 1 and nothing landed — never an ungated green | **measured** | `finding.md`, `lab/evidence/unapproved.txt` |
-| `wt config approvals add` cannot grant non-interactively, `--yes` included, and `--yes` persists nothing | **measured**, twice — the ff-gate lab and this bolt | `finding.md`; `openspec/changes/merge-gate-remedy/bolt.md` |
+| `--yes` on **`wt merge`** runs the hooks without persisting the approval — a trust bypass, not a gate bypass | **measured** | `finding.md`, `yesbypass` |
+| `--yes` on **`wt config approvals add`** fails non-interactively and persists nothing — a different command and a different fact | **measured**, twice — the ff-gate lab and this bolt | `finding.md`'s corrections to the record; `openspec/changes/merge-gate-remedy/bolt.md` |
 | `wt config approvals add` **does** enumerate `[post-start]` templates | **measured**, this bolt, while reviewing #36 | `bolt.md` |
 | The installed `wt 5fba0bd` **is** worktrunk 0.57.0 — the same nix store build the ten shapes were measured on | **measured** | `finding.md`, its "Exercised, not read" bullet |
 | A worktree carrying the new configuration lists exactly four project hook templates | **EXPECTED, not measured** — see below | `pre-merge-gate` task 2.7 |
 | Which worktree's *config* supplies the hooks when source and target differ | **NOT measured** — the lab ran symmetric config throughout | see below |
-| Whether the three `[pre-merge]` entries run sequentially or concurrently | **NOT measured** — worktrunk's `hook.md` and the binary's generic help disagree | see below |
+| What order the three `[pre-merge]` entries actually run in **on this tree** | **NOT measured**, and not measurable until the grant lets the hooks run | see below |
+| Worktrunk's own documentation states **both** answers for a pre-\* hook table, in two copies both labelled version 1.0.0 | **documented, and self-contradictory** — quoted with paths in `pre-merge-gate`'s `design.md` | the two `hook.md` copies and `wt hook --help` on `wt 5fba0bd` |
 | That a cold worktree leads to `check-site.mjs` exiting 2 | **conditional, unexercised** — holds only where the source has `node_modules` and the destination would not | — |
 
 The version fact is in the table because a previous session raised an alarm
@@ -58,14 +60,21 @@ into `skills/_reference/herdr.md` it becomes a general licence telling every
 future agent to shrug at an ungated merge. That is the precise symptom
 `finding.md` records as having "no way to tell it apart from a gated merge",
 and it is why this intent exists at all. It would also be a false dichotomy:
-three other causes of a zero-hook merge are measured, one of them already
-documented in this very file. Cite `bolt.md`; do not reproduce it.
+two other causes of a zero-hook merge are measured (`nohooks`, `noverify`),
+and a third — the trailing `-C` — is warned about in this very file at
+**prose strength only**, its sole provenance being that paragraph, added in
+`b5d308b`. Keep the warning; do not label it measured. Cite `bolt.md` for
+the scoped reading; do not reproduce it.
 
-**Execution order.** Dropped rather than replaced with worktrunk's docs. A
-doc is not a measurement of this tree, and the two docs disagree with each
-other. It is a named measurement for the acceptance run, once the grant
-exists. `.config/wt.toml` carries that requirement; this change simply must
-not reintroduce the claim in prose.
+**Execution order.** Dropped, because nothing about ordering has been
+measured on this tree and it cannot be measured until the grant lets the
+hooks run. Worktrunk's own documentation states both answers in two copies
+both labelled version 1.0.0, with the binary agreeing with one of them;
+`pre-merge-gate`'s `design.md` quotes all three with their paths.
+Documentation is not a measurement here, and self-contradictory
+documentation only sharpens the point. `.config/wt.toml` carries the
+requirement; this change must not reintroduce the claim in prose, in either
+direction.
 
 ## Goals / Non-Goals
 

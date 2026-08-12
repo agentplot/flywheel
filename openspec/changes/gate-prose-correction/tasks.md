@@ -52,9 +52,11 @@ phrase is gone".
 - [ ] 2.4 Beside the existing "Never bypass with `--yes`" sentence, add the
       stop-and-report rule for
       `Cannot prompt for approval in non-interactive environment`, naming
-      both non-options (`--yes`, which is measured to persist nothing;
-      hand-running the check scripts) and framing the stoppage as
-      closed-failure rather than hazard.
+      both non-options and framing the stoppage as closed-failure rather
+      than hazard. Keep the two `--yes` facts apart: on `wt merge` it runs
+      the hooks without persisting the approval (the trust bypass); on
+      `wt config approvals add` it fails and persists nothing (not a route
+      to the grant). Different commands, different facts.
 - [ ] 2.5 Verify no sentence presents the four-template shape of this
       repo's configuration as a reading already taken on some tree. What is
       measured is that `wt config approvals add` enumerates `[post-start]`
@@ -70,6 +72,14 @@ phrase is gone".
 - [ ] 2.8 Do not go looking for a second `herdr.md`. There is one tracked
       file; the copy under `~/.claude/plugins/cache/flywheel/` is a release
       artifact that updates by releasing.
+- [ ] 2.9 Leave the trailing-`-C` warning paragraph as it is, and write
+      nothing new that labels it measured. Its only provenance is that
+      paragraph, added in `b5d308b`; #64 is the item that will measure it.
+      Keeping the warning while dropping the label is the whole fix.
+- [ ] 2.10 Write nothing about the order the three checks run in, in either
+      direction. Worktrunk's documentation states both answers in two copies
+      both labelled 1.0.0 — see `pre-merge-gate`'s `design.md` for the
+      quotes — and none of it is a measurement of this tree.
 
 ## 3. `skills/construction/SKILL.md` — the Build stage
 
