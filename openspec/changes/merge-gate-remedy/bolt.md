@@ -112,13 +112,32 @@ would then cover nothing while appearing to cover everything — the exact
 shape of silence this bolt exists to end.
 
 **The listing must show four templates, one of them `wt step
-copy-ignored`. Three rows is a stop-and-investigate, not a diagnosis.**
-The obvious cause is the wrong checkout — `main`'s three-check shape. The
-other, unmeasured, is that `wt config approvals add` may not enumerate
-`[post-start]` templates at all, in which case three rows is what the
-correct worktree produces and the fourth grant has to be got another way.
-Either way the grant is not approved from a three-row listing until which
-one it is has been established.
+copy-ignored`. Three rows means the wrong checkout — and that is now a
+diagnosis rather than a stop-and-investigate.** The alternative this
+record previously had to leave open, that `wt config approvals add` might
+not enumerate `[post-start]` templates at all, was measured while
+reviewing #36: it does enumerate them, `wt step copy-ignored` included.
+So a three-row listing is `main`'s three-check shape and nothing else, and
+the remedy is to re-run the grant with cwd in the construction worktree.
+
+Measured in the same pass, and worth stating because two sessions have now
+reached for it: `--yes` on `wt config approvals add` still fails
+non-interactively **and persists nothing**. The decision record's reading
+of it as a trust bypass rather than a shortcut is measured, not inferred.
+
+**Where `wt` is the authority, and where it is not.** This bolt draws that
+line once, because #36 has now hit it twice — at the project identifier
+and at the hook-template grammar. `wt` is authoritative about **its own
+configuration**: what a project's identifier is, and what counts as a hook
+template under a grammar that accepts a bare string, a named table, an
+inline table, an array, and `[[event]]` pipeline blocks. Re-deriving
+either by hand is the reimplementation of `wt` that #36's own item body
+disclaims, and it goes stale silently the day `wt` changes. The approvals
+store is the authority on **grants**: whether a template is approved is
+read and compared by us, never asked of `wt`. Concretely, `wt hook show
+--format json` may be read for `template` where `source == "project"`;
+its `needs_approval` field is approval state and is exactly what the
+assertion forbids sourcing from `wt`.
 
 **The reads `bolt-default` schedules, all three load-bearing here.** An
 independent proposal-review reads every assertion in a batch against its
