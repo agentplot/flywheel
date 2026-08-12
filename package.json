@@ -2,11 +2,14 @@
   "name": "flywheel",
   "private": true,
   "type": "module",
-  "description": "Gate dependencies only. jsdom runs the site's own vendored mermaid bundle outside a browser so scripts/check-site.mjs parses the exact diagrams a reader renders; mermaid is here to be vendored into site/vendor/, never loaded from it at runtime.",
+  "description": "Gate and vendoring dependencies only. jsdom runs the site's own vendored mermaid bundle outside a browser so scripts/check-site.mjs parses the exact diagrams a reader renders; mermaid and the two @fontsource packages are here to be copied into site/, never loaded from at runtime. Nothing here ships, and the page fetches nothing from a network at all.",
   "scripts": {
-    "vendor-mermaid": "cp node_modules/mermaid/dist/mermaid.min.js site/vendor/mermaid.min.js"
+    "vendor-mermaid": "cp node_modules/mermaid/dist/mermaid.min.js site/vendor/mermaid.min.js",
+    "vendor-fonts": "cp node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2 node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2 node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2 node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-700-normal.woff2 site/fonts/ && cp node_modules/@fontsource/ibm-plex-mono/LICENSE site/fonts/LICENSE-ibm-plex-mono.txt && cp node_modules/@fontsource/space-grotesk/LICENSE site/fonts/LICENSE-space-grotesk.txt"
   },
   "devDependencies": {
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
     "jsdom": "^28.0.0",
     "mermaid": "^11.12.0"
   }
