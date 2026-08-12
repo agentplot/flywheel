@@ -243,6 +243,24 @@ GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label closed:done
 GH_TOKEN=$tok gh issue close <n> --repo <org>/<tracker> --comment "<landing SHA / outcome>"
 ```
 
+Blocked on the operator's word — comment the one-line question, label it,
+keep working what it does not gate (dispatch DMs the assignee; whoever
+applies the answer removes the label):
+
+```bash
+GH_TOKEN=$tok gh issue comment <n> --repo <org>/<tracker> \
+  --body "<question — options if any — evidence pointer>"
+GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label needs-operator
+```
+
+A handoff session's custody move — the assertion item leaves the intent's
+milestone for the bolt's, and that move IS the bolting:
+
+```bash
+GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
+  --milestone "bolt/<slug>" --remove-label state:queued --add-label state:ready
+```
+
 Composing a proposed release batch is one call — parent issue, sub-issues,
 project, Status **Backlog** (moving it to **Ready** on the board is
 the operator's approval, and nothing else moves it):

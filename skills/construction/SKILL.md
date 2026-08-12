@@ -108,6 +108,20 @@ anchor never line number — and state a constraint at its measured
 strength, never its remembered or feared strength, because an agent told
 to expect a failure that cannot happen learns to discount constraints.
 
+## Reaching the operator
+
+The inner loop assumes the operator is absent. A conductor or session
+blocked on the operator's word posts the question as a comment on its
+item — one line of question, options if any, a pointer to evidence —
+and adds the `needs-operator` label; the tracker is the channel of
+record. Dispatch DMs the item's assignee on Discord with the line and
+the item link, falling back to a GitHub `@mention` in the comment when
+no DM route exists; the fleet layer's reconcile pass nudges dispatch
+whenever a `needs-operator` item is sitting unanswered. The operator's
+answer lands as a comment — directly or relayed by dispatch — and
+whoever applies the word removes the label. Work on everything the
+question does not gate continues meanwhile.
+
 ## The long-lived posture
 
 Work the ready set to empty, then stop at the queue. Every released

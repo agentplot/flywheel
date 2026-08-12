@@ -13,7 +13,8 @@ sibling `flywheel-token` from `FLYWHEEL_GH_*`):
 
   - the tracker labels on the repo: `type:*` for the session types,
     `state:*` for the queue lifecycle, `closed:*` for the end reasons,
-    and `epic` for release batches;
+    `epic` for release batches, and `needs-operator` for items blocked
+    on the operator's word;
   - the org Project (default title "Flywheel"), linked to the repo;
   - its fields: Team (single select, from --team), Quarter (single
     select, the next six quarters), Iteration (two-week iterations),
@@ -49,6 +50,9 @@ LABELS = {
     "closed:superseded": ("d93f0b", "overtaken by another item"),
     "closed:parked": ("c5def5", "waiting on an external event; reopenable"),
     "epic": ("d4a72c", "a release batch; items are its sub-issues"),
+    "needs-operator": ("e99695",
+                       "blocked on the operator's word; the question is the "
+                       "latest comment"),
 }
 
 STATUS_OPTIONS = [

@@ -59,14 +59,20 @@ def main():
     ms_number = ensure_milestone(token, args.org, args.repo,
                                  args.milestone, due_on=args.due)
 
+    # The epic answers to whoever the batch answers to: the union of its
+    # items' assignees, so the board and DM routing resolve on the parent.
+    assignees = sorted({a["login"] for i in items
+                        for a in i.get("assignees") or []})
     epic = gh(token, "api", f"{repo_path}/issues", "--input", "-",
               input_json={
                   "title": args.title,
                   "body": args.body,
                   "labels": ["epic", "state:queued"],
                   "milestone": ms_number,
+                  **({"assignees": assignees[:10]} if assignees else {}),
               })
-    print(f"epic #{epic['number']}: {epic['html_url']}")
+    print(f"epic #{epic['number']}: {epic['html_url']}"
+          + (f" · assignees: {', '.join(assignees[:10])}" if assignees else ""))
 
     for item in items:
         gh(token, "api", f"{repo_path}/issues/{epic['number']}/sub_issues",
