@@ -40,7 +40,7 @@ built its own. The surfaces this intent moves, standing in for map nodes:
 - `skills/*/SKILL.md` + skill directory names — **candidate** — say *assertions*; two directory names say *proposal*
 - `schemas/*/schema.yaml` instruction text — **candidate** — `flywheel-intent` says *assertions*, *units*, *elaborations*; the three bolt schemas say *assertions* and *proposals*
 - `agents/*.md` — **candidate** — mixed
-- `openspec/specs/**` — **open** — this repo's own settled specs still say *proposals* throughout (~105 uses across six specs), including the specs of the very skills that were renamed to *assertion*
+- `openspec/specs/**` — **open** — this repo's own settled specs still say *proposals* throughout (119 uses across eight spec files at 2e707e9, per #18's inventory), including the specs of the very skills that were renamed to *assertion*
 - the tracker's labels — `type:assertion`, and `flywheel-batch --kind unit|elaboration` — **open** — live label objects with issues attached, including closed #12
 
 ## Scope
