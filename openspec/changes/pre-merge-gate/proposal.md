@@ -30,9 +30,10 @@ from `openspec/changes/gated-merge-guarantee/assertions/gate-under-pre-merge.md`
   and its count of checks matches the number defined. Two false sentences
   go: "during `wt merge` before the commit, on the exact tree that lands",
   and "All four are independent" over three checks. The "so they run
-  concurrently" ordering claim is **dropped rather than restated**:
-  worktrunk's docs and its own help disagree, and neither is a measurement
-  of this tree.
+  concurrently" ordering claim is **dropped rather than restated**: nothing
+  about ordering has been measured on this tree, it cannot be measured until
+  the grant lets the hooks run, and worktrunk's own documentation states
+  both answers in two same-versioned copies (see `design.md`).
 - **The block names the unmeasured config-locus question as open** rather
   than resolving it by phrasing.
 

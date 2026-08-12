@@ -21,10 +21,12 @@ the conductor-authorized adjacent edits.
 | Moving a granted hook template between hook event tables, with its text unchanged, **preserves the grant**; one added trailing space breaks it | **measured**, this bolt, negative control included | `openspec/changes/merge-gate-remedy/bolt.md` |
 | `wt config approvals add` **does** enumerate `[post-start]` templates, `wt step copy-ignored` included | **measured**, this bolt, while reviewing #36 | `bolt.md` |
 | `--yes` on `wt config approvals add` fails non-interactively and persists nothing | **measured**, same pass | `bolt.md` |
-| `wt step copy-ignored --help`: `--from` "Defaults to main worktree" | **measured**, `wt 5fba0bd`, by this spec session on this branch | the binary's own help |
+| `wt step copy-ignored --help`: `--from` "Defaults to main worktree" | **documented by the binary**, not a measurement of behaviour — `wt 5fba0bd`, read by this spec session | the binary's own help |
+| Worktrunk's own documentation states **both** answers for a pre-\* hook table, in two copies both labelled version 1.0.0 | **documented, and self-contradictory** — see below | the two `hook.md` copies and `wt hook --help`, all quoted below |
+| A trailing `-C` reads the wrong directory and reports no hooks | **PROSE ONLY, not measured** — its sole provenance is `skills/_reference/herdr.md`, added in `b5d308b` | filed for measurement as #64 |
 | `wt hook show` listing exactly four project templates on this configuration | **EXPECTED, not measured** — see below | task 2.7 |
 | Which worktree's *config* supplies the hooks when source and target differ | **NOT measured** — the lab ran symmetric config throughout | see below |
-| Whether the three `[pre-merge]` entries run sequentially or concurrently | **NOT measured** — worktrunk's `hook.md` and the binary's generic help disagree | see below |
+| What order the three `[pre-merge]` entries actually run in **on this tree** | **NOT measured**, and not measurable until the grant lets the hooks run | see below |
 
 The version fact is in the table because a previous session raised an alarm
 that the installed binary differs from the one the finding measured. It is
@@ -60,14 +62,42 @@ instruction about one merge, and it is what `bolt.md` says. Transplanted
 into standing prose it becomes a general licence telling every future agent
 to shrug at an ungated merge. That is the precise symptom `finding.md`
 records as having "no way to tell it apart from a gated merge", and it is
-why this intent exists at all. It would also be a false dichotomy: three
-other causes of a zero-hook merge are measured. Cite `bolt.md`; do not
-reproduce it.
+why this intent exists at all. It would also be a false dichotomy: two other
+causes of a zero-hook merge are measured (`nohooks`, `noverify`) and a third
+is documented in `herdr.md` without ever having been measured. Cite
+`bolt.md`; do not reproduce it.
 
-**Execution order.** Dropped rather than replaced with worktrunk's docs. A
-doc is not a measurement of this tree, and the two docs disagree with each
-other. It is a named measurement for the acceptance run, once the grant
-exists.
+**Execution order.** Dropped, and the conclusion is unchanged under every
+reading. The rationale, however, has now been wrong twice in this bolt in
+opposite directions, so here is what was actually read, on this machine,
+with paths and verbatim quotes. All three are documentation; none is a
+measurement of this tree.
+
+- `/Users/chuck/.claude/plugins/marketplaces/worktrunk/skills/worktrunk/reference/hook.md`
+  — "For pre-\* hooks, commands in a table run sequentially. For post-\*
+  hooks, they run concurrently in the background." The same sentence is in
+  that marketplace's `docs/content/hook.md`. This copy has no
+  "table … run concurrently" sentence at all.
+- `/Users/chuck/.claude/plugins/cache/worktrunk/worktrunk/1.0.0/skills/worktrunk/reference/hook.md`
+  — "A table is multiple commands that run concurrently:", with no pre-\* /
+  post-\* distinction anywhere.
+- `wt hook --help` on `wt 5fba0bd` — "A table is multiple commands that run
+  concurrently:", agreeing with the cache copy.
+
+Both `hook.md` copies are labelled **version 1.0.0** and they contradict
+each other on the exact construct at issue: a pre-\* hook table, which is
+what `[pre-merge]` is here. This is not the table-versus-pipeline conflation
+it was at one point taken for — the marketplace sentence says "commands in a
+table" for "pre-\* hooks" in so many words. The pipeline construct is
+described separately in both copies and is not involved.
+
+So the head comment asserts nothing, for the reason that survives all of
+this: **documentation is not a measurement of what happens here**, and where
+the documentation disagrees with itself the point is only sharper. That is
+the standard `finding.md` set when it ran ten shapes rather than quoting
+`wt hook --help`. Ordering cannot be measured on this tree until the grant
+lets the hooks run, so it is a named measurement for the acceptance run —
+and that run now has both documented candidates on record to check against.
 
 ## Goals / Non-Goals
 

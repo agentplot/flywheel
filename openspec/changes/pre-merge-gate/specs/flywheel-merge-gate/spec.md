@@ -85,8 +85,11 @@ carrying this text covers the whole gate.
 That `wt config approvals add` enumerates `[post-start]` templates,
 `wt step copy-ignored` included, is measured — recorded in
 `openspec/changes/merge-gate-remedy/bolt.md`, taken while reviewing #36.
-That the same pass measured `--yes` still failing non-interactively and
-persisting nothing is why the grant remains an interactive operator step.
+That the same pass re-measured `--yes` **on `wt config approvals add`**
+still failing non-interactively and persisting nothing is why the grant
+remains an interactive operator step. That is a different command from
+`--yes` on `wt merge`, which runs the hooks without persisting the approval;
+the two facts are not interchangeable.
 
 The four-template shape itself is **expected, not yet measured**: no
 committed tree carries this configuration, so the tree that would be
@@ -128,11 +131,19 @@ the exact tree that lands", and "All four are independent" over three
 checks. The block's count of checks SHALL match the number defined.
 
 The block SHALL NOT assert that the checks run concurrently, and SHALL NOT
-assert that they run sequentially. Worktrunk's `hook.md` says pre-\*
-commands run sequentially and the binary's generic help says concurrently;
-neither is a measurement of this tree, and a doc is not promoted to a
-measurement by being the only thing available. The claim is dropped, not
-replaced.
+assert that they run sequentially.
+
+The reason is that **nothing here has been measured on this tree**, and
+ordering cannot be measured until the operator's grant lets the hooks run at
+all. Worktrunk's documentation states both answers in two copies carrying
+the same version number, and the binary agrees with one of them —
+documentation, at documentation strength, recorded in `design.md` with paths
+and verbatim quotes. None of it is a measurement of what happens here, which
+is the standard `finding.md` set when it ran ten shapes rather than quoting
+`wt hook --help`.
+
+Execution order is a named measurement for the acceptance run, once the
+grant exists.
 
 #### Scenario: The false sentences are gone, not softened
 
@@ -160,12 +171,15 @@ governs, and SHALL NOT state or imply that the target's does. A flat
 satisfy this requirement.
 
 The block SHALL NOT carry a standing instruction about how to read a merge
-that runs zero hooks. Zero hooks has other measured causes — the `nohooks`
-and `noverify` rows of `finding.md` both ran nothing, and a trailing `-C`
-reads the wrong directory and reports no hooks — so naming the
-asymmetric-config question as *the* explanation is a false dichotomy, and a
-standing instruction to treat an ungated merge as neither a green nor a
-defect licenses shrugging at the exact symptom `finding.md` records as
+that runs zero hooks. Zero hooks has at least two other **measured** causes
+— the `nohooks` and `noverify` rows of `finding.md` both ran nothing and
+exited 0 — and one further candidate that is documented but **not
+measured**: `skills/_reference/herdr.md` warns that a trailing `-C` reads
+the wrong directory and reports no hooks, a warning whose only provenance is
+that prose, added in `b5d308b`. Either way, naming the asymmetric-config
+question as *the* explanation is a false dichotomy, and a standing
+instruction to treat an ungated merge as neither a green nor a defect
+licenses shrugging at the exact symptom `finding.md` records as
 indistinguishable from a gated merge.
 
 The scoped reading — that for this bolt's own merge-back a zero-hook result
