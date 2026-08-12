@@ -115,9 +115,13 @@ apply:
     proposal-review reads every assertion in the batch before its build,
     an adversarial code-review reads the built batch after it, and the
     batched acceptance run passes on the bolt branch before anything
-    lands on main. Design-level findings - the design is wrong, not the
-    build - are queued as items on the source intent's milestone, never
-    fixed from here.
+    lands on main. A discovery is routed by one test: does this bolt's
+    merge criteria need it? Only then does it join bolt/<slug>.
+    Design-level findings - the design is wrong, not the build - go to
+    the source intent's milestone; anything else goes to the intent
+    that owns its subject, or unmilestoned for dispatch to triage.
+    Never fixed from here, and never left on the bolt to bloat its
+    close.
 
     When the ready set is empty: present the queue - this bolt's
     `state:queued` items and Backlog units, one line each - and stop.

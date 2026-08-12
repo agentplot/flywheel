@@ -35,7 +35,10 @@ queue a question — never invent tracker structure.**
    "which change owns this work now." Moving an assertion item from
    `intent/<slug>` to `bolt/<slug>` IS the release to construction —
    no other act bolts it, and the milestone field is the test for
-   whether it happened.
+   whether it happened. A discovery made during construction joins the
+   bolt's milestone only when the bolt's merge criteria need it;
+   otherwise it goes to the intent that owns its subject, or
+   unmilestoned for dispatch to triage.
 2. **An item joins exactly one batch, ever** (GitHub enforces this —
    attaching a parented sub-issue is a 422). Which batch:
    design-work items — questions, prototypes, writebacks, handoff

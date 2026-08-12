@@ -120,8 +120,11 @@ apply:
     whose work order names it; and the batched acceptance run has
     personas exercise the result as its users would, on the bolt branch,
     before anything lands on main. Design-level findings - the design is
-    wrong, not the build - are queued as items on the source intent's
-    milestone, never fixed from here.
+    wrong, not the build - go to the source intent's milestone; any
+    other discovery joins bolt/<slug> only when this bolt's merge
+    criteria need it, and otherwise goes to the intent that owns its
+    subject, or unmilestoned for dispatch to triage. Never fixed from
+    here, and never left on the bolt to bloat its close.
 
     When the ready set is empty: present the queue - this bolt's
     `state:queued` items and Backlog units, one line each - and stop.
