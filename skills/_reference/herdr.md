@@ -226,11 +226,14 @@ session directory and model are launch mechanics, not work order content.
 
 ## The tracker
 
-Every machinery write to the tracker runs as the app. `flywheel-token`
+Every machinery write to the tracker runs as the app. The plugin's
+`bin/` is not on `PATH`: your loaded skill or profile carries the
+plugin root — `${CLAUDE_PLUGIN_ROOT}`, substituted at load — and
+`<plugin-root>` below means that absolute path. `flywheel-token`
 caches for the hour, so calling it per command is free:
 
 ```bash
-tok=$(flywheel-token --org <org>)     # FLYWHEEL_GH_APP_ID / _KEY / _ORG configure it
+tok=$(<plugin-root>/bin/flywheel-token --org <org>)   # FLYWHEEL_GH_APP_ID / _KEY / _ORG configure it
 GH_TOKEN=$tok gh issue list --repo <org>/<tracker> --milestone "intent/<slug>" \
   --label state:ready --state open --json number,title,labels
 GH_TOKEN=$tok gh issue create --repo <org>/<tracker> --title "<the work, imperatively>" \
@@ -266,7 +269,7 @@ project, Status **Backlog** (moving it to **Ready** on the board is
 the operator's approval, and nothing else moves it):
 
 ```bash
-flywheel-epic --org <org> --repo <tracker> --milestone "bolt/<slug>" \
+<plugin-root>/bin/flywheel-epic --org <org> --repo <tracker> --milestone "bolt/<slug>" \
   --title "<the batch, imperatively>" <item> <item> ...
 ```
 
@@ -293,7 +296,7 @@ GH_TOKEN=$tok gh api /repos/<org>/<tracker>/issues/<blocked>/dependencies/blocke
   --input - <<< '{"issue_id": <database id of the blocker>}'
 ```
 
-`flywheel-setup --org <org> --repo <tracker>` converges labels, the
+`<plugin-root>/bin/flywheel-setup --org <org> --repo <tracker>` converges labels, the
 project and its fields, idempotently — run it once per org, or any time
 the shape is in doubt.
 

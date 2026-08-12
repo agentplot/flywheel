@@ -21,7 +21,7 @@ What you produce goes three places:
   session that edits no files needs none of this.
 - **the tracker** — a comment on each item you worked, saying what
   happened; new work you notice is a queued item
-  (`GH_TOKEN=$(flywheel-token …) gh issue create`), filed in a minute
+  (`GH_TOKEN=$("${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-token …) gh issue create`), filed in a minute
   and never a reason to stop. A small fix inside your batch's released
   scope is work, not a finding — do it and note it in your report.
 - **your report** — what you found or built, the evidence as pointers,

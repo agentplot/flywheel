@@ -20,7 +20,10 @@ Three roles load this skill: **dispatch**, the **intent conductor**, and
 
 GitHub Issues on the org's tracker repo — the `tracker:` line in the
 org's `fleet.yaml`. Every machinery write runs as the app:
-`GH_TOKEN=$(flywheel-token --org <org>) gh …`. The invocations, label
+`GH_TOKEN=$("${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-token --org <org>) gh …`
+— the plugin's `bin/` is not on `PATH`; `${CLAUDE_PLUGIN_ROOT}` is
+substituted into this skill at load and is the `<plugin-root>` the
+references speak of. The invocations, label
 set, and epic queries are in the plugin's `skills/_reference/herdr.md`;
 the object-graph rules and two worked examples are the shared copy at
 `skills/_reference/tracker.md` — when a situation is not covered there

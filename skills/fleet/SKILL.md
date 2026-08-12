@@ -12,15 +12,15 @@ repos — and it is not checked into git: placement is machine-local, and
 
 ## The command
 
-An installed plugin's `bin/` is on your `PATH`, so the command is bare:
+The plugin's `bin/` is not reliably on `PATH` (measured: a
+directory-marketplace install leaves it off), so invoke by the plugin
+root — `${CLAUDE_PLUGIN_ROOT}` is substituted into this skill at load:
 
 ```bash
-flywheel status   # every row vs the live roster
-flywheel up       # start running-state rows on this host
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel status     # every row vs the live roster
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel up         # start running-state manifest rows
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel reconcile  # the whole pass: rows + tracker-driven conductors + nudges
 ```
-
-When `bin/` is not on `PATH` (a checkout, `--plugin-dir` development),
-run it as `${CLAUDE_PLUGIN_ROOT}/bin/flywheel status`.
 
 Both take `--fleet <path>` when invoked outside the org tree, and
 `--host <name>` to override host detection. The command walks up from the
@@ -62,12 +62,14 @@ tears an actor down (teardown is deliberate), and never starts a
 and comments until the actor is next started. Rows on other hosts are
 reported, not driven.
 
-The manifest's actor rows are an interim: the destination is a
-deterministic reconciler that derives which conductors should exist
-from the tracker — an open milestone with ready items and no running
-conductor starts one, placement read from the board's Team field — with
-`fleet.yaml` shrunk to placement config. Until it lands, `flywheel up`
-drives the rows.
+`flywheel reconcile` is the deterministic pass that runs the whole
+fleet: it converges the manifest rows, starts a conductor for every
+`intent/*` or `bolt/*` milestone with actionable work and none running,
+nudges settled conductors on ready work and dispatch on waiting
+`needs-operator` items — one-shot, on `--interval`, or `--dry-run` to
+print the plan. Placement reads the board's Team field through the
+manifest's `teams:` map; conductors start in `conductors_cwd:` on
+`conductor_model:`.
 
 After hand-starting a conductor outside this command, record it in
 `fleet.yaml` — the manifest is placement's one record, and an actor it

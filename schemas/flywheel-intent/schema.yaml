@@ -187,7 +187,9 @@ apply:
 
     The tracker is the org's, named by the `tracker:` line in the org's
     fleet.yaml; every tracker write runs as the app
-    (`GH_TOKEN=$(flywheel-token --org <org>)`). The invocations are in the
+    (`GH_TOKEN=$(<plugin-root>/bin/flywheel-token --org <org>)` — the
+    plugin's bin/ is not on PATH; your loaded loop skill states the
+    root). The invocations are in the
     flywheel plugin's `skills/_reference/herdr.md`.
 
     1 · QUERY — the milestone `intent/<slug>`'s open items labelled
