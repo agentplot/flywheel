@@ -34,12 +34,16 @@ set, and epic queries are in the plugin's `skills/_reference/herdr.md`.
   `epic`) whose sub-issues are the batch, composed with `flywheel-epic`,
   sitting in the Project at Status **Backlog**. The operator approves a
   batch by moving its epic to **Ready** on the board — one move per
-  batch, never per item.
-- **Milestones** are the long-lived containers: `intent/<slug>` for
-  design items, `intent/writeback-<slug>` for the intent's writebacks,
-  `bolt/<slug>` per bolt. Dependencies are the items' native blocked-by
-  relations, declared best-effort by whoever files an item and confirmed
-  by the conductor at batching time.
+  batch, never per item. Epics group by **thread**, not by type: a
+  prototype, the questions it answers, and the writeback of its findings
+  are one approval; the conductor partitions the types into sessions at
+  work time.
+- **Milestones** are the change-sized containers, exactly two forms:
+  `intent/<slug>` and `bolt/<slug>`. Everything an intent owns —
+  questions, assertions, prototypes, writebacks — sits on its one
+  milestone, distinguished by `type:*`. Dependencies are the items'
+  native blocked-by relations, declared best-effort by whoever files an
+  item and confirmed by the conductor at batching time.
 
 **Routing is creating the item where it belongs.** A finding for another
 change is queued on that change's milestone, and the open item is the
@@ -78,9 +82,12 @@ A work order is the change id, the session type, the item numbers, and
 one or two plain sentences of goal. Worktree, session directory, and
 model are launch mechanics the conductor sets, not work order content.
 
-- **Batch generously.** Several items per session is the normal case;
-  split only when batches conflict on files or differ in type. A session
-  costs a pane, a worktree, and its reading — spend it on a real batch.
+- **Batch generously, partition by judgment.** Type is the hard
+  boundary — a session loads one type skill. Within a type: related
+  topics share a session, unrelated ones split even at the same type,
+  and prototypes ride alone by default — each is its own experiment. A
+  session costs a pane, a worktree, and its reading — spend it on a
+  real batch, and never split just to make sessions smaller.
 - **A session that edits no files gets no worktree.** Most research
   reads, comments its answer, and reports — no branch, no merge, no
   teardown.
@@ -155,10 +162,13 @@ edit the record or item it names, comment the change, and the conductor
 sees it on its next query. No relay ceremony exists for the operator's
 own word.
 
-Dispatch is also the inner loop's bridge to a possibly-absent operator
-(Discord DM, addressee resolved from the item's assignee). An
-escalation is one line of question, options if any, and a pointer to
-evidence.
+Dispatch is also the inner loop's bridge to a possibly-absent operator.
+An inner-loop actor blocked on the operator's word comments the
+question on its item and adds `needs-operator`; dispatch DMs the item's
+assignee on Discord with the line and the link — GitHub `@mention` in
+the comment as the fallback — relays the answer back as a comment, and
+whoever applies the word removes the label. An escalation is one line
+of question, options if any, and a pointer to evidence.
 
 ## Intent conductor
 
@@ -174,13 +184,18 @@ apply instruction holds the loop, launched as
   decision records into `decisions/`, findings into `prototypes/`,
   comments and closures onto the items. Teardown is yours; a session is
   not done until its worktree and branch are gone.
-- **At the queue**: compose what is ready into proposed epics
-  (`flywheel-epic` — handoff batches onto the bolt milestone's epics,
-  writebacks onto `intent/writeback-<slug>`), present the queue one line
-  per epic and unbatched item, and wait. Moving an epic to Ready is the
-  approval; a handoff epic moved to Ready becomes a bolt — create the bolt
-  change and start `bolt-<slug>` if none exists, and never write a bolt
-  change's artifacts.
+- **At the queue**, two moves, then wait. First, birth the handoff when
+  it is due: an assertion is **settled and unbolted** when its item is
+  open on `intent/<slug>` (bolting IS the milestone move to
+  `bolt/<slug>`), has no parent epic, and has no open blockers — when
+  any exist, queue one `type:handoff` item naming exactly that set, or
+  extend the open unstarted one. Second, compose the queue into proposed
+  epics (`flywheel-epic`), grouped by thread, and present it one line
+  per epic and unbatched item. Moving an epic to Ready is the approval;
+  the handoff session inside a released epic plans the bolt and moves
+  its assertions to `bolt/<slug>`; the fleet layer starts `bolt-<slug>`,
+  which scaffolds its own change — you never write a bolt change's
+  artifacts.
 - **Close honestly**: milestone empty and writebacks green → propose
   `openspec archive <id>` to the operator; the milestone closes with it.
 

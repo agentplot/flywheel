@@ -11,9 +11,7 @@ to a `type:*` label, and `state:queued` — or `state:ready` for handoff
 lines already marked RELEASED. Checked lines are history and stay in git.
 
 The milestone defaults to `intent/<dirname>` (`bolt/<dirname>` when the
-change's `.openspec.yaml` binds a bolt schema) and is created if missing;
-writeback-typed items go to `intent/writeback-<dirname>` instead, the
-convention the roadmap groups them by.
+change's `.openspec.yaml` binds a bolt schema) and is created if missing.
 Dependencies are left as quoted blocker text in each body — wire the
 native blocked-by relations when batching, when the numbers exist to
 point at. Released items are listed at the end for `flywheel-epic` to
@@ -129,30 +127,22 @@ def main():
             body += "\n\nblocked by (wire the relation when the numbers exist): " \
                     + "; ".join(blockers)
         body += f"\n\nmigrated from `{tasks_file}` · section: {section}"
-        ms_title = milestone
-        if t == "writeback" and milestone.startswith("intent/"):
-            ms_title = "intent/writeback-" + milestone.removeprefix("intent/")
-        items.append((title_clean, labels, body, released, ms_title))
+        items.append((title_clean, labels, body, released))
 
-    print(f"{len(items)} unchecked lines → '{milestone}'"
-          + (" (+ writeback milestone)" if any(
-              m != milestone for *_, m in items) else ""))
+    print(f"{len(items)} unchecked lines → '{milestone}'")
     if args.dry_run:
-        for title, labels, _, _, ms_title in items:
-            print(f"  [{' '.join(labels)}] ({ms_title}) {title}")
+        for title, labels, _, _ in items:
+            print(f"  [{' '.join(labels)}] {title}")
         return
 
     token = resolve_token(args.org)
-    ms_numbers = {}
+    ms_number = ensure_milestone(token, args.org, args.repo, milestone)
     released_numbers = []
-    for title, labels, body, released, ms_title in items:
-        if ms_title not in ms_numbers:
-            ms_numbers[ms_title] = ensure_milestone(
-                token, args.org, args.repo, ms_title)
+    for title, labels, body, released in items:
         issue = gh(token, "api", f"/repos/{args.org}/{args.repo}/issues",
                    "--input", "-", input_json={
                        "title": title, "body": body,
-                       "labels": labels, "milestone": ms_numbers[ms_title]})
+                       "labels": labels, "milestone": ms_number})
         print(f"  #{issue['number']} {title}")
         if released:
             released_numbers.append(str(issue["number"]))

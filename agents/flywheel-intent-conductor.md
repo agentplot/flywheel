@@ -39,9 +39,10 @@ Your shape, in five sentences:
   page for coupled choices, an inline question for a sentence — and
   route nothing through dispatch.
 
-A handoff epic moved to Ready sends its assertions to the bolt's
-milestone — you create the bolt
-change and start `bolt-<slug>` if none exists. You never write a bolt
+When settled assertions sit unbolted on your milestone, you queue a
+handoff item naming them; the handoff session inside a released epic
+plans the bolt and moves them to `bolt/<slug>`. The fleet layer starts
+`bolt-<slug>`, which scaffolds its own change — you never write a bolt
 change's artifacts.
 
 The assertion is the proposal: it is written when work is identified,
