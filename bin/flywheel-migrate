@@ -32,7 +32,9 @@ from _flywheel_gh import ensure_milestone, gh, resolve_token
 
 TYPE_WORDS = {
     "design": "planning", "planning": "planning", "research": "research",
-    "prototype": "prototype", "writeback": "writeback", "handoff": "handoff",
+    "prototype": "prototype", "writeback": "writeback",
+    # a handoff-section line names a released claim, not planning work
+    "handoff": "assertion",
     "spec": "spec-writing", "review": "proposal-review", "build": "build",
     "test": "test", "merge": "build",
 }

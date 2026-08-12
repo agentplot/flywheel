@@ -25,7 +25,10 @@ set, and epic queries are in the plugin's `skills/_reference/herdr.md`.
 
 - **An item** is an issue: title imperative, body one to three sentences
   plus pointers to the record it serves, milestone from birth, labels
-  `type:<session-type>` and exactly one `state:*`.
+  `type:*` and exactly one `state:*`. The type is the session type that
+  works it — a question borrows the type of the session that will answer
+  it — except `type:assertion`: the released claim itself, whose
+  construction stages live in its comments, never as items of their own.
 - **The lifecycle** is `state:queued → state:ready → state:in-progress`,
   ending closed with a `closed:*` reason — done, declined, superseded,
   parked. Anyone queues; only the operator's word makes an item ready;

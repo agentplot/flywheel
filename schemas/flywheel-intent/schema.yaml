@@ -110,8 +110,8 @@ artifacts:
       identified, it is what the operator releases, and it is what a bolt's
       spec agents work from - nothing restates it downstream. Like a
       question it gets two things at birth: this record, and a tracker
-      item (label `state:queued`, milestone `intent/<slug>`). The record
-      holds:
+      item (labels `type:assertion` + `state:queued`, milestone
+      `intent/<slug>`). The record holds:
       - **Repo** - the built repo it lands in.
       - **Item** - the tracker item's number.
       - **Raised by** - the session, review, bolt report, or the operator.

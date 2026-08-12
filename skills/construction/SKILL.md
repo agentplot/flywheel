@@ -64,10 +64,15 @@ tree.
 
 ## The item flow
 
-Each item's progress is its comment history — spec landed, review
-verdict, build done, merge SHA — and its label stays `state:in-progress`
-from first spec work until it closes `closed:done` with the landing SHA
-in the closing comment.
+A released assertion carries `type:assertion`, and it is the one
+tracked object for its whole construction: the stages below create no
+items of their own — the dynamic workflow decides those moves, and the
+item's comments record them. Each item's progress is its comment
+history — spec landed, review verdict, build done, merge SHA — and its
+label stays `state:in-progress` from first spec work until it closes
+`closed:done` with the landing SHA in the closing comment. Only
+discoveries become new items: findings, readiness gaps, design-level
+faults queued to the source intent.
 
 1. **Spec.** A spec-writing session per batch (`opsx ff` in the built
    repo) derives the spec-driven change from the assertion and its cited
