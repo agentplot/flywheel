@@ -129,15 +129,35 @@ of it as a trust bypass rather than a shortcut is measured, not inferred.
 line once, because #36 has now hit it twice — at the project identifier
 and at the hook-template grammar. `wt` is authoritative about **its own
 configuration**: what a project's identifier is, and what counts as a hook
-template under a grammar that accepts a bare string, a named table, an
-inline table, an array, and `[[event]]` pipeline blocks. Re-deriving
-either by hand is the reimplementation of `wt` that #36's own item body
-disclaims, and it goes stale silently the day `wt` changes. The approvals
-store is the authority on **grants**: whether a template is approved is
-read and compared by us, never asked of `wt`. Concretely, `wt hook show
---format json` may be read for `template` where `source == "project"`;
-its `needs_approval` field is approval state and is exactly what the
-assertion forbids sourcing from `wt`.
+template. Re-deriving either by hand is the reimplementation of `wt` that
+#36's own item body disclaims, and it goes stale silently the day `wt`
+changes. The approvals store is the authority on **grants**: whether a
+template is approved is read and compared by us, never asked of `wt`.
+Concretely, `wt hook show --format json` may be read for `template` where
+`source == "project"`; its `needs_approval` field is approval state and is
+exactly what the assertion forbids sourcing from `wt`.
+
+**This record deliberately does not enumerate the accepted hook shapes,
+and that is the point.** It said five — a bare string, a named table, an
+inline table, an array, and `[[event]]` pipeline blocks — and five was
+wrong: re-measured on `wt 5fba0bd`, a mixed array holding both strings and
+tables is accepted too, making six. The grammar is
+`String | Table<name → String> | Array<String | Table<name → String>>`,
+measured, with the binary stating it itself on a malformed input. An
+enumeration written down here is a snapshot that decays; sourcing the
+templates from worktrunk's own enumeration makes a seventh shape a
+non-event rather than a silent under-report. **A check that would need
+editing when a new shape appears has re-implemented the grammar rather
+than sourced it**, whatever its current test results say.
+
+Two traps measured alongside it, both of which a hand-written parser gets
+wrong silently. A `[[event]]` block's keys are **command names, not
+metadata**: a block written `name = "delta"` and `command = "echo delta"`
+is two commands, both of which worktrunk enumerates and runs. And
+`wt hook show --format json` **exits 1 with empty stdout when the project
+config cannot be loaded** — "no project hooks" and "config unreadable" sit
+one exit code apart, so reading the latter as an empty template set is a
+false green on a repo whose gate is definitionally unrunnable.
 
 **The reads `bolt-default` schedules, all three load-bearing here.** An
 independent proposal-review reads every assertion in a batch against its
