@@ -103,7 +103,7 @@ def ensure_labels(token, org, repo):
     return created
 
 
-def ensure_project(token, org, title):
+def ensure_project(token, org, title, template=None):
     data = graphql(token, """
       query($org: String!) {
         organization(login: $org) {
@@ -112,9 +112,28 @@ def ensure_project(token, org, title):
         }
       }""", {"org": org})
     org_id = data["organization"]["id"]
-    for node in data["organization"]["projectsV2"]["nodes"]:
+    nodes = data["organization"]["projectsV2"]["nodes"]
+    for node in nodes:
         if node["title"] == title:
             return node["id"], node["number"], False
+    # Views cannot be created through the API; copying a hand-built
+    # template project is the one way to arrive with the board and
+    # roadmap views preset. The copy brings views and fields both.
+    if template:
+        for node in nodes:
+            if node["title"] == template:
+                copied = graphql(token, """
+                  mutation($project: ID!, $owner: ID!, $title: String!) {
+                    copyProjectV2(input: {projectId: $project,
+                                          ownerId: $owner, title: $title,
+                                          includeDraftIssues: false}) {
+                      projectV2 { id number }
+                    }
+                  }""", {"project": node["id"], "owner": org_id,
+                         "title": title})["copyProjectV2"]["projectV2"]
+                return copied["id"], copied["number"], True
+        print(f"template: no project titled '{template}' — creating bare "
+              "(views must then be configured by hand once)")
     created = graphql(token, """
       mutation($owner: ID!, $title: String!) {
         createProjectV2(input: {ownerId: $owner, title: $title}) {
@@ -256,6 +275,9 @@ def main():
     ap.add_argument("--org", required=True)
     ap.add_argument("--repo", required=True)
     ap.add_argument("--project", default="Flywheel", metavar="TITLE")
+    ap.add_argument("--template", default="Flywheel Template", metavar="TITLE",
+                    help="org project to copy (views included) when the "
+                         "project is missing; built by hand once per org")
     ap.add_argument("--team", action="append", default=None,
                     help="Team option; repeatable (default: flywheel)")
     args = ap.parse_args()
@@ -273,7 +295,8 @@ def main():
     print(f"labels: created {len(created)}" +
           (f" ({', '.join(created)})" if created else ", all present"))
 
-    project_id, number, fresh = ensure_project(token, args.org, args.project)
+    project_id, number, fresh = ensure_project(token, args.org, args.project,
+                                               template=args.template)
     print(f"project: {'created' if fresh else 'found'} "
           f"'{args.project}' (#{number})")
 
