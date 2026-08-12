@@ -92,12 +92,24 @@ defect.
 #33's grant is therefore taken with cwd inside the construction worktree
 carrying #34's final text, never in `main`, whose `.config/wt.toml` still
 holds the old `[pre-commit]` shape. Approvals key on verbatim template
-text — that keying is measured (the lab hand-seeded verbatim templates
-and the approved hooks ran); what is *not* measured is whether moving a
-check between tables re-keys it, and this ordering does not depend on
-that either way. The grant is taken last, after nothing further will
-touch `.config/wt.toml`, because text edited after a grant silently
-un-grants it.
+text, and that keying is now measured twice over: the ff-gate lab
+hand-seeded verbatim templates and the approved hooks ran, and this bolt
+measured the case that was open — **moving a granted template between
+hook event tables, with its text unchanged, preserves the grant.**
+Verified non-destructively in a scratch repo under a relocated `HOME`:
+granted under `[pre-commit]`, the hook runs; the same text moved to
+`[pre-merge]` with the store untouched, the hook still runs; and the
+negative control — one added trailing space — breaks it. That upgrades
+what `questions/hook-approvals-never-granted.md` marks provisional, and
+it means the table move is not itself what demands a fresh grant.
+
+What demands the grant is that this repo has never had one at all, and
+what demands it be taken *last* is that a text edit after a grant
+silently un-grants it. So the grant waits not merely for the build but
+for the adversarial code-review to clear: a review that names a defect in
+`.config/wt.toml` changes the template text, and a grant already taken
+would then cover nothing while appearing to cover everything — the exact
+shape of silence this bolt exists to end.
 
 **The listing must show four templates, one of them `wt step
 copy-ignored`. Three rows is a stop-and-investigate, not a diagnosis.**
