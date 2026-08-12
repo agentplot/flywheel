@@ -233,8 +233,10 @@ def send_prompt(name: str, text: str, env: dict) -> bool:
         return False
     # A multi-line or slow-composer prompt can land unsubmitted — the
     # agent stays idle with the text sitting at its prompt. Verify it
-    # went to work; one Enter submits a stuck composer.
-    for _attempt in range(3):
+    # went to work; one Enter submits a stuck composer. A fresh session
+    # initializes for tens of seconds (plugin load), so the window is
+    # generous — a first prompt regularly submits near the 30s mark.
+    for _attempt in range(8):
         time.sleep(4)
         agent = herdr_agents(env).get(name, {})
         if agent.get("agent_status") == "working":
