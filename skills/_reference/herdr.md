@@ -236,6 +236,15 @@ herdr worktree remove --workspace <workspace-id>
 herdr agent list                  # confirm the agents are gone
 ```
 
+**Delivery is settling, never waiting.** A charged session delivers by
+commenting its items, printing its report as its final message, and
+settling — the driver that charged it is parked on exactly that settle
+and reads the pane. A session never waits for its conductor to settle,
+and never parks a background wait to prompt a report upward later: a
+driver waiting on the session's settle plus a session waiting on the
+conductor's settle is a deadlock. Prompting the conductor with a report
+is only for sessions no driver charged.
+
 **A settled session's pane closes at the merge step.** When a session's outcome
 is returned and its items are commented, close its tab
 (`herdr tab close <tab-id>`): the pane's job ended with the report, and
