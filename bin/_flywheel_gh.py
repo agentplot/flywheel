@@ -7,6 +7,7 @@ tracker tools share. Import from a sibling script:
     from _flywheel_gh import resolve_token, gh, graphql, GraphqlError
 """
 
+import datetime
 import json
 import os
 import subprocess
@@ -114,7 +115,9 @@ def ensure_milestone(token, org, repo, title, due_on=None):
 
     A due date makes the milestone visible on the roadmap; pass due_on as
     YYYY-MM-DD to set it at creation, or to add it to an existing
-    milestone that has none.
+    milestone that has none. Dates default aggressively — a new
+    milestone with no due_on is due TODAY; an agent that judges the
+    work bigger overrides with a later date and a stated reason.
     """
     due = {"due_on": f"{due_on}T23:59:59Z"} if due_on else {}
     for ms in gh(token, "api", f"/repos/{org}/{repo}/milestones?state=all",
@@ -125,6 +128,8 @@ def ensure_milestone(token, org, repo, title, due_on=None):
                    f"/repos/{org}/{repo}/milestones/{ms['number']}",
                    "--input", "-", input_json=due)
             return ms["number"]
+    if not due:
+        due = {"due_on": datetime.date.today().isoformat() + "T23:59:59Z"}
     return gh(token, "api", f"/repos/{org}/{repo}/milestones", "--input", "-",
               input_json={"title": title, **due})["number"]
 

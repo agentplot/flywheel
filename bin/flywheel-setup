@@ -15,12 +15,19 @@ sibling `flywheel-token` from `FLYWHEEL_GH_*`):
     `state:*` for the queue lifecycle, `closed:*` for the end reasons,
     `unit` and `elaboration` for the two batch kinds, and
     `needs-operator` for items blocked on the operator's word;
-  - the org Project (default title "Flywheel"), linked to the repo;
+  - the org Project (default title "Flywheel"), linked to the repo —
+    copied from the hand-built template project (--template, default
+    "Flywheel Template") when one exists, because views cannot be
+    created through the API. The template wants three views: a Board
+    grouped by Status (Backlog / Ready lanes), a Roadmap laid out by
+    Start/Target grouped by Milestone, and a Triage table filtered to
+    open items with no milestone;
   - its fields: Team (single select, from --team), Quarter (single
-    select, the next six quarters), Iteration (two-week iterations),
-    Start and Target (dates — what the roadmap lays items out by), and
-    the Status options the board uses (Backlog, Ready — added alongside
-    whatever options the project already has).
+    select, the next six quarters), Start and Target (dates — what the
+    roadmap lays items out by; no Iteration — the flywheel is
+    continuous delivery, not sprint cadence), and the Status options
+    the board uses (Backlog, Ready — added alongside whatever options
+    the project already has).
 """
 
 import argparse
@@ -216,11 +223,6 @@ def next_quarters(count=6):
     return out
 
 
-def next_monday():
-    today = datetime.date.today()
-    return today + datetime.timedelta(days=(7 - today.weekday()) % 7 or 7)
-
-
 def ensure_fields(token, project_id, teams):
     fields = project_fields(token, project_id)
     made = []
@@ -238,13 +240,6 @@ def ensure_fields(token, project_id, teams):
                          {"name": q, "color": "GRAY", "description": ""}
                          for q in next_quarters()])
         made.append("Quarter")
-
-    if "Iteration" not in fields:
-        create_field(token, project_id, "Iteration", "ITERATION",
-                     iterationConfiguration={
-                         "startDate": next_monday().isoformat(),
-                         "duration": 14, "iterations": []})
-        made.append("Iteration")
 
     for name in ("Start", "Target"):
         if name not in fields:

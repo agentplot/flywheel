@@ -3,8 +3,8 @@
 
   flywheel-batch --org ORG --repo REPO --kind {unit,elaboration} \\
       --milestone TITLE --title TITLE [--body TEXT] [--project Flywheel] \\
-      [--due YYYY-MM-DD] [--iteration TITLE] [--start YYYY-MM-DD] \\
-      [--target YYYY-MM-DD] ITEM_NUMBER ...
+      [--due YYYY-MM-DD] [--start YYYY-MM-DD] [--target YYYY-MM-DD] \\
+      ITEM_NUMBER ...
 
 A batch is a parent issue whose sub-issues are the batch, and its kind
 is what approving it authorizes: a **unit** releases construction work
@@ -12,25 +12,28 @@ is what approving it authorizes: a **unit** releases construction work
 live bolt); an **elaboration** authorizes design sessions on an
 intent. The conductor's batching move, in one call: creates the parent
 issue (labels `<kind>` + `state:queued`, in the named milestone,
-created if missing, `--due` giving it the date the roadmap needs),
-attaches the items as sub-issues, adds the parent to the org Project,
-and sets its Status to **Backlog** — with `--iteration`, `--start` and
-`--target` filling the roadmap fields when given. Moving it to
-**Ready** on the board is the operator's act — this tool never does.
+created if missing), attaches the items as sub-issues, adds the parent
+to the org Project, and sets its Status to **Backlog**. Dates default
+aggressively — Start and Target default to today, and a new milestone
+is due today — because automation comes first; pass `--start`,
+`--target`, `--due` with a stated reason when the work is bigger.
+Moving it to **Ready** on the board is the operator's act — this tool
+never does.
 
 Prints the batch's number and URL. Token: `GH_TOKEN`, or minted by the
 sibling `flywheel-token` from `FLYWHEEL_GH_*`.
 """
 
 import argparse
+import datetime
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_gh import (GraphqlError, add_to_project, ensure_milestone,
                           find_project, gh, graphql, project_date_field,
-                          project_iterations, project_single_select,
-                          resolve_token, set_item_option, set_item_value)
+                          project_single_select, resolve_token,
+                          set_item_option, set_item_value)
 
 
 def main():
@@ -43,11 +46,17 @@ def main():
     ap.add_argument("--body", default="")
     ap.add_argument("--project", default="Flywheel", metavar="TITLE")
     ap.add_argument("--due", metavar="YYYY-MM-DD")
-    ap.add_argument("--iteration", metavar="TITLE")
     ap.add_argument("--start", metavar="YYYY-MM-DD")
     ap.add_argument("--target", metavar="YYYY-MM-DD")
     ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
     args = ap.parse_args()
+
+    # Dates default aggressively — automation first: the batch starts
+    # today and is due today. An agent that judges the work bigger
+    # overrides with later dates and a stated reason.
+    today = datetime.date.today().isoformat()
+    args.start = args.start or today
+    args.target = args.target or today
 
     token = resolve_token(args.org)
     repo_path = f"/repos/{args.org}/{args.repo}"
@@ -94,13 +103,6 @@ def main():
         sys.exit("flywheel-batch: the Status field has no 'Backlog' option — "
                  "run flywheel-setup first")
     set_item_option(token, project_id, item_id, field_id, options["Backlog"])
-    if args.iteration:
-        it_field, its = project_iterations(token, project_id)
-        if args.iteration not in its:
-            sys.exit(f"flywheel-batch: no iteration titled '{args.iteration}' "
-                     f"(have: {', '.join(its) or 'none'})")
-        set_item_value(token, project_id, item_id, it_field,
-                       {"iterationId": its[args.iteration]})
     for name, date in (("Start", args.start), ("Target", args.target)):
         if date:
             f_id = project_date_field(token, project_id, name)
@@ -108,8 +110,7 @@ def main():
                 sys.exit(f"flywheel-batch: no '{name}' date field — "
                          "run flywheel-setup first")
             set_item_value(token, project_id, item_id, f_id, {"date": date})
-    extras = [x for x in (args.iteration and f"iteration {args.iteration}",
-                          args.start and f"start {args.start}",
+    extras = [x for x in (args.start and f"start {args.start}",
                           args.target and f"target {args.target}",
                           args.due and f"milestone due {args.due}") if x]
     print(f"  status: Backlog, in '{args.project}', "

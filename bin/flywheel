@@ -13,18 +13,23 @@ machine-local. `cwd:` entries are relative to the manifest's directory.
 `up` converges the manifest's standing rows. `reconcile` is the
 deterministic pass that runs the whole fleet from observed state: it
 converges the manifest rows, then reads the tracker (the `tracker:`
-line, an `org/repo`) and starts a conductor for every open `intent/*` or
-`bolt/*` milestone that has actionable work — an open item labelled
-`state:ready` or `state:in-progress`, or an open unit or elaboration
-the operator has moved to Ready on the board — and none running; it nudges a settled
-conductor whose milestone has ready work, and nudges dispatch when open
-`needs-operator` items await relay. It decides nothing itself: every
-action is a pure function of manifest + tracker + herdr roster, so the
-same pass runs by hand, on `--interval`, or from a webhook later.
-Conductor placement: a batch's Team field routes its milestone's
-conductor via the manifest's `teams:` map (team → host); unmapped work
-runs on this host. Conductors start in `conductors_cwd:` with the model
-`conductor_model:` (default `opus[1m]`).
+line, an `org/repo`) and gives every `intent/*` and `bolt/*` milestone
+its conductor when it has a job — three jobs, and the prompt names
+which: **ready** (an open item labelled `state:ready`/`state:in-progress`,
+or a batch the operator moved to Ready on the board), **compose**
+(queued items with no open batch to carry them), and **archive** (the
+operator closed the milestone on GitHub and the change still sits in
+`openspec/changes/`). It nudges a settled conductor whose milestone has
+a job, nudges dispatch on waiting `needs-operator` relays and on
+unmilestoned open items awaiting triage, and **stops** any settled
+conductor whose milestone has no job — the symmetric rule; a later job
+starts a fresh session that rehydrates from the records. It decides
+nothing itself: every action is a pure function of manifest + tracker +
+herdr roster, so the same pass runs by hand, on `--interval`, or from a
+webhook later. Conductor placement: a batch's Team field routes its
+milestone's conductor via the manifest's `teams:` map (team → host);
+unmapped work runs on this host. Conductors start in `conductors_cwd:`
+with the model `conductor_model:` (default `opus[1m]`).
 
 The fleet runs in its own named herdr session — the org's — so its
 roster, workspaces, and teardown are isolated from other work. The
@@ -276,9 +281,12 @@ def start_actor(name: str, profile: str, model: str | None, cwd: Path,
     # race and the agent is addressable by its manifest name at once.
     # A fresh tab's shell can take a while to reach its prompt (devenv
     # init), and herdr reports agent_pane_busy until it does — poll.
+    # Fleet agents run unattended; the fleet layer owns the permission
+    # mode rather than leaving it to a shell wrapper.
     argv = ["herdr", "agent", "start", name, "--kind", "claude",
             "--pane", str(pane), "--timeout", "120000",
-            "--", "--agent", profile, "-n", name]
+            "--", "--agent", profile, "-n", name,
+            "--dangerously-skip-permissions"]
     if model:
         argv += ["--model", model]
     start = None
@@ -337,15 +345,33 @@ def tracker_state(top: dict) -> dict:
     issues = [i for page in pages for i in page if "pull_request" not in i]
 
     ready_ms, inprog_ms, needs_operator = set(), set(), []
+    queued_ms, batch_ms, no_milestone = set(), set(), []
     for i in issues:
         labels = {l["name"] for l in i["labels"]}
-        ms = (i.get("milestone") or {}).get("title", "")
+        milestone = i.get("milestone")
+        ms = (milestone or {}).get("title", "")
+        if "needs-operator" in labels:
+            needs_operator.append(i["number"])
+        if not milestone:
+            no_milestone.append(i["number"])
+            continue
+        if milestone.get("state") != "open":
+            continue
         if "state:ready" in labels:
             ready_ms.add(ms)
         if "state:in-progress" in labels:
             inprog_ms.add(ms)
-        if "needs-operator" in labels:
-            needs_operator.append(i["number"])
+        if "state:queued" in labels:
+            queued_ms.add(ms)
+        if "unit" in labels or "elaboration" in labels:
+            batch_ms.add(ms)
+
+    # Closed milestones are the archive signal: the operator closes one
+    # on GitHub, and the conductor is charged to archive the change.
+    pages = gh(token, "api",
+               f"/repos/{org}/{repo}/milestones?state=closed&per_page=100",
+               "--paginate", "--slurp")
+    closed_ms = {m["title"] for page in pages for m in page}
 
     # A unit or elaboration the operator has moved to Ready wakes its
     # milestone's conductor before any item is relabelled — the flip
@@ -378,8 +404,16 @@ def tracker_state(top: dict) -> dict:
             break
         after = items["pageInfo"]["endCursor"]
 
+    # Composition is due where queued items sit with no open batch to
+    # carry them to the board. (v1 reads "no open batch on the
+    # milestone"; queued items arriving beside a pending Backlog batch
+    # wait for it to resolve.)
+    compose_ms = queued_ms - batch_ms - ready_ms - set(ready_batches)
+
     return {"ready_ms": ready_ms, "inprog_ms": inprog_ms,
-            "needs_operator": needs_operator, "ready_batches": ready_batches}
+            "needs_operator": needs_operator, "ready_batches": ready_batches,
+            "compose_ms": compose_ms, "closed_ms": closed_ms,
+            "no_milestone": no_milestone}
 
 
 def reconcile(manifest: dict, host: str, session: str, env: dict,
@@ -397,17 +431,49 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
         failures += up(manifest, host, session, env)
         alive = herdr_agents(env)
 
-    # 2 · conductors the tracker wants: one per intent/bolt milestone
-    # with actionable work, none decided here — all read off the tracker
+    # 2 · conductors the tracker wants — one per milestone with a job,
+    # none decided here. Three jobs, in precedence order: work the ready
+    # set; compose the queue into batches; archive a closed milestone's
+    # change. The prompt (and the nudge) names the job.
     state = tracker_state(manifest["top"])
-    actionable: dict[str, str] = {}
+    cwd_rel = manifest["top"].get("conductors_cwd")
+
+    wanted: dict[str, tuple[str, str]] = {}  # name -> (milestone, job)
+    for ms in state["closed_ms"]:
+        kind, _, slug = ms.partition("/")
+        if kind not in ("intent", "bolt") or not slug:
+            continue
+        change = (manifest["root"] / (cwd_rel or ".") /
+                  "openspec" / "changes" / slug)
+        if change.is_dir():
+            wanted[f"{kind}-{slug}"] = (ms, "archive")
+    for ms in state["compose_ms"]:
+        kind, _, slug = ms.partition("/")
+        if kind in ("intent", "bolt") and slug:
+            wanted[f"{kind}-{slug}"] = (ms, "compose")
     for ms in (state["ready_ms"] | state["inprog_ms"]
                | set(state["ready_batches"])):
         kind, _, slug = ms.partition("/")
         if kind in ("intent", "bolt") and slug:
-            actionable[f"{kind}-{slug}"] = ms
+            wanted[f"{kind}-{slug}"] = (ms, "ready")
 
-    for name, ms in sorted(actionable.items()):
+    def job_prompt(ms: str, job: str) -> str:
+        slug = ms.partition("/")[2]
+        if job == "archive":
+            return (f"Your change: {slug}. Milestone {ms} is closed — "
+                    f"archive the change (`openspec archive {slug}`, "
+                    "commit) and finish any leftover teardown; if it is "
+                    "not archivable, say why in a comment on the "
+                    "milestone's items and stop.")
+        if job == "compose":
+            return (f"Your change: {slug}; your milestone is {ms}. "
+                    "Unbatched queued items await composition — compose "
+                    "proposed batches, present the queue, then stop.")
+        return (f"Your change: {slug}; your milestone is {ms}. Released "
+                "work is on the tracker — work the ready set to empty, "
+                "then stop at the queue.")
+
+    for name, (ms, job) in sorted(wanted.items()):
         if name in alive:
             continue
         team = state["ready_batches"].get(ms)
@@ -416,56 +482,86 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
             print(f"{name}: routed to {want_host} (team {team}) — not this "
                   "host, reach it via herdr remote / ssh")
             continue
-        cwd_rel = manifest["top"].get("conductors_cwd")
         if not cwd_rel:
             print(f"{name}: wanted, but fleet.yaml has no conductors_cwd: — "
                   "add one to start conductors from here")
             failures += 1
             continue
-        kind, _, slug = ms.partition("/")
+        kind = ms.partition("/")[0]
         profile = f"flywheel-{kind}-conductor"
         model = manifest["top"].get("conductor_model", "opus[1m]")
-        prompt = (f"Your change: {slug}; your milestone is {ms}. Released "
-                  "work is on the tracker — work the ready set to empty, "
-                  "then stop at the queue.")
         if dry_run:
-            print(f"would start {name} ({profile}, {model}) in {cwd_rel}")
+            print(f"would start {name} ({profile}, {model}) in {cwd_rel} "
+                  f"[{job}]")
         elif not start_actor(name, profile, model,
                              (manifest["root"] / cwd_rel).resolve(),
-                             prompt, env):
+                             job_prompt(ms, job), env):
             failures += 1
 
-    # 3 · nudges — a settled conductor with ready work, and dispatch on
-    # waiting needs-operator items. A just-started conductor shows
-    # working, so it is never double-prompted.
+    # 3 · nudges — a settled conductor whose milestone has a job, and
+    # dispatch on waiting needs-operator and unmilestoned items. A
+    # just-started conductor shows working, so it is never
+    # double-prompted; an in-progress-only milestone waits, not nudges.
     if not dry_run:
         alive = herdr_agents(env)
-    for name, ms in sorted(actionable.items()):
+    for name, (ms, job) in sorted(wanted.items()):
         agent = alive.get(name)
-        has_ready = ms in state["ready_ms"] or ms in state["ready_batches"]
-        if not (agent and has_ready
-                and agent.get("agent_status") in SETTLED):
+        if not agent or agent.get("agent_status") not in SETTLED:
             continue
-        text = (f"The tracker has released work on {ms} — work the ready "
-                "set to empty, then stop at the queue.")
+        if job == "ready" and not (ms in state["ready_ms"]
+                                   or ms in state["ready_batches"]):
+            continue
         if dry_run:
-            print(f"would nudge {name}: ready work on {ms}")
-        elif not send_prompt(name, text, env):
+            print(f"would nudge {name}: {job} on {ms}")
+        elif not send_prompt(name, job_prompt(ms, job), env):
             failures += 1
+
+    # 4 · stop — the symmetric rule: a settled conductor whose milestone
+    # has no job is stopped; its state lives on the tracker and in git,
+    # so a later job starts a fresh session that rehydrates from the
+    # records. Manifest rows are never stopped here.
+    manifest_names = {a.get("name") for a in manifest["actors"]}
+    for name, agent in sorted(alive.items()):
+        if not re.match(r"^(intent|bolt)-", name):
+            continue
+        if name in manifest_names or name in wanted:
+            continue
+        if agent.get("agent_status") not in SETTLED:
+            continue
+        tab = agent.get("tab_id")
+        if dry_run:
+            print(f"would stop {name}: no job on the tracker")
+        elif tab:
+            out = subprocess.run(["herdr", "tab", "close", str(tab)],
+                                 capture_output=True, text=True, env=env)
+            if out.returncode != 0:
+                print(f"stopping {name} failed: {out.stderr.strip()}")
+                failures += 1
+            else:
+                print(f"stopped {name}: no job on the tracker")
+    # 5 · dispatch's nudge, one prompt for both queues it owns: relays
+    # waiting on the operator, and open items with no milestone that
+    # want triage.
+    parts = []
     if state["needs_operator"]:
         nums = ", ".join(f"#{n}" for n in state["needs_operator"])
+        parts.append(f"needs-operator items await relay: {nums} — DM each "
+                     "item's assignee with the question and the link")
+    if state["no_milestone"]:
+        nums = ", ".join(f"#{n}" for n in state["no_milestone"])
+        parts.append(f"unmilestoned open items await triage: {nums} — "
+                     "route each (milestone, type, assignee)")
+    if parts:
         agent = alive.get("dispatch")
         if agent and agent.get("agent_status") in SETTLED:
-            text = (f"needs-operator items await relay: {nums} — DM each "
-                    "item's assignee with the question and the link.")
             if dry_run:
-                print(f"would nudge dispatch: {nums}")
-            elif not send_prompt("dispatch", text, env):
+                print(f"would nudge dispatch: {'; '.join(parts)}")
+            elif not send_prompt("dispatch", ". ".join(parts) + ".", env):
                 failures += 1
         else:
-            print(f"needs-operator waiting ({nums}); dispatch is "
+            print(f"dispatch work waiting ({'; '.join(parts)}); dispatch is "
                   + ("busy" if agent else "absent"))
-    if not actionable and not state["needs_operator"]:
+    if not wanted and not parts:
         print("reconcile: nothing actionable on the tracker")
     return 1 if failures else 0
 

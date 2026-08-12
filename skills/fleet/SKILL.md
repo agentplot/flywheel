@@ -57,17 +57,25 @@ is delivered as its own message, which is why it works.
 ## What this command never does
 
 It never decides ownership (the tracker items' assignee does), never
-tears an actor down (teardown is deliberate), and never starts a
-`parked` row — parked is a statement that requests wait as queued items
-and comments until the actor is next started. Rows on other hosts are
-reported, not driven.
+stops a manifest row (dispatch and any hand-placed actor are the
+manifest's; only tracker-driven conductors are stopped, and only by
+the reconcile pass when their milestone has no job), and never starts
+a `parked` row — parked is a statement that requests wait as queued
+items and comments until the actor is next started. Rows on other
+hosts are reported, not driven.
 
 `flywheel reconcile` is the deterministic pass that runs the whole
-fleet: it converges the manifest rows, starts a conductor for every
-`intent/*` or `bolt/*` milestone with actionable work and none running,
-nudges settled conductors on ready work and dispatch on waiting
-`needs-operator` items — one-shot, on `--interval`, or `--dry-run` to
-print the plan. Placement reads the board's Team field through the
+fleet: it converges the manifest rows, then gives every `intent/*` and
+`bolt/*` milestone its conductor when it has a job — **ready** (open
+`state:ready`/`state:in-progress` items, or a batch moved to Ready on
+the board), **compose** (queued items with no open batch), or
+**archive** (the operator closed the milestone and the change still
+sits in `openspec/changes/`) — nudges settled conductors with a job,
+nudges dispatch on waiting `needs-operator` relays and on unmilestoned
+open items awaiting triage, and **stops** any settled conductor whose
+milestone has no job; a later job starts a fresh session that
+rehydrates from the records. One-shot, on `--interval`, or `--dry-run`
+to print the plan. Placement reads the board's Team field through the
 manifest's `teams:` map; conductors start in `conductors_cwd:` on
 `conductor_model:`.
 

@@ -220,6 +220,19 @@ instead; the other five design types run under `flywheel-design-session`.
 **A session that edits no files gets no worktree** — skip the `wt switch`,
 start it in the launch directory, and skip the merge and teardown too.
 
+**The permission mode is the launcher's to set** — append it after the
+`--`. Fleet agents run unattended: `--dangerously-skip-permissions` for
+every ordinary session (the fleet layer passes it for the actors it
+starts). The one exception is a no-spec build session, started with
+`--permission-mode plan` instead: plan mode blocks every edit until
+the plan is approved. The conductor is the approver — read the plan
+from the pane, check it against the item's claim, and drive the plan
+dialog with `herdr agent send-keys <name> <key>` (arrows + enter;
+pick the accept-edits option on approval, or reject and prompt the
+feedback). Parked on `herdr agent wait` afterwards, a `blocked`
+settle is a permission ask for the launcher to read and answer the
+same way.
+
 The work order is four things: the change id, the session type, the item
 numbers of its batch, and one or two plain sentences of goal. Worktree,
 session directory and model are launch mechanics, not work order content.

@@ -86,8 +86,13 @@ faults queued to the source intent.
    **The no-spec path**: for work too small to warrant a spec-driven
    change in the built repo — `bolt-no-spec` is deliberately not a
    schema — the conductor's work order says so, and the build session
-   opens in plan mode: its plan, checked against the item's claim, is
-   the spec surrogate, approved by the conductor before any edit. The
+   is STARTED IN PLAN MODE (`--permission-mode plan`, never the skip
+   flag): plan mode blocks every edit mechanically, the plan is the
+   spec surrogate, and the conductor is the approver — read the plan
+   from the pane, check it against the item's claim, approve through
+   the plan dialog (accept-edits) or bounce it with feedback. Parked
+   on `herdr agent wait` afterwards, a `blocked` settle is a
+   permission ask: read the pane, decide, answer with send-keys. The
    choice is the conductor's, per batch; the item's comments, the
    member's review depth, and the unweakened merge gate are unchanged.
 2. **Review**, per the member's depth. The reviewer reads the batch —
@@ -148,7 +153,13 @@ one to Ready.
 New work pushed into a live bolt joins as queued items; scope that
 belongs elsewhere is queued elsewhere.
 
-When the milestone's items are all closed, propose closure to the
-operator: tear down every construction worktree, the bolt branches, and
-allocated resources; `openspec archive <bolt-id>` moves the record, and
-the milestone closes with it.
+**Cleanup is mechanical and immediate; archive is the operator's.**
+At fold, a merged-back session's pane, worktree and branch go — no
+word needed, it is all reproducible — and the bolt branch is
+reclaimed the moment it lands on main. When the milestone's items are
+all closed, report that and stop; the operator closes the milestone
+on GitHub (directly, or through dispatch), and the fleet layer then
+charges a fresh conductor session with the archive: `openspec
+archive <slug>`, committed. The fleet layer also stops a settled
+conductor whose milestone has no job — state lives on the tracker and
+in git, so a later job rehydrates a fresh session from the records.

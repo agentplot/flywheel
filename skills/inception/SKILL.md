@@ -210,8 +210,12 @@ apply instruction holds the loop, launched as
   its assertions to `bolt/<slug>`; the fleet layer starts `bolt-<slug>`,
   which scaffolds its own change — you never write a bolt change's
   artifacts.
-- **Close honestly**: milestone empty and writebacks green → propose
-  `openspec archive <id>` to the operator; the milestone closes with it.
+- **Close honestly**: milestone empty and writebacks green → report
+  that and stop. The operator closes the milestone on GitHub — that is
+  the archive signal; the fleet layer then charges a fresh conductor
+  session to `openspec archive <id>` and commit. The fleet layer also
+  stops a settled conductor whose milestone has no job; a later job
+  rehydrates a fresh session from the records.
 
 ## Design session
 

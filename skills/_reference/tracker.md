@@ -68,8 +68,21 @@ queue a question — never invent tracker structure.**
 7. **Blocked on the operator's word**: comment the one-line question
    on the item, add `needs-operator`, keep working what it does not
    gate. Whoever applies the answer removes the label.
-8. Sub-issues and dependency relations take the **database id**, not
-   the issue number — invocations and gotchas in `herdr.md`.
+8. **Dates default aggressively — automation first.** Whatever goes on
+   the board gets Start and Target of that day, and a new milestone is
+   due the day it is created (the tools do this). An agent that judges
+   the work bigger overrides with later dates and a stated reason;
+   nothing ever waits for a date to be assigned. There is no Iteration
+   field: the flywheel is continuous delivery, not sprint cadence.
+9. **The lifecycle ends at the milestone, not the conductor.** When a
+   milestone's items are all closed, its conductor reports and stops;
+   the operator closes the milestone on GitHub — the archive signal —
+   and the fleet layer charges a fresh session to `openspec archive`
+   the change. Conductors are stopped whenever their milestone has no
+   job and rehydrate from the records when one appears; no session is
+   ever the memory.
+10. Sub-issues and dependency relations take the **database id**, not
+    the issue number — invocations and gotchas in `herdr.md`.
 
 ## The literal graph — one assertion, birth to landing
 
@@ -120,8 +133,9 @@ scaffolds the change binding the member the work warrants
 **`bolt-no-spec` is deliberately not a schema: plan mode replaces the
 spec step.** For work too small to warrant a spec-driven change in the
 built repo, the conductor's work order says so, and the build session
-opens in plan mode: its plan — checked against the item's claim — is
-the spec surrogate, approved by the conductor before any edit. The
+is started in plan mode (`--permission-mode plan`): every edit is
+blocked mechanically until the plan — checked against the item's
+claim — is approved by the conductor through the plan dialog. The
 choice is per batch, made by the conductor; everything else is
 unchanged: the item's comments carry the stages, the merge gate runs
 unweakened, the landing SHA closes the item `closed:done`.

@@ -4,7 +4,9 @@
   flywheel-board --org ORG --repo REPO [--project Flywheel] [--status NAME] \\
       ITEM_NUMBER ...
 
-Adds each item to the Project and, with --status, sets its Status. The
+Adds each item to the Project and, with --status, sets its Status —
+and defaults Start and Target to today (override with --start/--target
+and a stated reason when the work is bigger; automation first). The
 board rule: whatever carries the approval sits on the board — units
 and elaborations (flywheel-batch adds them at Backlog), and a quick
 bolt's lone born-ready item (added at Ready by dispatch at triage, so the roadmap
@@ -13,13 +15,14 @@ Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
 """
 
 import argparse
+import datetime
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_gh import (GraphqlError, add_to_project, find_project, gh,
-                          project_single_select, resolve_token,
-                          set_item_option)
+                          project_date_field, project_single_select,
+                          resolve_token, set_item_option, set_item_value)
 
 
 def main():
@@ -28,6 +31,8 @@ def main():
     ap.add_argument("--repo", required=True)
     ap.add_argument("--project", default="Flywheel", metavar="TITLE")
     ap.add_argument("--status", metavar="NAME")
+    ap.add_argument("--start", metavar="YYYY-MM-DD")
+    ap.add_argument("--target", metavar="YYYY-MM-DD")
     ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
     args = ap.parse_args()
 
@@ -42,14 +47,23 @@ def main():
         if args.status not in options:
             sys.exit(f"flywheel-board: the Status field has no "
                      f"'{args.status}' option (have: {', '.join(options)})")
+    today = datetime.date.today().isoformat()
+    dates = [("Start", args.start or today), ("Target", args.target or today)]
+    date_fields = {name: project_date_field(token, project_id, name)
+                   for name, _ in dates}
     for n in args.items:
         issue = gh(token, "api", f"/repos/{args.org}/{args.repo}/issues/{n}")
         item_id = add_to_project(token, project_id, issue["node_id"])
         if args.status:
             set_item_option(token, project_id, item_id, field_id,
                             options[args.status])
+        for name, date in dates:
+            if date_fields[name]:
+                set_item_value(token, project_id, item_id,
+                               date_fields[name], {"date": date})
         print(f"#{n} on '{args.project}'"
-              + (f" · Status {args.status}" if args.status else ""))
+              + (f" · Status {args.status}" if args.status else "")
+              + " · " + ", ".join(f"{n.lower()} {d}" for n, d in dates))
 
 
 if __name__ == "__main__":
