@@ -84,19 +84,23 @@ faults queued to the source intent.
    anchor or quoted phrase, never line number, and carry a build-time
    task to re-read every neighbour they assert something about — that is
    when neighbours have moved longest.
-   **The no-spec path**: for work too small to warrant a spec-driven
-   change in the built repo — `bolt-no-spec` is deliberately not a
-   schema — the conductor's work order says so, and the build session
-   is STARTED IN PLAN MODE (`--permission-mode plan`, never the skip
-   flag): plan mode blocks every edit mechanically, the plan is the
-   spec surrogate, and the conductor is the approver — read the plan
-   from the pane, check it against the item's claim, approve through
-   the plan dialog (accept-edits) or bounce it with feedback. Parked
-   on `herdr agent wait` afterwards, a `blocked` settle is a
-   permission ask: read the pane, decide, answer with send-keys. The
-   choice is the conductor's, per batch; the item's comments, the
-   bolt type's review steps, and the unweakened merge gate are
-   unchanged.
+   **The no-spec path — quick bolts only**: inside a `bolt-quick`,
+   for work too small to warrant a spec-driven change in the built
+   repo — `bolt-no-spec` is deliberately not a schema — the
+   conductor's work order says so, and the build session is STARTED
+   IN PLAN MODE (`--permission-mode plan`, never the skip flag): plan
+   mode blocks every edit mechanically, the plan is the spec
+   surrogate, and the conductor is the approver — read the plan from
+   the pane, check it against the item's claim, approve through the
+   plan dialog (accept-edits) or bounce it with feedback. Parked on
+   `herdr agent wait` afterwards, a `blocked` settle is a permission
+   ask: read the pane, decide, answer with send-keys. On
+   `bolt-default` and `bolt-deep` every item is specced through
+   `/opsx:ff` — the bolt type is the scrutiny the operator chose at
+   release, and the conductor never downgrades it; a conductor that
+   judges an item too small for its bolt type asks the operator,
+   never decides. The item's comments, the bolt type's review steps,
+   and the unweakened merge gate are unchanged either way.
 2. **Review**, per the bolt type. The reviewer reads the batch —
    the artifact set and the cited sources — because the defects that
    occur are relational: a rule compressed in one record and carried

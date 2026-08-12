@@ -141,11 +141,15 @@ scaffolds the change binding the member the work warrants
 (`bolt-quick` here — no review step).
 
 **`bolt-no-spec` is deliberately not a schema: plan mode replaces the
-spec step.** For work too small to warrant a spec-driven change in the
-built repo, the conductor's work order says so, and the build session
-is started in plan mode (`--permission-mode plan`): every edit is
-blocked mechanically until the plan — checked against the item's
-claim — is approved by the conductor through the plan dialog. The
-choice is per batch, made by the conductor; everything else is
-unchanged: the item's comments carry the stages, the merge gate runs
-unweakened, the landing SHA closes the item `closed:done`.
+spec step, inside a quick bolt only.** For work too small to warrant a
+spec-driven change in the built repo, the conductor's work order says
+so, and the build session is started in plan mode
+(`--permission-mode plan`): every edit is blocked mechanically until
+the plan — checked against the item's claim — is approved by the
+conductor through the plan dialog. The no-spec call rides the bolt
+type: it exists only where the operator already chose `bolt-quick` —
+on `bolt-default` and `bolt-deep` every item is specced through a
+spec-driven change, because the bolt type is the scrutiny the release
+approved and no conductor downgrades it. Everything else is unchanged:
+the item's comments carry the stages, the merge gate runs unweakened,
+the landing SHA closes the item `closed:done`.

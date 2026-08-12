@@ -115,8 +115,10 @@ title, then read the pane to find out whether the work order ever submitted.
 Re-send it if not; never assume it did.
 
 **A work order is one prompt, invocation first.** When the type has a
-canonical invocation — `/opsx:ff <slug>` for spec-writing, the
-`/opsx:apply build a dynamic workflow …` trigger for a conductor's loop —
+canonical invocation — `/opsx:ff <slug>` for spec-writing,
+`/opsx:apply <change>` for a build session applying a specced change,
+the `/opsx:apply build a dynamic workflow …` trigger for a conductor's
+loop —
 it is the work order's FIRST line, and the brief rides below it in the
 same prompt. A slash command buried mid-body never loads the skill (this
 is how a spec agent came to run without `/opsx:apply` loaded), and a
