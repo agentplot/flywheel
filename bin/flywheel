@@ -532,11 +532,18 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
             kind = ms.partition("/")[0]
             bind = ("flywheel-intent" if kind == "intent"
                     else "the bolt-* member the released work warrants")
+            # Scaffolding is its own beat. The trigger line only works as
+            # the first line of a prompt, and it cannot come first while
+            # the change does not exist — so this prompt ends at the
+            # scaffold, and the next reconcile pass delivers the trigger
+            # line through the nudge path once the change is on disk.
             return (f"Your change: {slug} (milestone {ms}) does not exist "
                     f"yet. Create it the standard way — /opsx:new {slug} "
-                    f"(or /opsx:ff {slug}), binding {bind} — then launch "
-                    "your loop: /opsx:apply build a dynamic workflow with "
-                    f"the instructions for {slug}.{ctx_block}")
+                    f"(or /opsx:ff {slug}), binding {bind} — commit, then "
+                    "STOP and report the change is scaffolded. Do not "
+                    "start the work and do not relabel any item: your "
+                    "loop arrives as its own prompt once the change "
+                    f"exists.{ctx_block}")
         return (f"/opsx:apply build a dynamic workflow with the "
                 f"instructions for {slug} (schema {schema})"
                 f"{ctx_block}")
