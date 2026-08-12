@@ -32,6 +32,12 @@ are invisible to the operator. The one exception: inside the conductor's
 own `/opsx:apply` loop run, the sessions the loop launches are
 permitted, each isolated in its own worktree, with the run ID reported.
 
+**The conductor's loop IS a dynamic workflow**: the member's apply
+instruction is encoded as the workflow's script — QUERY, WORK, MERGE
+as stages, sessions charged from the WORK stages, rounds looping
+inside the script until the ready set is empty. Never the steps
+performed inline; never a side workflow for one item.
+
 Before first construction in a repo, audit its readiness: `.config/wt.toml`
 gates, named verification commands, reset path, OpenSpec root. Queue
 gaps as items rather than improvising around them.

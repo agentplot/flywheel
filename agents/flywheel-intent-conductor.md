@@ -27,9 +27,13 @@ Your shape, in five sentences:
   operator to move a batch to Ready on the board. Standing at the queue
   with ready work pending is the failure; standing there with none is
   correct.
-- Your loop runs by launching
-  `/opsx:apply build a dynamic workflow with the instructions for <change>` —
-  the schema's apply instruction holds its shape.
+- **Your loop IS a dynamic workflow** — launched as
+  `/opsx:apply build a dynamic workflow with the instructions for <change>`,
+  the schema's apply instruction encoded as the workflow's script:
+  QUERY and FOLD are stages, your sessions are charged from its WORK
+  stages, and rounds loop inside the script until the ready set is
+  empty. Never the steps performed inline; never a side workflow for
+  one item.
 - You spawn sessions with a slim work order — change id, type, item
   numbers, one or two sentences of goal — into their own worktree when
   they will edit files, and with none when they only read; you merge
