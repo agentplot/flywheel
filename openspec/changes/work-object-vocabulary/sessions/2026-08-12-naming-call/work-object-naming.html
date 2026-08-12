@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The work-object naming call — #13</title>
+<style>
+/* Palette and type match site/index.html — the project this call is about. */
+:root{
+  --ground:#0D2528;
+  --ground-2:#123236;
+  --brass:#C9A227;
+  --brass-dim:#8A7326;
+  --mint:#8FB9AE;
+  --bone:#EDE7DA;
+  --rust:#B4552D;
+  --ink:var(--bone);
+  --ink2:rgba(237,231,218,.78);
+  --ink3:rgba(143,185,174,.66);
+  --line:rgba(143,185,174,.22);
+  --line-soft:rgba(143,185,174,.13);
+  --panel:#123236;
+  --code:rgba(9,28,31,.72);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--ground);color:var(--bone);
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;line-height:1.65}
+body{
+  background-image:
+    linear-gradient(rgba(143,185,174,.055) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(143,185,174,.055) 1px,transparent 1px);
+  background-size:28px 28px;background-attachment:fixed;min-height:100vh;
+}
+.wrap{width:100%;max-width:1040px;margin:0 auto;padding:0 18px}
+a{color:var(--mint);text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--brass)}
+:focus-visible{outline:2px solid var(--brass);outline-offset:3px;border-radius:2px}
+h1,h2,h3{font-family:"Space Grotesk",system-ui,sans-serif;letter-spacing:-.02em;line-height:1.2}
+h1{font-size:30px;margin:8px 0 6px}
+h2{font-size:21px;margin:0 0 4px;color:var(--bone)}
+h3{font-size:15px;margin:0 0 6px}
+p{margin:8px 0}
+code{background:var(--code);border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px;font-size:.92em;white-space:nowrap}
+p code, li code, td code{overflow-wrap:anywhere;white-space:normal}
+section{margin:44px 0}
+.eyebrow{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--mint);opacity:.85;margin:34px 0 10px}
+.lede{color:var(--ink2);max-width:72ch}
+header.top{padding:40px 0 0}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+.chip{font-size:11px;letter-spacing:.06em;border:1px solid var(--line);border-radius:999px;padding:2px 10px;color:var(--ink3);white-space:nowrap}
+.chip b{color:var(--bone);font-weight:500}
+
+/* ---- object strip ---- */
+.objects{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:18px 0}
+.objects>*{min-width:0}
+.obj{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.obj h3{color:var(--brass)}
+.obj .def{color:var(--ink2);font-size:13px;margin:0 0 10px}
+.obj ul{margin:0;padding:0;list-style:none;font-size:13px}
+.obj li{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-top:1px dashed var(--line-soft)}
+.obj li span:first-child{color:var(--ink3)}
+.word{color:var(--bone)}
+.word.hot{color:var(--rust);font-weight:500}
+
+/* ---- fact cards ---- */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
+.facts>*{min-width:0}
+.fact{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--brass);border-radius:6px;padding:12px 14px;font-size:13px;color:var(--ink2)}
+.fact b{color:var(--bone);font-weight:500;display:block;margin-bottom:4px}
+
+/* ---- option cards ---- */
+.options{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px}
+.options>*{min-width:0}
+@media (max-width:960px){.options{grid-template-columns:1fr}}
+.opt{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:0;display:flex;flex-direction:column;position:relative}
+.opt.rec{border-color:var(--brass);box-shadow:0 0 0 1px var(--brass-dim)}
+.opt .head{padding:14px 16px 10px;border-bottom:1px solid var(--line-soft)}
+.opt .head .tag{position:absolute;top:-10px;right:14px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;background:var(--brass);color:#0D2528;border-radius:3px;padding:2px 8px;font-weight:700}
+.opt .head .tag.runner{background:var(--ground-2);color:var(--mint);border:1px solid var(--line)}
+.opt .head .tag.warn{background:var(--rust);color:var(--bone)}
+.triple{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px}
+.slot{border:1px solid var(--line);border-radius:5px;padding:4px 10px;font-size:12.5px;background:var(--code);min-width:0}
+.slot em{display:block;font-style:normal;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+.slot b{color:var(--brass);font-weight:700;font-size:14px}
+.slot.new b{color:var(--mint)}
+.opt .body{padding:12px 16px 14px;flex:1;display:flex;flex-direction:column;gap:8px}
+.opt .verdict{font-size:13px;color:var(--ink2)}
+.opt table{width:100%;border-collapse:collapse;font-size:12.5px}
+.opt td{padding:4px 6px;border-top:1px dashed var(--line-soft);vertical-align:top}
+.opt td:first-child{color:var(--ink3);white-space:nowrap;width:9.5em}
+.sev{display:inline-block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;border-radius:3px;padding:1px 6px;margin-right:6px;font-weight:700;vertical-align:1px}
+.sev.zero{background:rgba(143,185,174,.16);color:var(--mint)}
+.sev.text{background:rgba(201,162,39,.16);color:var(--brass)}
+.sev.mig{background:rgba(201,162,39,.4);color:#F2E4B3}
+.sev.brk{background:var(--rust);color:var(--bone)}
+details{border-top:1px dashed var(--line-soft);padding-top:8px;font-size:12.5px;color:var(--ink2)}
+details summary{cursor:pointer;color:var(--mint);font-size:12px;letter-spacing:.04em}
+details ul{margin:8px 0 2px;padding-left:18px}
+details li{margin:3px 0}
+
+/* ---- matrix ---- */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+table.matrix{border-collapse:collapse;width:100%;min-width:880px;font-size:12.5px}
+.matrix th,.matrix td{padding:8px 10px;border-bottom:1px solid var(--line-soft);text-align:left;vertical-align:top}
+.matrix thead th{font-family:"Space Grotesk",system-ui,sans-serif;font-size:12px;letter-spacing:.06em;color:var(--bone);background:var(--ground-2);position:sticky;top:0}
+.matrix td:first-child,.matrix th:first-child{white-space:nowrap;color:var(--ink3)}
+.matrix td{color:var(--ink2)}
+.matrix tbody tr:last-child td{border-bottom:none}
+
+/* ---- decision forms ---- */
+form.q{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin:16px 0}
+form.q h3{color:var(--brass)}
+form.q .hint{font-size:12.5px;color:var(--ink3);margin:2px 0 10px}
+form.q label.choice{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line-soft);border-radius:6px;margin:6px 0;cursor:pointer;font-size:13px;color:var(--ink2)}
+form.q label.choice:hover{border-color:var(--line)}
+form.q label.choice b{color:var(--bone);font-weight:500}
+form.q input[type=radio]{accent-color:#C9A227;margin-top:3px;flex:none}
+form.q textarea{width:100%;background:var(--code);border:1px solid var(--line);border-radius:5px;color:var(--bone);font-family:inherit;font-size:13px;padding:8px;margin-top:8px;min-height:52px}
+form.q .row{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+form.q button{background:var(--brass);color:#0D2528;border:none;border-radius:5px;font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:13px;letter-spacing:.02em;padding:8px 16px;cursor:pointer}
+form.q button:hover{background:#E0B62F}
+.queued-note{font-size:12px;color:var(--mint);display:none}
+.queued-note.show{display:inline}
+
+footer{margin:60px 0 40px;border-top:1px solid var(--line-soft);padding-top:16px;font-size:12px;color:var(--ink3)}
+footer a{margin-right:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow" style="margin-top:0">intent/work-object-vocabulary · item #13 · type:interactive</p>
+  <h1>One name each, no name twice</h1>
+  <p class="lede">Three objects need names and four words are fighting over them. This page puts the coupled
+  call in front of you as complete assignments — <b>the released claim</b>, <b>the batch kind that releases
+  construction</b>, <b>the batch kind that authorizes design</b> — each costed per surface from
+  <a href="https://github.com/agentplot/flywheel/issues/18#issuecomment-5270769621">#18's measured blast radius</a>
+  at tree <code>2e707e9</code>. Pick an option, answer the two riders, annotate anything, then <b>Send to Agent</b>.</p>
+  <div class="meta-row">
+    <span class="chip">question record: <b>questions/work-object-names.md</b></span>
+    <span class="chip">origin of the split: <b><a href="https://github.com/agentplot/flywheel/commit/8b8a1a3">8b8a1a3</a></b></span>
+    <span class="chip">hero design settled: <b><a href="https://github.com/agentplot/flywheel/issues/12">#12</a></b></span>
+    <span class="chip">hero mapping defect: <b><a href="https://github.com/agentplot/flywheel/issues/21">#21</a></b></span>
+  </div>
+</header>
+
+<section id="objects">
+  <p class="eyebrow">the collision today</p>
+  <h2>Three objects, four words, no agreement</h2>
+  <div class="objects">
+    <div class="obj">
+      <h3>The released claim</h3>
+      <p class="def">The durable record of what must be built — what a bolt's spec agents work from.</p>
+      <ul>
+        <li><span>skills · schemas · tracker</span><span class="word">assertion <small>(159)</small></span></li>
+        <li><span>specs · README · site body</span><span class="word">proposal <small>(253)</small></span></li>
+        <li><span>the settled hero</span><span class="word hot">unit</span></li>
+      </ul>
+    </div>
+    <div class="obj">
+      <h3>The construction batch</h3>
+      <p class="def">What approving it authorizes: releasing claims to construction. AI-DLC's borrowed term.</p>
+      <ul>
+        <li><span><a href="https://github.com/agentplot/flywheel/commit/8b8a1a3">8b8a1a3</a> · label · <code>--kind</code></span><span class="word hot">unit <small>(51)</small></span></li>
+        <li><span>collides with</span><span class="word">the hero's claim-sense, and “one unit of work” = item</span></li>
+      </ul>
+    </div>
+    <div class="obj">
+      <h3>The design batch</h3>
+      <p class="def">What approving it authorizes: design sessions on an intent.</p>
+      <ul>
+        <li><span>everywhere it appears</span><span class="word">elaboration <small>(21)</small></span></li>
+        <li><span>contested by</span><span class="word">nothing — the only uncontested name in the tree</span></li>
+      </ul>
+    </div>
+  </div>
+  <p class="lede" style="font-size:13px">A fifth word sits outside the fight but constrains it:
+  <b>proposal</b> is already OpenSpec's own reserved artifact id — <code>proposal.md</code> exists in every
+  change directory this repo drives, including its own (<a href="https://github.com/agentplot/flywheel/issues/18#issuecomment-5270769621">#18, surprise 1</a>).</p>
+</section>
+
+<section id="facts">
+  <p class="eyebrow">what the inventory proved</p>
+  <h2>The ground rules the call is made on</h2>
+  <div class="facts">
+    <div class="fact"><b>The cost is in the identifiers, not the prose.</b>
+      Prose is a text pass. Label objects, two skill directories (= the slash commands), the schema artifact id
+      and its <code>assertions/**</code> record directory, eval fixture filenames, and OpenSpec requirement-heading
+      keys are migrations.</div>
+    <div class="fact"><b>A label rename is rename-in-place.</b>
+      The label keeps its id; every attached issue follows, closed ones included. The whole live tracker
+      migration is three issues — #12 (closed), #17, #19 — and three of the five candidate labels have
+      <i>never been applied</i>, <code>unit</code> among them.</div>
+    <div class="fact"><b>But the tracker migration is several operations.</b>
+      The strings are hard-coded in <code>bin/</code> — <code>flywheel-batch --kind</code>, the compose predicate at
+      <a href="https://github.com/agentplot/flywheel/blob/2e707e9/bin/flywheel#L373"><code>bin/flywheel:373</code></a>
+      (fails <i>silently</i>), <code>flywheel-setup</code>, <code>flywheel-migrate</code>. And <code>ensure_labels</code>
+      is create-if-missing: a tracker migrated ahead of the code silently regrows the old label. Code first, then labels.</div>
+    <div class="fact"><b>Renaming the schema artifact id breaks every consuming repo.</b>
+      <code>install-schemas</code> copies by plain directory name, never consults <code>version:</code>; there is no
+      side-by-side path (#27). Renaming <code>assertions/**</code> is a breaking rev with no migration story.</div>
+    <div class="fact"><b>No gate catches a half-landed rename.</b>
+      Nothing in CI greps any of the four words; the evals gate has never fired (#23). Whatever wins, the landing
+      pass polices itself.</div>
+    <div class="fact"><b>Tracker history keeps the old words forever.</b>
+      <code>labeled</code> timeline events carry id-less snapshots. “Nothing reads as a survivor” is achievable in
+      the tree, not in tracker history — worth accepting out loud.</div>
+  </div>
+</section>
+
+<section id="options">
+  <p class="eyebrow">the call</p>
+  <h2>Four complete assignments</h2>
+  <p class="lede">Each option names all three slots, no word twice. Costs cite #18's counts at <code>2e707e9</code>.
+  Severity: <span class="sev zero">zero</span> untouched · <span class="sev text">text</span> prose pass ·
+  <span class="sev mig">migration</span> identifier moves · <span class="sev brk">breaking</span> consuming repos break.</p>
+
+  <div class="options">
+
+    <!-- OPTION A -->
+    <div class="opt rec" id="opt-a">
+      <div class="head">
+        <span class="tag">Recommended</span>
+        <h3>A — confirm the tracker's vocabulary</h3>
+        <div class="triple">
+          <span class="slot"><em>claim</em><b>assertion</b></span>
+          <span class="slot"><em>construction batch</em><b>unit</b></span>
+          <span class="slot"><em>design batch</em><b>elaboration</b></span>
+        </div>
+      </div>
+      <div class="body">
+        <p class="verdict">The biggest text diff, the cheapest migration. Every breaking identifier stays put:
+        the <code>assertions/**</code> record directory, <code>type:assertion</code>, <code>--kind unit|elaboration</code>,
+        the silent compose predicate. What moves is prose plus two never-applied labels and two skill directories.
+        End state gives all four words exactly one meaning each — <i>proposal</i> retreats to OpenSpec's own artifact.</p>
+        <table>
+          <tr><td>site/index.html</td><td><span class="sev text">text</span>9 <code>proposal</code> swaps in body prose + mermaid; the hero's two <i>units</i> lines go to Rider 1</td></tr>
+          <tr><td>README.md</td><td><span class="sev text">text</span>7 swaps, plus the shared <code>&lt;meta description&gt;</code> sentence</td></tr>
+          <tr><td>skills</td><td><span class="sev mig">migration</span>22 swaps; 2 directory renames = slash commands (Rider 2); evals' 77 hits ride on stale fixtures (#24)</td></tr>
+          <tr><td>schemas' instruction</td><td><span class="sev text">text</span>8 swaps in the bolt schemas; rewrite <a href="https://github.com/agentplot/flywheel/blob/2e707e9/schemas/flywheel-intent/schema.yaml#L109">“AN ASSERTION IS THE PROPOSAL”</a>; artifact id untouched</td></tr>
+          <tr><td>tracker labels</td><td><span class="sev mig">migration</span>2 renames (<code>type:proposal-writing/-review</code>, zero issues ever); ~4 <code>bin/</code> sites, none silent</td></tr>
+          <tr><td>openspec/specs</td><td><span class="sev text">text</span>119 swaps incl. 13 heading keys (window open: zero MODIFIED deltas in-tree) and 30 fused “one-proposal bolt” compounds</td></tr>
+          <tr><td>consuming repos</td><td><span class="sev zero">zero</span>record dirs, artifact ids, kinds all keep their names</td></tr>
+        </table>
+        <details><summary>why recommended</summary>
+          <ul>
+            <li>Concentrates cost where it is safe: prose, never-applied labels, and requirement headings while no delta pins them.</li>
+            <li><i>assertion</i> already holds the load-bearing identifiers (label with live issue, artifact id, record dirs in every bound repo).</li>
+            <li>Keeps AI-DLC's <i>unit</i>/<i>elaboration</i> for the batch kinds — the deliberate point of 8b8a1a3.</li>
+            <li>Residue: <i>unit</i> stays double-loaded as ordinary English (“one unit of work” in the item definition, tracker.md:12) — an annoyance Option D pays extra to dissolve, or a wording polish absorbs.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <!-- OPTION D -->
+    <div class="opt" id="opt-d">
+      <div class="head">
+        <span class="tag runner">Runner-up</span>
+        <h3>D — A, plus free the word “unit”</h3>
+        <div class="triple">
+          <span class="slot"><em>claim</em><b>assertion</b></span>
+          <span class="slot new"><em>construction batch</em><b>release</b></span>
+          <span class="slot"><em>design batch</em><b>elaboration</b></span>
+        </div>
+      </div>
+      <div class="body">
+        <p class="verdict">Everything in A, plus the construction batch takes a self-describing name (“what approving
+        it authorizes: <i>releasing</i> construction work”) and <i>unit</i> returns to plain English. Dissolves the
+        triple-loading of <i>unit</i> (#18, surprise 5) at the price of the full <code>bin/</code> batch-kind migration —
+        including the one silent failure in the tree — and it drops the AI-DLC term 8b8a1a3 deliberately adopted.</p>
+        <table>
+          <tr><td>site/index.html</td><td><span class="sev text">text</span>A's 9 swaps, and the hero's <i>units</i> lines become definitively wrong — Rider 1 loses its “leave verbatim” escape; hero copy licence required</td></tr>
+          <tr><td>README.md</td><td><span class="sev text">text</span>same 7 swaps as A</td></tr>
+          <tr><td>skills</td><td><span class="sev mig">migration</span>A's cost + ~15 batch-kind swaps; <code>_reference/tracker.md</code> batch definition rewritten</td></tr>
+          <tr><td>schemas' instruction</td><td><span class="sev text">text</span>A's cost + 11 batch-kind mentions in <code>flywheel-intent</code> prose</td></tr>
+          <tr><td>tracker labels</td><td><span class="sev mig">migration</span>3 renames, all zero-issue (<code>unit</code> never applied — cheapest it will ever be); ~12 <code>bin/</code> sites incl. <code>flywheel-batch --kind</code>, the <b>silent</b> predicate <code>bin/flywheel:373</code>, setup, migrate — code and labels must land together</td></tr>
+          <tr><td>openspec/specs</td><td><span class="sev text">text</span>A's 119 + 2 batch mentions</td></tr>
+          <tr><td>consuming repos</td><td><span class="sev mig">migration</span>record dirs unchanged, but any repo running an older plugin composes batches the new reconciler ignores (predicate skew)</td></tr>
+        </table>
+        <details><summary>what it buys, exactly</summary>
+          <ul>
+            <li><code>tracker.md:12</code> “an item is one unit of work” and <code>:19</code> “a unit (label <code>unit</code>)” stop colliding nine lines apart.</li>
+            <li><code>bin/flywheel-batch:11</code> currently packs four senses of <i>unit</i> into one sentence; under D it needs no gloss.</li>
+            <li>Choose it if the operator weighs vocabulary hygiene over AI-DLC alignment; the extra cost over A is bounded and the label side is free <i>today</i>.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <!-- OPTION B -->
+    <div class="opt" id="opt-b">
+      <div class="head">
+        <span class="tag warn">Breaking</span>
+        <h3>B — confirm the specs' vocabulary</h3>
+        <div class="triple">
+          <span class="slot"><em>claim</em><b>proposal</b></span>
+          <span class="slot"><em>construction batch</em><b>unit</b></span>
+          <span class="slot"><em>design batch</em><b>elaboration</b></span>
+        </div>
+      </div>
+      <div class="body">
+        <p class="verdict">The cheapest prose pass (README and site body already comply, specs keep 119 uses) and the
+        worst semantics. It renames the one artifact id consuming repos are bound to, and it promotes a word OpenSpec
+        already owns: <code>proposals/**</code> records would sit beside OpenSpec's own <code>proposal.md</code> in every
+        change directory — one word, two objects, permanently. That is the defect this intent exists to remove.</p>
+        <table>
+          <tr><td>site/index.html</td><td><span class="sev zero">zero</span>body already says it; hero rider unchanged</td></tr>
+          <tr><td>README.md</td><td><span class="sev zero">zero</span>already complies</td></tr>
+          <tr><td>skills</td><td><span class="sev text">text</span>102 <code>assertion</code> swaps incl. 13 identifier cites; directories keep their names</td></tr>
+          <tr><td>schemas' instruction</td><td><span class="sev brk">breaking</span>artifact id <code>assertions</code> → <code>proposals</code>, generates-glob, template <code>git mv</code> — no versioned install path (#27)</td></tr>
+          <tr><td>tracker labels</td><td><span class="sev mig">migration</span><code>type:assertion</code> → <code>type:proposal</code> (closed #12 follows); ~4 <code>bin/</code> sites</td></tr>
+          <tr><td>openspec/specs</td><td><span class="sev zero">zero</span>4 swaps</td></tr>
+          <tr><td>consuming repos</td><td><span class="sev brk">breaking</span>every bound repo's record directory renames under it, this repo's own two live changes first (#18, surprise 12)</td></tr>
+        </table>
+        <details><summary>the two disqualifiers, in full</summary>
+          <ul>
+            <li><b>Reserved word.</b> This repo's own tracked changes use OpenSpec's <code>spec-driven</code> schema, whose artifact set includes <code>proposal</code> — plus 30 vendored <code>.claude/**</code> references that cannot be renamed. The collision is unfixable by any pass.</li>
+            <li><b>It revives a dead object.</b> The <code>proposals.md</code> registry the specs and evals still describe names an artifact no shipped schema declares (#26). Winning the word back makes the corpse harder to bury.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <!-- OPTION C -->
+    <div class="opt" id="opt-c">
+      <div class="head">
+        <span class="tag warn">Priciest</span>
+        <h3>C — confirm the hero's vocabulary</h3>
+        <div class="triple">
+          <span class="slot"><em>claim</em><b>unit</b></span>
+          <span class="slot new"><em>construction batch</em><b>release</b></span>
+          <span class="slot"><em>design batch</em><b>elaboration</b></span>
+        </div>
+      </div>
+      <div class="body">
+        <p class="verdict">The only option under which <i>“Units become bolts”</i> survives verbatim — and the only
+        thing it buys. Both the claim identifiers <i>and</i> the batch-kind identifiers migrate, 124 skill-prose swaps
+        land on the most overloaded noun in the tree, and #21 says the hero sentence's 1:1 mapping is wrong anyway,
+        so the sentence being <i>literally</i> preserved does not make it <i>true</i>.</p>
+        <table>
+          <tr><td>site/index.html</td><td><span class="sev text">text</span>hero verbatim; 9 body swaps; the CSS “units” comment must survive a careless pass</td></tr>
+          <tr><td>README.md</td><td><span class="sev text">text</span>7 swaps</td></tr>
+          <tr><td>skills</td><td><span class="sev mig">migration</span>124 swaps into a word that also means “item” (“one unit of work”) and AI-DLC's term; dirs → <code>unit-writing</code>/<code>unit-review</code></td></tr>
+          <tr><td>schemas' instruction</td><td><span class="sev brk">breaking</span>artifact id <code>assertions</code> → <code>units</code> — same no-migration-path break as B</td></tr>
+          <tr><td>tracker labels</td><td><span class="sev mig">migration</span>4 renames + the full <code>bin/</code> batch-kind migration incl. the silent predicate — the union of every other option's tracker cost</td></tr>
+          <tr><td>openspec/specs</td><td><span class="sev text">text</span>123 swaps incl. all 13 heading keys</td></tr>
+          <tr><td>consuming repos</td><td><span class="sev brk">breaking</span>record dirs rename <i>and</i> batch kinds skew</td></tr>
+        </table>
+        <details><summary>included for completeness</summary>
+          <ul>
+            <li>Priced here so choosing against the hero's word is a decision, not an oversight. It unions the breaking half of B with the migration half of D and adds the worst English overload.</li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="matrix">
+  <p class="eyebrow">side by side</p>
+  <h2>The cost matrix</h2>
+  <div class="tablewrap">
+    <table class="matrix">
+      <thead>
+        <tr><th>surface</th><th>A · assertion/unit/elab.</th><th>D · assertion/release/elab.</th><th>B · proposal/unit/elab.</th><th>C · unit/release/elab.</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>site/index.html</td>
+          <td><span class="sev text">text</span>9 swaps + Rider 1</td>
+          <td><span class="sev text">text</span>9 swaps, hero edit <b>required</b></td>
+          <td><span class="sev zero">zero</span>body; Rider 1</td>
+          <td><span class="sev text">text</span>9 swaps, hero verbatim</td></tr>
+        <tr><td>README.md</td>
+          <td><span class="sev text">text</span>7 swaps</td>
+          <td><span class="sev text">text</span>7 swaps</td>
+          <td><span class="sev zero">zero</span></td>
+          <td><span class="sev text">text</span>7 swaps</td></tr>
+        <tr><td>skills/** prose</td>
+          <td><span class="sev text">text</span>22 swaps</td>
+          <td><span class="sev text">text</span>~37 swaps</td>
+          <td><span class="sev text">text</span>102 swaps</td>
+          <td><span class="sev mig">migration</span>124 swaps, overloaded noun</td></tr>
+        <tr><td>skill dirs = slash commands</td>
+          <td><span class="sev mig">migration</span>2 renames (Rider 2)</td>
+          <td><span class="sev mig">migration</span>2 renames (Rider 2)</td>
+          <td><span class="sev zero">zero</span></td>
+          <td><span class="sev mig">migration</span>2 renames</td></tr>
+        <tr><td>schemas' instruction text</td>
+          <td><span class="sev text">text</span>8 swaps + axiom rewrite</td>
+          <td><span class="sev text">text</span>~19 swaps + axiom rewrite</td>
+          <td><span class="sev text">text</span>36 swaps</td>
+          <td><span class="sev text">text</span>~47 swaps</td></tr>
+        <tr><td>schema artifact id → consuming repos</td>
+          <td><span class="sev zero">zero</span></td>
+          <td><span class="sev zero">zero</span>dirs; kind skew only</td>
+          <td><span class="sev brk">breaking</span>+ reserved word</td>
+          <td><span class="sev brk">breaking</span></td></tr>
+        <tr><td>tracker labels</td>
+          <td><span class="sev mig">migration</span>2 renames, 0 issues</td>
+          <td><span class="sev mig">migration</span>3 renames, 0 issues</td>
+          <td><span class="sev mig">migration</span>1 rename, 1 closed issue</td>
+          <td><span class="sev mig">migration</span>4 renames</td></tr>
+        <tr><td>bin/ code strings</td>
+          <td><span class="sev text">text</span>~4 sites, none silent</td>
+          <td><span class="sev mig">migration</span>~12 sites incl. silent predicate</td>
+          <td><span class="sev text">text</span>~4 sites</td>
+          <td><span class="sev mig">migration</span>all 16 sites</td></tr>
+        <tr><td>openspec/specs/**</td>
+          <td><span class="sev text">text</span>119 incl. 13 headings</td>
+          <td><span class="sev text">text</span>121 incl. 13 headings</td>
+          <td><span class="sev zero">zero</span>4 swaps</td>
+          <td><span class="sev text">text</span>123 incl. 13 headings</td></tr>
+        <tr><td>end-state vocabulary</td>
+          <td>4 words, 1 meaning each</td>
+          <td>clean + <i>unit</i> freed</td>
+          <td><i>proposal</i> means 2 things forever</td>
+          <td><i>unit</i> vs “unit of work” forever</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="decide">
+  <p class="eyebrow">your call</p>
+  <h2>Answer here</h2>
+
+  <form class="q" data-lavish-question="naming-triple" onsubmit="queueAnswer(event,'naming-triple',function(v,note){
+      var triples={A:'claim=assertion, construction batch=unit, design batch=elaboration',
+                   D:'claim=assertion, construction batch=release, design batch=elaboration',
+                   B:'claim=proposal, construction batch=unit, design batch=elaboration',
+                   C:'claim=unit, construction batch=release, design batch=elaboration'};
+      return 'Decision #13 — adopt naming option '+v+': '+triples[v]+'.'+note;})">
+    <h3>1 · The naming triple</h3>
+    <p class="hint">The decision record under <code>decisions/</code> will carry this assignment; every surface then cites it.</p>
+    <label class="choice"><input type="radio" name="v" value="A" checked><span><b>A — assertion / unit / elaboration</b> (recommended). Confirm the tracker's vocabulary; breaking identifiers stay put; biggest prose pass.</span></label>
+    <label class="choice"><input type="radio" name="v" value="D"><span><b>D — assertion / release / elaboration</b>. As A, plus rename the construction batch kind and free the word “unit”; adds the <code>bin/</code> batch-kind migration and requires hero copy licence.</span></label>
+    <label class="choice"><input type="radio" name="v" value="B"><span><b>B — proposal / unit / elaboration</b>. Confirm the specs' vocabulary; breaks consuming repos and collides with OpenSpec's reserved <code>proposal</code> artifact.</span></label>
+    <label class="choice"><input type="radio" name="v" value="C"><span><b>C — unit / release / elaboration</b>. Confirm the hero's word; the union of every other option's costs.</span></label>
+    <textarea name="note" placeholder="Optional: a different name for any slot, conditions, or reasoning to carry into the decision record…"></textarea>
+    <div class="row"><button type="submit">Queue this answer</button><span class="queued-note" id="qn-naming-triple">✓ queued — press Send to Agent when done</span></div>
+  </form>
+
+  <form class="q" data-lavish-question="hero-copy" onsubmit="queueAnswer(event,'hero-copy',function(v,note){
+      var m={leave:'leave the hero lines verbatim — read their *units* as the batch kind; any copy change belongs to #21',
+             licence:'licence granted — this pass may edit the hero\'s two lines (index.html:465, :470) to the settled names',
+             hold:'hold all hero copy until #21 settles the claim-to-bolt mapping, then land words and mapping in one edit'};
+      return 'Decision #13, rider 1 (hero copy): '+m[v]+'.'+note;})">
+    <h3>2 · Rider — the hero's two lines</h3>
+    <p class="hint">The hero design is settled (#12): <i>“One intent agent holds the goal and its units”</i> and
+    <i>“Units become bolts”</i>. Unless the claim is named <i>unit</i>, those lines need a ruling — and #21 already
+    tracks the sentence's 1:1-mapping defect, which no rename fixes. Under option D or C the “leave verbatim” reading
+    is unavailable (the batch kind stops being called <i>unit</i>).</p>
+    <label class="choice"><input type="radio" name="v" value="hold" checked><span><b>Hold for #21</b> (recommended) — the sentence must change for content reasons regardless; settle words and mapping in one licensed edit rather than touching settled copy twice.</span></label>
+    <label class="choice"><input type="radio" name="v" value="leave"><span><b>Leave verbatim</b> — under A/B the hero's “units” reads as the batch kind (approving a unit releases construction, which becomes a bolt); accept the ambiguity until #21.</span></label>
+    <label class="choice"><input type="radio" name="v" value="licence"><span><b>Grant licence now</b> — this pass may rewrite the two lines to the settled names, and #21 inherits copy already on-vocabulary.</span></label>
+    <textarea name="note" placeholder="Optional constraints on what an edit may touch…"></textarea>
+    <div class="row"><button type="submit">Queue this answer</button><span class="queued-note" id="qn-hero-copy">✓ queued — press Send to Agent when done</span></div>
+  </form>
+
+  <form class="q" data-lavish-question="slash-commands" onsubmit="queueAnswer(event,'slash-commands',function(v,note){
+      var m={rename:'rename the two skill directories with the winning claim word (slash commands change; 10 inbound files / 15 lines updated; two never-applied type labels renamed to match)',
+             keep:'keep /flywheel:proposal-writing and /flywheel:proposal-review as legacy command names despite the winning vocabulary'};
+      return 'Decision #13, rider 2 (skill directories / slash commands): '+m[v]+'.'+note;})">
+    <h3>3 · Rider — the two slash commands</h3>
+    <p class="hint">If <i>proposal</i> loses the claim, <code>skills/proposal-writing/</code> and
+    <code>skills/proposal-review/</code> are survivors of the old vocabulary — but their directory names <b>are</b> the
+    commands <code>/flywheel:proposal-writing</code> and <code>/flywheel:proposal-review</code>. Renaming costs a
+    <code>git mv</code>, 10 inbound files, 2 never-applied labels — and anyone's muscle memory.</p>
+    <label class="choice"><input type="radio" name="v" value="rename" checked><span><b>Rename to match</b> (recommended) — the intent's destination is “nothing reads as a survivor”; command names are the loudest survivor there is, and no eval pins them.</span></label>
+    <label class="choice"><input type="radio" name="v" value="keep"><span><b>Keep the old commands</b> — spare muscle memory and inbound links; accept two permanent exceptions to the vocabulary.</span></label>
+    <textarea name="note" placeholder="Optional…"></textarea>
+    <div class="row"><button type="submit">Queue this answer</button><span class="queued-note" id="qn-slash-commands">✓ queued — press Send to Agent when done</span></div>
+  </form>
+</section>
+
+<section id="consequences">
+  <p class="eyebrow">what follows the call</p>
+  <h2>Consequences a fold will queue</h2>
+  <div class="facts">
+    <div class="fact"><b>A decision record.</b> <code>decisions/</code> under this change gets the settled triple with this page's costs as its evidence; every surface cites it rather than restating it.</div>
+    <div class="fact"><b>One landing pass, code before labels.</b> The <code>bin/</code> edits are a prerequisite of the label renames staying done (<code>ensure_labels</code> regrows old labels). The pass is driven from #18's identifier list, ordered: code → labels → prose, one batch.</div>
+    <div class="fact"><b>The #20 sequencing decision.</b> Whether the pass rewrites <code>add-flywheel-loops</code>' active deltas or sequences after its archive — already queued on this milestone; the winner here is its input.</div>
+    <div class="fact"><b>The heading-key window.</b> 13 requirement/scenario headings are OpenSpec identity keys; zero MODIFIED deltas pin them today. Landing the specs pass before any new delta is written keeps the rename a text edit instead of a migration.</div>
+    <div class="fact"><b>What the pass must leave alone.</b> Archived records, closed-issue prose (#11, #6), the vendored <code>.claude/**</code>, the CSS “units” comment, and OpenSpec's own <code>proposal.md</code> — the inventory marks each.</div>
+    <div class="fact"><b>What stays unfixed by naming.</b> #21 (hero's 1:1 mapping), #26 (dead <code>proposals.md</code> registry in specs/evals), #24 (diverged eval fixtures), #23 (dead evals gate), #27 (no versioned schema install) — adjacent defects this call exposes but does not close.</div>
+  </div>
+</section>
+
+<footer>
+  <a href="https://github.com/agentplot/flywheel/issues/13">#13</a>
+  <a href="https://github.com/agentplot/flywheel/issues/18#issuecomment-5270769621">#18 inventory</a>
+  <a href="https://github.com/agentplot/flywheel/blob/main/openspec/changes/work-object-vocabulary/questions/work-object-names.md">question record</a>
+  <a href="https://github.com/agentplot/flywheel/blob/main/openspec/changes/work-object-vocabulary/intent.md">intent</a>
+  <span>counts at tree <code>2e707e9</code> · session 2026-08-12-naming-call</span>
+</footer>
+
+</div>
+<script>
+function queueAnswer(event, key, build){
+  event.preventDefault();
+  var form = event.currentTarget;
+  var fd = new FormData(form);
+  var v = fd.get('v');
+  if(!v) return;
+  var noteRaw = (fd.get('note')||'').toString().trim();
+  var note = noteRaw ? (' Operator note: ' + noteRaw) : '';
+  var prompt = build(v, note);
+  if (window.lavish && window.lavish.queuePrompt){
+    window.lavish.queuePrompt(prompt, {
+      tag:'choice', text: key + ': ' + v, element: form,
+      queueKey: key, data:{question:key, answer:v, note:noteRaw}
+    });
+  }
+  var n = document.getElementById('qn-'+key);
+  if(n){ n.classList.add('show'); }
+}
+</script>
+</body>
+</html>
