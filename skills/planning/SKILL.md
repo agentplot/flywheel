@@ -40,6 +40,16 @@ travel through your report as proposed items, never as raw relays.
 If `plannotator` does not resolve on `PATH`, report the shortfall and
 stop — a round the operator never saw produces annotations nobody made.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: item numbers of the decisions your round closes, `type:planning`, flipped `state:in-progress` by your conductor.
+- **You leave**: one comment per item — the round's outcome and a pointer to the annotated draft in your session directory. The conductor closes items on your evidence; you never close your own.
+- New work the round surfaces is a queued item on the milestone, filed in a minute.
+
 ## What you report
 
 Which decisions closed and the draft each closed on, corrections folded,

@@ -44,6 +44,16 @@ the spec before anything is committed to it. An assertion that cannot be
 specced without a decision nobody has made is a design finding to queue,
 not a gap to fill with your own judgment.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: released assertion items (`type:assertion`, `state:in-progress`), each pointing at its assertion record — the assertion is the proposal.
+- **You leave**: one spec-driven change per assertion in its built repo, `openspec validate` green, and a "spec landed" comment on each item naming the change id.
+- The stages create no items (tracker.md, invariant 4); only discoveries are queued.
+
 ## What you report
 
 The change id per assertion with its artifact state

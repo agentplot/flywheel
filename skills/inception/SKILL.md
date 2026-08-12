@@ -21,7 +21,10 @@ Three roles load this skill: **dispatch**, the **intent conductor**, and
 GitHub Issues on the org's tracker repo — the `tracker:` line in the
 org's `fleet.yaml`. Every machinery write runs as the app:
 `GH_TOKEN=$(flywheel-token --org <org>) gh …`. The invocations, label
-set, and epic queries are in the plugin's `skills/_reference/herdr.md`.
+set, and epic queries are in the plugin's `skills/_reference/herdr.md`;
+the object-graph rules and two worked examples are the shared copy at
+`skills/_reference/tracker.md` — when a situation is not covered there
+or by a work order, queue a question rather than inventing structure.
 
 - **An item** is an issue: title imperative, body one to three sentences
   plus pointers to the record it serves, milestone from birth, labels

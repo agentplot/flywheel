@@ -48,6 +48,16 @@ bounced on everything else. A batch incoherent as a whole — the specs
 cannot compose no matter how each is fixed — is one finding and the
 andon cord, not a bounce per row.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: assertion items (`type:assertion`) and their specs, read as one batch.
+- **You leave**: one verdict comment per assertion item. You never edit what you review — a bounce re-dispatches the spec; your comment is the record of why.
+- A defect beyond the batch is a queued item on the right milestone.
+
 ## What you report
 
 The verdict per assertion with its grounds, findings queued, and what

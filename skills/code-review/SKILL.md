@@ -55,6 +55,16 @@ expensive: pricing the fix is the conductor's, naming the defect is
 yours. Defects sharing one root that indicts the whole approach are one
 finding and the andon cord, not an itemized symptom list.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: built work for assertion items (`type:assertion`), on build branches or the bolt branch.
+- **You leave**: one verdict comment per assertion item. You never edit what you review; a bounce re-dispatches the build.
+- A defect beyond the batch is a queued item on the right milestone.
+
 ## What you report
 
 The verdict per assertion with defects classed and evidenced, and what

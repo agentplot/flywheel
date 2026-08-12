@@ -40,6 +40,15 @@ stop — the item asked for the operator's eyes, and a round the operator
 never saw produces annotations nobody made. An annotation set that
 rejects the batch's whole approach is one finding and the andon cord.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: assertion items whose built diffs an agent asked the operator's eyes for, with the reason on the item.
+- **You leave**: the operator's verdict folded and commented per item. If the operator cannot be reached, the item gets the one-line question and `needs-operator` (tracker.md, invariant 7) — you never wait silently.
+
 ## What you report
 
 The document as annotated, the fold sorted for routing, and what the

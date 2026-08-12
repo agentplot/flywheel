@@ -50,6 +50,16 @@ An item filed as writeback whose target is neither — a skill, a profile,
 a schema instruction, a `CLAUDE.md` — is construction: queue it for a
 bolt, say so in your report, and work the rest of the batch.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: writeback items on the intent's milestone (`type:writeback`), flipped `state:in-progress` by your conductor.
+- **You leave**: the chapters and map committed on your branch, gates green, and one comment per item saying which chapters moved. The conductor merges and closes.
+- A contradiction the books reveal is a queued item on the milestone, never silently written around.
+
 ## What you report
 
 Which chapters and map nodes you rewrote, that the gates are green, and

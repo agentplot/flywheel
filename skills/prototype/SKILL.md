@@ -36,6 +36,16 @@ not work has done its whole job: name what failed and how you know, and
 discard the worktree. Reporting "inconclusive" because the answer was no
 throws away the thing you were sent to get.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: usually one item per prototype (prototypes ride alone), `type:prototype`, flipped `state:in-progress` by your conductor.
+- **You leave**: the finding as a comment on the item and `prototypes/<slug>.md` in the change; the spike code stays in the spike repo and dies there.
+- A finding that opens new work is a queued item, never an in-place expansion of your charge.
+
 ## What you report
 
 The finding, the decision it feeds, and what the next batch should work.

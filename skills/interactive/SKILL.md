@@ -41,6 +41,16 @@ The steering source for this type is the user-level `lavish` skill
 the shortfall and stop — do not half-build the page or substitute a
 document; re-charging the batch is your conductor's call.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: item numbers of the coupled decisions the page carries, `type:interactive`, flipped `state:in-progress` by your conductor.
+- **You leave**: one comment per item — what the operator chose, with a pointer to the page in your session directory. The conductor closes items on your evidence.
+- New work the round surfaces is a queued item on the milestone.
+
 ## What you report
 
 Which decisions the operator's annotations closed, proposed items for

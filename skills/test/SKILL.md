@@ -40,6 +40,16 @@ A bolt branch that will not even build is the andon cord: stop after
 the first structural failure rather than accumulating fifty findings
 that share one root.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: an acceptance charge — the bolt's merge criteria, on the bolt branch after merge-backs.
+- **You leave**: the run's result as a comment where your work order says (the bolt's items or epic), and every finding as a NEW queued item on the bolt's milestone — findings are items, never in-place fixes.
+- A design-level fault is queued on the source intent's milestone.
+
 ## What you report
 
 Each criterion with its actual result, the items you queued, any

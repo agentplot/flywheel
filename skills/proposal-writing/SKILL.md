@@ -36,6 +36,15 @@ Drafts are files in your worktree; your conductor turns them into items
 and dependencies. A decision that looks wrong is a design finding for
 the intent, never a thing you fix by drafting around it.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: an unmineable assertion's item (`type:assertion`) and a work order saying the split is the bolt's to draft.
+- **You leave**: the drafted split as files for the conductor to promote, and a comment on the original item naming what replaces it. New assertion items are queued on the source intent; the original closes `closed:superseded` by the conductor.
+
 ## What you report
 
 Per assertion: mineable as split (with the drafts), or blocked (with

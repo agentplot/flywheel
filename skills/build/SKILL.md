@@ -42,6 +42,16 @@ write the bolt branch or main directly. Book chapters and the context
 map are the design loop's — a change that would edit them is a design
 finding, queued, and the andon cord if the batch depends on it.
 
+## On the tracker
+
+The object-graph rules are the shared copy at
+`skills/_reference/tracker.md`; the invocations are in `herdr.md`
+beside it. Your contract:
+
+- **You receive**: specced assertion items (`type:assertion`), reviewed per the bolt member's depth, on a nested construction worktree.
+- **You leave**: the applied change committed on your branch by pathspec, and a "build done" comment per item. The conductor merges through the gate and closes; you never land or close.
+- A finding beyond your spec is a queued item, never an in-place fix.
+
 ## What you report
 
 What was applied and verified per assertion, the commits on your

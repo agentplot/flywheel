@@ -18,7 +18,10 @@ created a bolt covers every wave of agents inside it.
 The tracker practice — labels, lifecycle, epics, comments as narrative,
 routing as item creation — is stated once in `flywheel:inception` and
 reads the same here. The invocations are in the plugin's
-`skills/_reference/herdr.md`.
+`skills/_reference/herdr.md`; the object-graph rules and the quick-bolt
+worked example are `skills/_reference/tracker.md` — when a situation is
+not covered there or by a work order, queue a question rather than
+inventing structure.
 
 ## Running agents
 
@@ -80,6 +83,13 @@ faults queued to the source intent.
    anchor or quoted phrase, never line number, and carry a build-time
    task to re-read every neighbour they assert something about — that is
    when neighbours have moved longest.
+   **The no-spec path**: for work too small to warrant a spec-driven
+   change in the built repo — `bolt-no-spec` is deliberately not a
+   schema — the conductor's work order says so, and the build session
+   opens in plan mode: its plan, checked against the item's claim, is
+   the spec surrogate, approved by the conductor before any edit. The
+   choice is the conductor's, per batch; the item's comments, the
+   member's review depth, and the unweakened merge gate are unchanged.
 2. **Review**, per the member's depth. The reviewer reads the batch —
    the artifact set and the cited sources — because the defects that
    occur are relational: a rule compressed in one record and carried

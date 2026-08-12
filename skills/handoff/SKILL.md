@@ -61,34 +61,14 @@ across the move, so its checklist keeps tracking the batch to landing.
 Anything held back goes in your report with the reason, never quietly
 dropped.
 
-## The literal graph — one assertion, birth to landing
+## On the tracker
 
-An intent `auth-hardening` needs a forgot-password flow; one question
-gates it:
-
-    #101  Decide the reset-token delivery channel     type:research · queued
-    #102  The auth page offers a forgot-password flow  type:assertion · queued
-          body → assertions/forgot-password.md · blocked-by #101
-    #103  [epic] Settle password-reset design          sub-issues: #101
-
-The design epic batches the *deciding*; the assertion joins no design
-epic. #101 closes → #102 is settled and unbolted → the conductor
-births the handoff item and the handoff epic:
-
-    #104  Plan the bolt for the forgot-password assertion  type:handoff · queued
-    #105  [epic] Handoff: forgot-password to construction  sub-issues: #104, #102
-
-The operator moves #105 to Ready. The handoff session works #104:
-drafts `bolt-plan.md` (one section: `bolt/forgot-password`,
-member bolt-quick, owner from #102's assignee), runs the plannotator
-round, then moves custody:
-
-    #102  milestone intent/auth-hardening → bolt/forgot-password · state:ready
-
-The fleet layer starts `bolt-forgot-password`; construction accrues on
-#102 as comments; it closes `closed:done` with the landing SHA, #105's
-checklist completes, and the intent milestone is free to close when
-design and writebacks are done.
+The object-graph rules — one milestone per issue, one epic per item
+ever, which epics parent what, who moves which state — are the shared
+copy at `skills/_reference/tracker.md`, which also walks this flow
+issue by issue as the literal forgot-password graph. Read it before
+your first tracker write; when a situation is not covered there or by
+your work order, queue a question — never invent tracker structure.
 
 ## What you report
 
