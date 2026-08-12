@@ -203,6 +203,16 @@ and it also binds this bolt's own merges.
 lands on `main` through the full release gate — full hooks, never
 weakened, one writer to main at a time.
 
+**Three spec-driven changes land with it, not two**, and all three are
+archived after: `pre-merge-gate` (#34, the config), `gate-prose-correction`
+(#35, the prose), and `fleet-approval-check` (#36, the fleet check). #34
+and #35 were one change until `6808bbe` set the change grain at one change
+per assertion; they were split, and they co-land in a single pass because
+#35's central sentence is false before #34 lands and stale-wrong after it.
+The split is recorded here because the count changed mid-bolt, and an
+archive step that remembers the old number leaves a completed change
+sitting in `openspec/changes/` looking unfinished.
+
 **The landing is also when #36 starts biting, which is a second and
 independent reason the grant precedes it.** From the moment
 `fleet-approval-check` is on `main`, `flywheel up` refuses to start
