@@ -33,5 +33,27 @@
   palette and type.
 
 ## Delivered
-- Pending the operator's annotation round; outcomes recorded here and
-  on #13 when the round closes.
+
+The operator worked the page and closed all three decisions
+(annotation round of 2026-08-12; session ended by the operator):
+
+- **The triple: Option A.** The released claim is the **assertion**;
+  the construction batch kind is the **unit**; the design batch kind is
+  the **elaboration**. The tracker's vocabulary wins; *proposal*
+  retreats to OpenSpec's own artifact; every breaking identifier
+  (schema artifact id, `assertions/**` record dirs, `--kind` values,
+  the compose predicate) stays put.
+- **Rider 1: hero copy licence granted.** The operator's note overrode
+  the "hold for #21" default — "just fix the wording on the hero. say
+  it as it is." — and confirmed the reading: the landing pass rewrites
+  the two hero lines into vocabulary A ("holds the goal and its
+  assertions"; the walkthrough line worded so it stops asserting the
+  1:1 claim-to-bolt mapping, which closes #21's defect with it).
+- **Rider 2: rename to match.** `skills/proposal-writing/` and
+  `skills/proposal-review/` take the winning claim word; the slash
+  commands change; 10 inbound files / 15 lines follow; the two
+  never-applied `type:proposal-*` labels are renamed with them.
+
+Outcomes and pointers posted on #13. The decision record under
+`decisions/` and the landing pass are the next work, proposed to the
+conductor in this session's report.
