@@ -5,9 +5,9 @@
       ITEM_NUMBER ...
 
 Adds each item to the Project and, with --status, sets its Status. The
-board rule: whatever carries the approval sits on the board — epics
-(flywheel-epic adds them at Backlog), and a quick bolt's lone
-born-ready item (added at Ready by dispatch at triage, so the roadmap
+board rule: whatever carries the approval sits on the board — units
+and elaborations (flywheel-batch adds them at Backlog), and a quick
+bolt's lone born-ready item (added at Ready by dispatch at triage, so the roadmap
 and the reconciler's Ready query see it like any released batch).
 Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
 """

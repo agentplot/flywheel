@@ -15,7 +15,7 @@ cites, never from a restatement. A bolt exists only past the operator's
 release, so bolt conductors auto-start on request, and the release that
 created a bolt covers every wave of agents inside it.
 
-The tracker practice — labels, lifecycle, epics, comments as narrative,
+The tracker practice — labels, lifecycle, batches, comments as narrative,
 routing as item creation — is stated once in `flywheel:inception` and
 reads the same here. The invocations are in the plugin's
 `skills/_reference/herdr.md`; the object-graph rules and the quick-bolt
@@ -143,7 +143,7 @@ Work the ready set to empty, then stop at the queue. Every released
 item with an unblocked next action is dispatched; when all are waiting
 on running sessions, park on them (`herdr agent wait`), and when the
 ready set is empty, present this bolt's queue — `state:queued` items
-and Backlog epics, one line each — and wait for the operator to move
+and Backlog units, one line each — and wait for the operator to move
 one to Ready.
 New work pushed into a live bolt joins as queued items; scope that
 belongs elsewhere is queued elsewhere.

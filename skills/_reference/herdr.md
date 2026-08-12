@@ -264,23 +264,25 @@ GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
   --milestone "bolt/<slug>" --remove-label state:queued --add-label state:ready
 ```
 
-Composing a proposed release batch is one call — parent issue, sub-issues,
+Composing a proposed batch is one call — parent issue, sub-issues,
 project, Status **Backlog** (moving it to **Ready** on the board is
-the operator's approval, and nothing else moves it):
+the operator's approval, and nothing else moves it). `--kind unit`
+releases construction work; `--kind elaboration` authorizes design
+sessions:
 
 ```bash
-<plugin-root>/bin/flywheel-epic --org <org> --repo <tracker> --milestone "bolt/<slug>" \
-  --title "<the batch, imperatively>" <item> <item> ...
+<plugin-root>/bin/flywheel-batch --kind unit --org <org> --repo <tracker> \
+  --milestone "bolt/<slug>" --title "<the batch, imperatively>" <item> <item> ...
 ```
 
 A quick bolt's lone born-ready item goes on the board itself — the
-approval-carrier where an epic would be:
+approval-carrier where a batch would be:
 
 ```bash
 <plugin-root>/bin/flywheel-board --org <org> --repo <tracker> --status Ready <item>
 ```
 
-Finding the epics the operator has released:
+Finding the batches the operator has released:
 
 ```bash
 GH_TOKEN=$tok gh api graphql -f query='
@@ -295,7 +297,7 @@ GH_TOKEN=$tok gh api graphql -f query='
 
 **Sub-issues and dependencies take the database id, not the number.**
 `gh api /repos/<o>/<r>/issues/<n> --jq .id` fetches it; passing the issue
-number fails opaquely. An item joins exactly one epic — attaching a
+number fails opaquely. An item joins exactly one batch — attaching a
 sub-issue that already has a parent is a 422:
 
 ```bash

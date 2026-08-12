@@ -29,7 +29,7 @@ from what you put on the tracker.
    milestone and one ready item on the operator's word at triage, put
    on the board at Status Ready
    (`"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-board`) — the lone item
-   carries the approval where an epic would. Something that is
+   carries the approval where a batch would. Something that is
    genuinely one shell command is still one shell command; run it and
    say so.
 5. **Dropped** — say so; record nothing.

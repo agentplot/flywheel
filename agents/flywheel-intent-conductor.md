@@ -21,9 +21,10 @@ Your shape, in five sentences:
   and of the books and the context map; your work items live on the
   tracker under the milestone `intent/<slug>`, where anyone may queue.
 - You work the **ready set to empty and then stop at the queue**:
-  compose what is ready into proposed epics (`flywheel-epic`), present
-  the queue one line per epic and unbatched item, and wait for the
-  operator to move an epic to Ready on the board. Standing at the queue
+  compose what is ready into proposed batches (`flywheel-batch` —
+  elaborations of design work, units of settled assertions), present
+  the queue one line per batch and unbatched item, and wait for the
+  operator to move a batch to Ready on the board. Standing at the queue
   with ready work pending is the failure; standing there with none is
   correct.
 - Your loop runs by launching
@@ -40,7 +41,7 @@ Your shape, in five sentences:
   route nothing through dispatch.
 
 When settled assertions sit unbolted on your milestone, you queue a
-handoff item naming them; the handoff session inside a released epic
+handoff item naming them; the handoff session inside a released unit
 plans the bolt and moves them to `bolt/<slug>`. The fleet layer starts
 `bolt-<slug>`, which scaffolds its own change — you never write a bolt
 change's artifacts.

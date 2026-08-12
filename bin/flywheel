@@ -15,13 +15,13 @@ deterministic pass that runs the whole fleet from observed state: it
 converges the manifest rows, then reads the tracker (the `tracker:`
 line, an `org/repo`) and starts a conductor for every open `intent/*` or
 `bolt/*` milestone that has actionable work — an open item labelled
-`state:ready` or `state:in-progress`, or an open epic the operator has
-moved to Ready on the board — and none running; it nudges a settled
+`state:ready` or `state:in-progress`, or an open unit or elaboration
+the operator has moved to Ready on the board — and none running; it nudges a settled
 conductor whose milestone has ready work, and nudges dispatch when open
 `needs-operator` items await relay. It decides nothing itself: every
 action is a pure function of manifest + tracker + herdr roster, so the
 same pass runs by hand, on `--interval`, or from a webhook later.
-Conductor placement: an epic's Team field routes its milestone's
+Conductor placement: a batch's Team field routes its milestone's
 conductor via the manifest's `teams:` map (team → host); unmapped work
 runs on this host. Conductors start in `conductors_cwd:` with the model
 `conductor_model:` (default `opus[1m]`).
@@ -345,9 +345,10 @@ def tracker_state(top: dict) -> dict:
         if "needs-operator" in labels:
             needs_operator.append(i["number"])
 
-    # An epic the operator has moved to Ready wakes its milestone's
-    # conductor before any item is relabelled — the flip alone is work.
-    ready_epics: dict[str, str | None] = {}
+    # A unit or elaboration the operator has moved to Ready wakes its
+    # milestone's conductor before any item is relabelled — the flip
+    # alone is work. (Board query: any Ready item with a milestone.)
+    ready_batches: dict[str, str | None] = {}
     project_id = find_project(token, org, top.get("project", "Flywheel"))
     after = None
     while project_id:
@@ -369,14 +370,14 @@ def tracker_state(top: dict) -> dict:
             c = n.get("content") or {}
             if ((n.get("status") or {}).get("name") == "Ready"
                     and c.get("state") == "OPEN" and c.get("milestone")):
-                ready_epics.setdefault(c["milestone"]["title"],
-                                       (n.get("team") or {}).get("name"))
+                ready_batches.setdefault(c["milestone"]["title"],
+                                         (n.get("team") or {}).get("name"))
         if not items["pageInfo"]["hasNextPage"]:
             break
         after = items["pageInfo"]["endCursor"]
 
     return {"ready_ms": ready_ms, "inprog_ms": inprog_ms,
-            "needs_operator": needs_operator, "ready_epics": ready_epics}
+            "needs_operator": needs_operator, "ready_batches": ready_batches}
 
 
 def reconcile(manifest: dict, host: str, session: str, env: dict,
@@ -399,7 +400,7 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
     state = tracker_state(manifest["top"])
     actionable: dict[str, str] = {}
     for ms in (state["ready_ms"] | state["inprog_ms"]
-               | set(state["ready_epics"])):
+               | set(state["ready_batches"])):
         kind, _, slug = ms.partition("/")
         if kind in ("intent", "bolt") and slug:
             actionable[f"{kind}-{slug}"] = ms
@@ -407,7 +408,7 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
     for name, ms in sorted(actionable.items()):
         if name in alive:
             continue
-        team = state["ready_epics"].get(ms)
+        team = state["ready_batches"].get(ms)
         want_host = manifest["teams"].get(team, host) if team else host
         if want_host != host:
             print(f"{name}: routed to {want_host} (team {team}) — not this "
@@ -439,7 +440,7 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
         alive = herdr_agents(env)
     for name, ms in sorted(actionable.items()):
         agent = alive.get(name)
-        has_ready = ms in state["ready_ms"] or ms in state["ready_epics"]
+        has_ready = ms in state["ready_ms"] or ms in state["ready_batches"]
         if not (agent and has_ready
                 and agent.get("agent_status") in SETTLED):
             continue

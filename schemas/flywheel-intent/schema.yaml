@@ -122,7 +122,7 @@ artifacts:
       - **Boundaries** - what it does NOT cover where a reader would assume
         otherwise, naming the sibling that holds the rest.
 
-      Live state - queued, released, whose epic - is the item's alone.
+      Live state - queued, released, whose batch - is the item's alone.
       When the work merges, append the terminal fact here: the change id
       and landing ref, dated. A record asserts nothing that can go stale
       silently.
@@ -193,8 +193,9 @@ apply:
     flywheel plugin's `skills/_reference/herdr.md`.
 
     1 · QUERY — the milestone `intent/<slug>`'s open items labelled
-      `state:ready`, and its epics whose Project Status the operator
-      has moved to Ready on the board: relabel those epics' sub-issues to
+      `state:ready`, and its batches (units and elaborations) whose
+      Project Status the operator has moved to Ready on the board:
+      relabel those batches' sub-issues to
       `state:ready` first, then take the whole ready set. The
       tracker is the only source of work.
 
@@ -226,17 +227,18 @@ apply:
     - BIRTH THE HANDOFF when it is due. An assertion is settled and
       unbolted when its item is open on `intent/<slug>` (bolting IS the
       milestone move to `bolt/<slug>`, so the milestone field is the
-      test), it has no parent epic, and every item blocking it is
+      test), it has no parent batch, and every item blocking it is
       closed. When any exist, queue one `type:handoff` item naming
       exactly that set - or extend the open unstarted handoff item with
       the newcomers. The handoff session it charges plans the bolt:
       member (= review depth), owner, sequencing, the milestone move.
-    - COMPOSE the queue into proposed epics (`flywheel-epic`), grouped
-      by thread - a prototype, the questions it answers, and the
+    - COMPOSE the queue into proposed batches (`flywheel-batch`) -
+      elaborations of design work, units of settled assertions - grouped
+      by thread: a prototype, the questions it answers, and the
       writeback of its findings are one approval even though they are
       three types; the type partition happens at session time, not here.
 
-    Present the queue to the operator - one line per epic and unbatched
+    Present the queue to the operator - one line per batch and unbatched
     item - and stop. An empty ready set with a full queue is the correct
     resting state, not a stall.
 

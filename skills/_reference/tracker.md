@@ -14,17 +14,20 @@ queue a question — never invent tracker structure.**
   from birth · `type:*` and exactly one `state:*` · assignee = whose
   word settles it · native blocked-by dependencies · comments as its
   narrative.
-- **epic** — one release batch: a parent issue, label `epic`, the
-  batch as sub-issues, sitting on the org Project at Status
-  **Backlog** (proposed) or **Ready** (approved).
+- **batch** — a parent issue whose sub-issues are the batch, sitting
+  on the org Project at Status **Backlog** (proposed) or **Ready**
+  (approved). Its kind is what approving it authorizes: a **unit**
+  (label `unit`) releases construction work — AI-DLC's unit of work;
+  an **elaboration** (label `elaboration`) authorizes design sessions
+  on an intent.
 - **milestone** — the change-sized container, exactly two forms:
   `intent/<slug>` and `bolt/<slug>`. A due date puts it on the
   roadmap.
 - **the board** — the org Project: Status lanes, Team = host, roadmap
   fields. A view, never a second store. **Whatever carries the
-  approval sits on the board**: epics (at Backlog, flipped to Ready by
-  the operator), and a quick bolt's lone born-ready item (at Ready
-  from birth, via `flywheel-board`).
+  approval sits on the board**: units and elaborations (at Backlog,
+  flipped to Ready by the operator), and a quick bolt's lone
+  born-ready item (at Ready from birth, via `flywheel-board`).
 
 ## The invariants
 
@@ -33,16 +36,16 @@ queue a question — never invent tracker structure.**
    `intent/<slug>` to `bolt/<slug>` IS the release to construction —
    no other act bolts it, and the milestone field is the test for
    whether it happened.
-2. **An item joins exactly one epic, ever** (GitHub enforces this —
-   attaching a parented sub-issue is a 422). Which epic:
+2. **An item joins exactly one batch, ever** (GitHub enforces this —
+   attaching a parented sub-issue is a 422). Which batch:
    design-work items — questions, prototypes, writebacks, handoff
-   items — join a design epic on their intent; an assertion item joins
-   only the handoff epic that releases it; work queued fresh on a live
-   bolt joins a bolt-side epic. Sub-issue links are independent of
+   items — join an elaboration on their intent; an assertion item
+   joins only the unit that releases it; work queued fresh on a live
+   bolt joins a bolt-side unit. Sub-issue links are independent of
    milestones and survive the custody move.
-3. **Epics group by thread, not by type** — a prototype, the questions
-   it answers, and the writeback of its findings are one approval. The
-   conductor partitions an epic's sub-issues into typed sessions at
+3. **Batches group by thread, not by type** — a prototype, the
+   questions it answers, and the writeback of its findings are one
+   approval. The conductor partitions a batch's sub-issues into typed sessions at
    work time: type is the hard boundary, relatedness decides within a
    type, prototypes ride alone.
 4. **`type:*` is the session type that works the item.** A question
@@ -53,13 +56,13 @@ queue a question — never invent tracker structure.**
    items.
 5. **The state ladder is `queued → ready → in-progress → closed:*`**,
    and each move has an owner: anyone queues; only the operator's word
-   makes ready — the epic flip to Ready on the board for a batch, or
+   makes ready — the flip to Ready on the board for a batch, or
    born-ready at triage when the work IS the operator's word; the
    conductor flips `in-progress` as a session starts; whoever holds
    the evidence closes, always with one `closed:*` reason.
 6. **The handoff birth condition is computable.** An assertion is
    settled and unbolted when its item is open on `intent/<slug>`, has
-   no parent epic, and has no open blockers. Whenever such assertions
+   no parent batch, and has no open blockers. Whenever such assertions
    exist at the queue, the conductor births one `type:handoff` item
    naming exactly that set, or extends the open unstarted one.
 7. **Blocked on the operator's word**: comment the one-line question
@@ -76,14 +79,14 @@ gates it:
     #101  Decide the reset-token delivery channel      type:research · queued
     #102  The auth page offers a forgot-password flow  type:assertion · queued
           body → assertions/forgot-password.md · blocked-by #101
-    #103  [epic] Settle password-reset design          sub-issues: #101
+    #103  [elaboration] Settle password-reset design   sub-issues: #101
 
-The design epic batches the *deciding*; the assertion joins no design
-epic. #101 closes → #102 is settled and unbolted (invariant 6) → the
-conductor births the handoff item and its epic:
+The elaboration batches the *deciding*; the assertion joins no
+elaboration. #101 closes → #102 is settled and unbolted (invariant 6)
+→ the conductor births the handoff item and its unit:
 
     #104  Plan the bolt for the forgot-password assertion  type:handoff · queued
-    #105  [epic] Handoff: forgot-password to construction  sub-issues: #104, #102
+    #105  [unit] Handoff: forgot-password to construction  sub-issues: #104, #102
 
 The operator moves #105 to Ready — the checklist they flip is the list
 of assertions being released. The handoff session works #104: drafts

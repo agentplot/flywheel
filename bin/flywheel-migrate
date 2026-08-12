@@ -14,7 +14,7 @@ The milestone defaults to `intent/<dirname>` (`bolt/<dirname>` when the
 change's `.openspec.yaml` binds a bolt schema) and is created if missing.
 Dependencies are left as quoted blocker text in each body — wire the
 native blocked-by relations when batching, when the numbers exist to
-point at. Released items are listed at the end for `flywheel-epic` to
+point at. Released items are listed at the end for `flywheel-batch` to
 compose.
 
 Deleting the migrated `tasks.md` is the operator's commit, made in the
@@ -149,8 +149,8 @@ def main():
         if released:
             released_numbers.append(str(issue["number"]))
     if released_numbers:
-        print("released items — compose with: flywheel-epic --org "
-              f"{args.org} --repo {args.repo} --milestone '{milestone}' "
+        print("released items — compose with: flywheel-batch --kind unit "
+              f"--org {args.org} --repo {args.repo} --milestone '{milestone}' "
               f"--title '<batch>' {' '.join(released_numbers)}")
 
 

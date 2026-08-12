@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
-"""flywheel-epic — compose a proposed release batch from queued items.
+"""flywheel-batch — compose a proposed batch from queued items.
 
-  flywheel-epic --org ORG --repo REPO --milestone TITLE --title TITLE \\
-      [--body TEXT] [--project Flywheel] [--due YYYY-MM-DD] \\
-      [--iteration TITLE] [--start YYYY-MM-DD] [--target YYYY-MM-DD] \\
-      ITEM_NUMBER ...
+  flywheel-batch --org ORG --repo REPO --kind {unit,elaboration} \\
+      --milestone TITLE --title TITLE [--body TEXT] [--project Flywheel] \\
+      [--due YYYY-MM-DD] [--iteration TITLE] [--start YYYY-MM-DD] \\
+      [--target YYYY-MM-DD] ITEM_NUMBER ...
 
-The conductor's batching move, in one call: creates the epic issue
-(labels `epic` + `state:queued`, in the named milestone, created if
-missing, `--due` giving it the date the roadmap needs), attaches the
-items as sub-issues, adds the epic to the org Project, and sets its
-Status to **Backlog** — with `--iteration`, `--start` and `--target`
-filling the roadmap fields when given. Moving it to **Ready** on
-the board is the operator's act — this tool never does.
+A batch is a parent issue whose sub-issues are the batch, and its kind
+is what approving it authorizes: a **unit** releases construction work
+(AI-DLC's unit of work — a handoff's assertions, or fresh work on a
+live bolt); an **elaboration** authorizes design sessions on an
+intent. The conductor's batching move, in one call: creates the parent
+issue (labels `<kind>` + `state:queued`, in the named milestone,
+created if missing, `--due` giving it the date the roadmap needs),
+attaches the items as sub-issues, adds the parent to the org Project,
+and sets its Status to **Backlog** — with `--iteration`, `--start` and
+`--target` filling the roadmap fields when given. Moving it to
+**Ready** on the board is the operator's act — this tool never does.
 
-Prints the epic's number and URL. Token: `GH_TOKEN`, or minted by the
+Prints the batch's number and URL. Token: `GH_TOKEN`, or minted by the
 sibling `flywheel-token` from `FLYWHEEL_GH_*`.
 """
 
@@ -33,6 +37,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--org", required=True)
     ap.add_argument("--repo", required=True)
+    ap.add_argument("--kind", required=True, choices=["unit", "elaboration"])
     ap.add_argument("--milestone", required=True, metavar="TITLE")
     ap.add_argument("--title", required=True)
     ap.add_argument("--body", default="")
@@ -48,51 +53,51 @@ def main():
     repo_path = f"/repos/{args.org}/{args.repo}"
 
     # Fetch every item up front: composing a batch from a missing item or
-    # one already in another epic should fail before anything is created.
+    # one already batched should fail before anything is created.
     items = [gh(token, "api", f"{repo_path}/issues/{n}") for n in args.items]
     for item in items:
         if item.get("parent_issue_url"):
             parent = item["parent_issue_url"].rsplit("/", 1)[-1]
-            sys.exit(f"flywheel-epic: #{item['number']} is already in epic "
-                     f"#{parent} — an item joins exactly one epic")
+            sys.exit(f"flywheel-batch: #{item['number']} is already in batch "
+                     f"#{parent} — an item joins exactly one batch")
 
     ms_number = ensure_milestone(token, args.org, args.repo,
                                  args.milestone, due_on=args.due)
 
-    # The epic answers to whoever the batch answers to: the union of its
+    # The batch answers to whoever its items answer to: the union of its
     # items' assignees, so the board and DM routing resolve on the parent.
     assignees = sorted({a["login"] for i in items
                         for a in i.get("assignees") or []})
-    epic = gh(token, "api", f"{repo_path}/issues", "--input", "-",
-              input_json={
-                  "title": args.title,
-                  "body": args.body,
-                  "labels": ["epic", "state:queued"],
-                  "milestone": ms_number,
-                  **({"assignees": assignees[:10]} if assignees else {}),
-              })
-    print(f"epic #{epic['number']}: {epic['html_url']}"
+    batch = gh(token, "api", f"{repo_path}/issues", "--input", "-",
+               input_json={
+                   "title": args.title,
+                   "body": args.body,
+                   "labels": [args.kind, "state:queued"],
+                   "milestone": ms_number,
+                   **({"assignees": assignees[:10]} if assignees else {}),
+               })
+    print(f"{args.kind} #{batch['number']}: {batch['html_url']}"
           + (f" · assignees: {', '.join(assignees[:10])}" if assignees else ""))
 
     for item in items:
-        gh(token, "api", f"{repo_path}/issues/{epic['number']}/sub_issues",
+        gh(token, "api", f"{repo_path}/issues/{batch['number']}/sub_issues",
            "--input", "-", input_json={"sub_issue_id": item["id"]})
         print(f"  sub-issue: #{item['number']} {item['title']}")
 
     project_id = find_project(token, args.org, args.project)
     if not project_id:
-        sys.exit(f"flywheel-epic: no project titled '{args.project}' — "
+        sys.exit(f"flywheel-batch: no project titled '{args.project}' — "
                  "run flywheel-setup first")
-    item_id = add_to_project(token, project_id, epic["node_id"])
+    item_id = add_to_project(token, project_id, batch["node_id"])
     field_id, options = project_single_select(token, project_id, "Status")
     if "Backlog" not in options:
-        sys.exit("flywheel-epic: the Status field has no 'Backlog' option — "
+        sys.exit("flywheel-batch: the Status field has no 'Backlog' option — "
                  "run flywheel-setup first")
     set_item_option(token, project_id, item_id, field_id, options["Backlog"])
     if args.iteration:
         it_field, its = project_iterations(token, project_id)
         if args.iteration not in its:
-            sys.exit(f"flywheel-epic: no iteration titled '{args.iteration}' "
+            sys.exit(f"flywheel-batch: no iteration titled '{args.iteration}' "
                      f"(have: {', '.join(its) or 'none'})")
         set_item_value(token, project_id, item_id, it_field,
                        {"iterationId": its[args.iteration]})
@@ -100,7 +105,7 @@ def main():
         if date:
             f_id = project_date_field(token, project_id, name)
             if not f_id:
-                sys.exit(f"flywheel-epic: no '{name}' date field — "
+                sys.exit(f"flywheel-batch: no '{name}' date field — "
                          "run flywheel-setup first")
             set_item_value(token, project_id, item_id, f_id, {"date": date})
     extras = [x for x in (args.iteration and f"iteration {args.iteration}",
@@ -116,4 +121,4 @@ if __name__ == "__main__":
     try:
         main()
     except GraphqlError as e:
-        sys.exit(f"flywheel-epic: graphql: {e}")
+        sys.exit(f"flywheel-batch: graphql: {e}")

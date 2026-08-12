@@ -1,6 +1,6 @@
 ---
 name: inception
-description: Run the flywheel design loop — dispatch raw ideas into intent changes and tracker items, run design sessions that close decisions and write the books and the context map, hand work to construction as the operator moves epics to Ready. Use when the operator files or discusses a new idea or intent, asks where an idea should go, asks to work an intent's design items, or asks "what's in design".
+description: Run the flywheel design loop — dispatch raw ideas into intent changes and tracker items, run design sessions that close decisions and write the books and the context map, hand work to construction as the operator moves batches to Ready. Use when the operator files or discusses a new idea or intent, asks where an idea should go, asks to work an intent's design items, or asks "what's in design".
 ---
 
 # Flywheel inception — the design loop
@@ -24,7 +24,7 @@ org's `fleet.yaml`. Every machinery write runs as the app:
 — the plugin's `bin/` is not on `PATH`; `${CLAUDE_PLUGIN_ROOT}` is
 substituted into this skill at load and is the `<plugin-root>` the
 references speak of. The invocations, label
-set, and epic queries are in the plugin's `skills/_reference/herdr.md`;
+set, and batch queries are in the plugin's `skills/_reference/herdr.md`;
 the object-graph rules and two worked examples are the shared copy at
 `skills/_reference/tracker.md` — when a situation is not covered there
 or by a work order, queue a question rather than inventing structure.
@@ -39,11 +39,13 @@ or by a work order, queue a question rather than inventing structure.
   ending closed with a `closed:*` reason — done, declined, superseded,
   parked. Anyone queues; only the operator's word makes an item ready;
   an item's progress is its comment history.
-- **An epic** is one proposed release batch: a parent issue (label
-  `epic`) whose sub-issues are the batch, composed with `flywheel-epic`,
-  sitting in the Project at Status **Backlog**. The operator approves a
-  batch by moving its epic to **Ready** on the board — one move per
-  batch, never per item. Epics group by **thread**, not by type: a
+- **A batch** is a parent issue whose sub-issues are the batch,
+  composed with `flywheel-batch`, sitting in the Project at Status
+  **Backlog**. Its kind is what approving it authorizes: a **unit**
+  releases construction work — AI-DLC's unit of work; an
+  **elaboration** authorizes design sessions. The operator approves by
+  moving the batch to **Ready** on the board — one move per batch,
+  never per item. Batches group by **thread**, not by type: a
   prototype, the questions it answers, and the writeback of its findings
   are one approval; the conductor partitions the types into sessions at
   work time.
@@ -161,7 +163,7 @@ which you chose:
 4. **Quick bolt** — small, fully defined work gets a `bolt/<slug>`
    milestone and one ready item on the operator's word at triage, put
    on the board at Status Ready (`flywheel-board`) — the lone item
-   carries the approval where an epic would. Something that is
+   carries the approval where a batch would. Something that is
    genuinely one shell command is still one shell command; run it and
    say so.
 5. **Dropped** — say so; record nothing.
@@ -198,12 +200,13 @@ apply instruction holds the loop, launched as
 - **At the queue**, two moves, then wait. First, birth the handoff when
   it is due: an assertion is **settled and unbolted** when its item is
   open on `intent/<slug>` (bolting IS the milestone move to
-  `bolt/<slug>`), has no parent epic, and has no open blockers — when
+  `bolt/<slug>`), has no parent batch, and has no open blockers — when
   any exist, queue one `type:handoff` item naming exactly that set, or
-  extend the open unstarted one. Second, compose the queue into proposed
-  epics (`flywheel-epic`), grouped by thread, and present it one line
-  per epic and unbatched item. Moving an epic to Ready is the approval;
-  the handoff session inside a released epic plans the bolt and moves
+  extend the open unstarted one. Second, compose the queue into
+  proposed batches (`flywheel-batch`) — elaborations of design work,
+  units of settled assertions — grouped by thread, and present it one
+  line per batch and unbatched item. Moving a batch to Ready is the
+  approval; the handoff session inside a released unit plans the bolt and moves
   its assertions to `bolt/<slug>`; the fleet layer starts `bolt-<slug>`,
   which scaffolds its own change — you never write a bolt change's
   artifacts.
