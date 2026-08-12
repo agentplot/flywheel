@@ -54,6 +54,35 @@ command included:
 Sent as prose inside a longer message it loads nothing — the prompt field
 is delivered as its own message, which is why it works.
 
+### Grant each built repo's hook approvals
+
+Once per built repo, before bringing the fleet up, the operator runs — in
+a terminal, with the working directory inside that repo:
+
+```
+wt config approvals add
+```
+
+`wt` runs a project hook only against a standing grant, so a repo whose
+`.config/wt.toml` hooks are ungranted is a repo whose merge gate its
+agents cannot run. `flywheel up` and `flywheel reconcile` check this
+before starting anything and **refuse to start actors into a repo that
+fails it**, naming the ungranted templates and this command;
+`flywheel status` reports it as a row per repo. Ungranted, the stoppage
+would otherwise land mid-merge, on an agent with no way to fix it.
+
+It is deliberately the operator's step and deliberately interactive.
+Read the templates it lists before approving them — approving is saying
+these commands may run on your machine, and the fleet cannot say that on
+your behalf. The grant is keyed on the template text, so one approval
+covers every branch's expansion of a template, and moving a check
+between hook events without changing its text keeps the grant (measured).
+Adding or editing a template needs a fresh grant.
+
+The fleet never writes the approvals store and never approves on your
+behalf. If a repo's hooks change and no one has re-granted them, the
+right outcome is the refusal you get — not a way around it.
+
 ## What this command never does
 
 It never decides ownership (the tracker items' assignee does), never

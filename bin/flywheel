@@ -44,6 +44,17 @@ what they own (the tracker items' assignee does) and never tears one
 down (teardown is deliberate, not a sync step). Rows on other hosts are
 reported, not driven.
 
+Before starting any actor, the repo it would sit in must have its
+worktrunk hook approvals granted — every hook template in the repo's
+`.config/wt.toml` present verbatim in the operator's
+`~/.config/worktrunk/approvals.toml`. Ungranted, an agent cannot run the
+merge gate and would stop mid-merge with no way to fix it, so no actor
+is started there and `wt config approvals add` is printed instead. The
+grant is the operator's, taken once per repo, interactively: this
+command reads those two files and compares them, and never writes the
+approvals store, asks worktrunk for approval state, or runs a hook.
+`status` reports the same as a row per repo and starts nothing.
+
 The manifest is a constrained YAML subset parsed here without a YAML
 dependency: two-space indentation, top-level scalars, `actors:` a list
 of flat maps, `hosts:` a map of flat maps, scalar values only. Only
@@ -59,7 +70,9 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
+from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_gh import GraphqlError, find_project, gh, graphql, resolve_token
@@ -211,6 +224,246 @@ def this_host(manifest: dict, override: str | None) -> str:
     sys.exit("no --host given, no hostname match, no default host in hosts:")
 
 
+# --- the hook-approval precondition -------------------------------------
+#
+# worktrunk runs a project hook only against the operator's standing grant,
+# so a repo whose hooks are ungranted is a repo whose merge gate its agents
+# cannot run. Placing an actor there buys a stoppage mid-merge, on an agent
+# that cannot fix it. This check makes the grant a start precondition: it
+# reads the repo's project config and the operator's approvals store and
+# compares them, so the stoppage happens here, loudly, with the remedy.
+#
+# It READS. It never writes the approvals store, never invokes `wt` to
+# determine approval state, and never runs a hook — a converger that wrote
+# the grants was considered and declined, because the machinery would then
+# be approving the machinery's own hooks. See
+# openspec/changes/gated-merge-guarantee/decisions/
+#   approvals-are-an-onboarding-grant.md.
+#
+# The ten hook event tables worktrunk defines (`wt hook --help`). Any other
+# table in a project config is not a hook and is not checked.
+HOOK_EVENTS = (
+    "pre-switch", "post-switch", "pre-start", "post-start", "pre-commit",
+    "post-commit", "pre-merge", "post-merge", "pre-remove", "post-remove",
+)
+
+APPROVALS_STORE = Path("~/.config/worktrunk/approvals.toml")
+REMEDY = "wt config approvals add"
+
+
+class GateCheck(NamedTuple):
+    """A repo's gate-readiness. `state` is one of three, never two:
+
+    ready          — every hook template it defines is granted, or it
+                     defines none at all (no gate to be unable to run)
+    ungranted      — it defines templates the store does not carry;
+                     `missing` names them and the remedy applies
+    indeterminate  — the check could not be made (worktrunk unavailable,
+                     its query failing, an unreadable store). Fails closed
+                     like `ungranted`, but says so differently: "we could
+                     not tell" and "there is no grant" are different
+                     sentences to an operator holding a remedy command.
+    """
+    key: str
+    state: str
+    identifier: str | None = None
+    templates: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
+    reason: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.state == "ready"
+
+
+def wt_project(cwd: Path) -> dict:
+    """worktrunk's own answer to "which project is this, and which config
+    file is in force". Raises on any doubt, so the caller fails closed.
+
+    This asks for identity, not for approval state — the reply carries none
+    (measured). The approval state is the two TOML files, read below.
+    """
+    if not shutil.which("wt"):
+        raise RuntimeError("the worktrunk command `wt` is not on PATH")
+    try:
+        out = subprocess.run(
+            ["wt", "config", "show", "--format", "json", "-C", str(cwd)],
+            capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise RuntimeError(f"`wt config show` could not be run: {e}") from e
+    if out.returncode != 0:
+        raise RuntimeError(f"`wt config show` exited {out.returncode}: "
+                           f"{out.stderr.strip()[:200]}")
+    try:
+        # stdout only — wt writes terminal control bytes to stderr, and
+        # folding them in makes the document unparseable.
+        return json.loads(out.stdout).get("project") or {}
+    except (ValueError, AttributeError) as e:
+        raise RuntimeError(
+            f"`wt config show --format json` returned unparseable output: {e}"
+        ) from e
+
+
+def hook_templates(config_path: Path) -> tuple[str, ...]:
+    """Every hook template a project config defines, from the ten hook
+    event tables and from no other table."""
+    data = tomllib.loads(config_path.read_text())
+    found: list[str] = []
+    for event in HOOK_EVENTS:
+        table = data.get(event)
+        if isinstance(table, dict):
+            found += [v for v in table.values() if isinstance(v, str)]
+    return tuple(found)
+
+
+def granted_commands(identifier: str) -> tuple[str, ...]:
+    """The operator's grants for one project identifier. A store that does
+    not exist, carries no table for this identifier, or carries an empty
+    array all mean the same thing: no grants. A store that exists but will
+    not parse is a different thing, and raises."""
+    store = APPROVALS_STORE.expanduser()
+    if not store.is_file():
+        return ()
+    table = (tomllib.loads(store.read_text()).get("projects")
+             or {}).get(identifier) or {}
+    return tuple(c for c in table.get("approved-commands", [])
+                 if isinstance(c, str))
+
+
+def gate_readiness(cwd: Path, cache: dict[str, GateCheck]) -> GateCheck:
+    """Is the repo at `cwd` one whose merge gate its agents can run?
+
+    Evaluated once per repo per pass — several actors share one repo in
+    practice, and the answer is about the repo, not the actor. The key is
+    the directory holding the project config that was actually read (or
+    the resolved working directory when there is none), so the key and the
+    thing checked cannot disagree. worktrunk's project config is always
+    `<repo>/.config/wt.toml` — measured: a bare `wt.toml` at a repo root
+    is not recognized — so that directory is the repo, and the key reads
+    as the repo an operator would go and grant.
+    """
+    try:
+        project = wt_project(cwd)
+    except RuntimeError as e:
+        key = str(cwd.resolve())
+        return cache.setdefault(
+            key, GateCheck(key, "indeterminate", reason=str(e)))
+
+    config = project.get("path")
+    key = str(Path(config).parent.parent if config else cwd.resolve())
+    if key in cache:
+        return cache[key]
+
+    identifier = project.get("identifier")
+    # No project config is not a failed check: there is no gate here, so
+    # there is nothing an agent could be unable to run.
+    if not project.get("exists") or not config:
+        return cache.setdefault(key, GateCheck(key, "ready", identifier))
+
+    try:
+        templates = hook_templates(Path(config))
+    except (OSError, ValueError) as e:
+        return cache.setdefault(key, GateCheck(
+            key, "indeterminate", identifier,
+            reason=f"the project config {config} could not be read: {e}"))
+    if not templates:
+        return cache.setdefault(key, GateCheck(key, "ready", identifier))
+    # Templates to check but no identifier to key them on: worktrunk knows
+    # of hooks here and we cannot tell whose grants would cover them.
+    if not identifier:
+        return cache.setdefault(key, GateCheck(
+            key, "indeterminate", identifier, templates,
+            reason="worktrunk resolved no project identifier for this repo"))
+
+    try:
+        grants = granted_commands(identifier)
+    except (OSError, ValueError) as e:
+        return cache.setdefault(key, GateCheck(
+            key, "indeterminate", identifier, templates,
+            reason=(f"the approvals store "
+                    f"{APPROVALS_STORE.expanduser()} could not be read: {e}")))
+    # Exact equality on the unexpanded template text — the same text
+    # worktrunk keys its own grants on, so one grant covers every branch's
+    # expansion. Measured: a single added space defeats the match, which is
+    # worktrunk's behaviour and therefore has to be this check's too.
+    missing = tuple(t for t in templates if t not in grants)
+    return cache.setdefault(key, GateCheck(
+        key, "ready" if not missing else "ungranted",
+        identifier, templates, missing))
+
+
+def report_gate(check: GateCheck, reported: set[str], indent: str = "",
+                name_repo: bool = True) -> None:
+    """Say why a repo was refused — once per repo per pass, however many
+    actors resolve to it. Never a generic failure, and never a bypass.
+
+    `name_repo` is False where the caller has already printed the repo, so
+    the path is not said twice.
+    """
+    if check.key in reported:
+        return
+    reported.add(check.key)
+    where = f"{check.key}: " if name_repo else ""
+    if check.state == "indeterminate":
+        print(f"{indent}{where}the hook-approval check could not be "
+              f"made — {check.reason}")
+        print(f"{indent}  no actor is started into a repo whose gate "
+              "cannot be verified")
+        return
+    print(f"{indent}{where}hook approvals missing "
+          f"({check.identifier})")
+    for template in check.missing:
+        print(f"{indent}  ungranted: {template}")
+    print(f"{indent}  grant them once, interactively, with the working "
+          f"directory inside that repo:")
+    print(f"{indent}    {REMEDY}")
+
+
+# Per-pass gate state. Module-level on purpose: the precondition binds at
+# `start_actor`, the one seam every actor start goes through, so a caller
+# added later inherits the guard by construction instead of having to
+# remember to thread a cache through — which is exactly how `reconcile`'s
+# conductor starts came to be missed. Cleared at the top of every pass, so
+# a grant taken between passes is seen on the next one.
+GATE_CACHE: dict[str, GateCheck] = {}
+GATE_REPORTED: set[str] = set()
+
+
+def begin_pass() -> None:
+    GATE_CACHE.clear()
+    GATE_REPORTED.clear()
+
+
+def start_targets(manifest: dict, host: str) -> list[Path]:
+    """The working directories this host would start actors into — the
+    manifest's rows for this host, and the conductors' directory that
+    `reconcile` places tracker-driven conductors in. Rows on other hosts
+    are reported, not driven, and their repos are not inspectable here."""
+    targets = [(manifest["root"] / a["cwd"]).resolve()
+               for a in manifest["actors"]
+               if a.get("host") == host and a.get("cwd")]
+    cwd_rel = manifest["top"].get("conductors_cwd")
+    if cwd_rel:
+        targets.append((manifest["root"] / cwd_rel).resolve())
+    return [t for t in targets if t.is_dir()]
+
+
+def gate_rows(repos: list[Path], indent: str = "") -> None:
+    """Report gate-readiness, one row per distinct repo. Starts nothing."""
+    seen: set[str] = set()
+    for cwd in repos:
+        check = gate_readiness(cwd, GATE_CACHE)
+        if check.key in seen:
+            continue
+        seen.add(check.key)
+        word = {"ready": "gate-ready",
+                "ungranted": "NOT gate-ready",
+                "indeterminate": "UNKNOWN"}[check.state]
+        print(f"{indent}{check.key}  {word}")
+        if not check.ok:
+            report_gate(check, GATE_REPORTED, indent + "  ", name_repo=False)
+
+
 def status(manifest: dict, host: str, session: str, env: dict) -> int:
     alive = herdr_agents(env)
     width = max((len(a.get("name", "")) for a in manifest["actors"]), default=4)
@@ -227,6 +480,14 @@ def status(manifest: dict, host: str, session: str, env: dict) -> int:
         if want == "parked" and name in alive:
             mark = "  ← running while parked"
         print(f"{name:<{width}}  {a.get('host','?'):<12} {want:<8} {observed}{mark}")
+    # The merge gate its agents would have to run, per repo this host
+    # places actors into. Reported, never acted on: status starts nothing,
+    # and an ungranted repo is not drift.
+    targets = start_targets(manifest, host)
+    if targets:
+        print()
+        print("repo hook approvals")
+        gate_rows(targets)
     return 1 if drift else 0
 
 
@@ -255,6 +516,15 @@ def send_prompt(name: str, text: str, env: dict) -> bool:
 
 def start_actor(name: str, profile: str, model: str | None, cwd: Path,
                 prompt: str | None, env: dict) -> bool:
+    # The hook-approval precondition, bound at the seam every actor start
+    # goes through rather than at each of the commands that start one. An
+    # agent whose repo's merge gate it cannot run is an agent that will
+    # stop mid-merge with no way to fix it, so it is not placed there.
+    check = gate_readiness(cwd, GATE_CACHE)
+    if not check.ok:
+        print(f"{name}: not started — its repo's merge gate is not runnable")
+        report_gate(check, GATE_REPORTED, "  ")
+        return False
     print(f"starting {name} ({profile}, {model or 'default'})")
     try:
         tab = herdr_json(["herdr", "tab", "create", "--cwd", str(cwd),
@@ -467,7 +737,15 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
         for a in manifest["actors"]:
             if (a.get("state") == "running" and a["name"] not in alive
                     and a.get("host") == host):
-                print(f"would start {a['name']} ({a['profile']})")
+                cwd = (manifest["root"] / a["cwd"]).resolve()
+                check = (gate_readiness(cwd, GATE_CACHE) if cwd.is_dir()
+                         else None)
+                if check and not check.ok:
+                    print(f"would REFUSE {a['name']} ({a['profile']}) — "
+                          "its repo's merge gate is not runnable")
+                    report_gate(check, GATE_REPORTED, "  ")
+                else:
+                    print(f"would start {a['name']} ({a['profile']})")
     else:
         failures += up(manifest, host, session, env)
         alive = herdr_agents(env)
@@ -565,11 +843,19 @@ def reconcile(manifest: dict, host: str, session: str, env: dict,
         kind = ms.partition("/")[0]
         profile = f"flywheel-{kind}-conductor"
         model = manifest["top"].get("conductor_model", "opus[1m]")
+        conductor_cwd = (manifest["root"] / cwd_rel).resolve()
         if dry_run:
-            print(f"would start {name} ({profile}, {model}) in {cwd_rel} "
-                  f"[{job}]")
-        elif not start_actor(name, profile, model,
-                             (manifest["root"] / cwd_rel).resolve(),
+            check = (gate_readiness(conductor_cwd, GATE_CACHE)
+                     if conductor_cwd.is_dir() else None)
+            if check and not check.ok:
+                print(f"would REFUSE {name} ({profile}, {model}) in "
+                      f"{cwd_rel} [{job}] — its repo's merge gate is not "
+                      "runnable")
+                report_gate(check, GATE_REPORTED, "  ")
+            else:
+                print(f"would start {name} ({profile}, {model}) in "
+                      f"{cwd_rel} [{job}]")
+        elif not start_actor(name, profile, model, conductor_cwd,
                              job_prompt(ms, job), env):
             failures += 1
 
@@ -659,6 +945,7 @@ def main() -> int:
         print(__doc__.strip())
         return 2
     if args[0] != "reconcile":
+        begin_pass()
         manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
         session, env = session_env(manifest)
         host = this_host(manifest, overrides.get("--host"))
@@ -668,7 +955,10 @@ def main() -> int:
     interval = int(overrides.get("--interval") or 0)
     while True:
         # re-read everything each pass: the manifest, the roster and the
-        # tracker are the state; the pass is a pure function of them
+        # tracker are the state; the pass is a pure function of them —
+        # including the gate check, so a grant taken between passes is
+        # seen on the next one rather than cached away
+        begin_pass()
         manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
         session, env = session_env(manifest)
         host = this_host(manifest, overrides.get("--host"))
