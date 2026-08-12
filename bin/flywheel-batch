@@ -33,7 +33,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_gh import (GraphqlError, add_to_project, ensure_milestone,
                           find_project, gh, graphql, project_date_field,
                           project_single_select, resolve_token,
-                          set_item_option, set_item_value)
+                          set_item_option, set_item_value,
+                          set_select_default)
 
 
 def main():
@@ -48,6 +49,10 @@ def main():
     ap.add_argument("--due", metavar="YYYY-MM-DD")
     ap.add_argument("--start", metavar="YYYY-MM-DD")
     ap.add_argument("--target", metavar="YYYY-MM-DD")
+    ap.add_argument("--quarter", metavar="YYYY-Qn")
+    ap.add_argument("--team", metavar="NAME",
+                    help="board Team (routes the conductor's host); "
+                         "defaults to the field's first option")
     ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
     args = ap.parse_args()
 
@@ -110,8 +115,20 @@ def main():
                 sys.exit(f"flywheel-batch: no '{name}' date field — "
                          "run flywheel-setup first")
             set_item_value(token, project_id, item_id, f_id, {"date": date})
+    # Team routes the conductor's host; Quarter places the roadmap.
+    # Both default like the dates do — automation first.
+    quarter = args.quarter
+    if not quarter:
+        t = datetime.date.today()
+        quarter = f"{t.year}-Q{(t.month - 1) // 3 + 1}"
+    team_set = set_select_default(token, project_id, item_id, "Team",
+                                  args.team)
+    quarter_set = set_select_default(token, project_id, item_id, "Quarter",
+                                     quarter)
     extras = [x for x in (args.start and f"start {args.start}",
                           args.target and f"target {args.target}",
+                          team_set and f"team {team_set}",
+                          quarter_set and f"quarter {quarter_set}",
                           args.due and f"milestone due {args.due}") if x]
     print(f"  status: Backlog, in '{args.project}', "
           f"milestone '{args.milestone}'"

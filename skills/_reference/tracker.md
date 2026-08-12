@@ -68,12 +68,16 @@ queue a question — never invent tracker structure.**
 7. **Blocked on the operator's word**: comment the one-line question
    on the item, add `needs-operator`, keep working what it does not
    gate. Whoever applies the answer removes the label.
-8. **Dates default aggressively — automation first.** Whatever goes on
-   the board gets Start and Target of that day, and a new milestone is
-   due the day it is created (the tools do this). An agent that judges
-   the work bigger overrides with later dates and a stated reason;
-   nothing ever waits for a date to be assigned. There is no Iteration
-   field: the flywheel is continuous delivery, not sprint cadence.
+8. **Board fields default aggressively — automation first.** Whatever
+   goes on the board gets Start and Target of that day, a new
+   milestone is due the day it is created, Team defaults to the
+   field's first option (the org's default flywheel host — Team is
+   what routes a conductor's host through fleet.yaml's `teams:` map),
+   and Quarter defaults to the current quarter (the tools do all of
+   this). An agent that judges differently overrides with a stated
+   reason; nothing ever waits for a field to be assigned. There is no
+   Iteration field: the flywheel is continuous delivery, not sprint
+   cadence.
 9. **The lifecycle ends at the milestone, not the conductor.** When a
    milestone's items are all closed, its conductor reports and stops;
    the operator closes the milestone on GitHub — the archive signal —

@@ -156,6 +156,13 @@ sessions have each paid this once, this reference's own author included.
 Anything tree-wide — `git stash`, `git reset --hard`, `git checkout .` —
 reaches a sibling's uncommitted work the same way.
 
+**Push what you commit, immediately.** Records are shared state:
+dispatch, other hosts, and the operator reading GitHub all resolve
+record pointers against origin, so an unpushed record is a dead link
+on its own tracker item. `git pull --rebase` first when origin moved,
+then push. (Worktree branches merge through the gate instead — this
+rule is for commits made directly on a shared branch.)
+
 ## Catching up on the base branch
 
 ```bash

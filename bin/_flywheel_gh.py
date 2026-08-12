@@ -110,6 +110,28 @@ def set_item_option(token, project_id, item_id, field_id, option_id):
              "field": field_id, "option": option_id})
 
 
+def set_select_default(token, project_id, item_id, field_name, choice=None):
+    """Set a single-select field, defaulting to its FIRST option.
+
+    The first option is the org's default (setup seeds Team from --team
+    order and Quarter from the current quarter forward). Returns the
+    chosen option name, or None when the field does not exist or the
+    named choice is unknown.
+    """
+    try:
+        field_id, options = project_single_select(token, project_id,
+                                                  field_name)
+    except Exception:
+        return None
+    if not options:
+        return None
+    if choice and choice not in options:
+        return None
+    name = choice or next(iter(options))
+    set_item_option(token, project_id, item_id, field_id, options[name])
+    return name
+
+
 def ensure_milestone(token, org, repo, title, due_on=None):
     """The milestone's number, created open if missing.
 
