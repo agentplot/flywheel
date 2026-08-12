@@ -167,6 +167,13 @@ sessions have each paid this once, this reference's own author included.
 Anything tree-wide — `git stash`, `git reset --hard`, `git checkout .` —
 reaches a sibling's uncommitted work the same way.
 
+**The message follows the repo's stated convention** (its CLAUDE.md);
+where the repo states none, default to Conventional Commits —
+`type(scope): subject`, imperative. **Footer-reference every tracker
+item the commit serves** — `Refs: #34` — and NEVER a closing keyword
+(`Closes`/`Fixes`): a push must not close an item as a side effect;
+items close through the loop, with evidence and a `closed:*` reason.
+
 **Push what you commit, immediately.** Records are shared state:
 dispatch, other hosts, and the operator reading GitHub all resolve
 record pointers against origin, so an unpushed record is a dead link

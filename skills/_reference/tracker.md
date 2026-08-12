@@ -70,7 +70,10 @@ queue a question — never invent tracker structure.**
    flip seals the batch; the next settled wave births the next handoff.
 7. **Blocked on the operator's word**: comment the one-line question
    on the item, add `needs-operator`, keep working what it does not
-   gate. Whoever applies the answer removes the label.
+   gate. Whoever applies the answer removes the label. The label marks
+   a LIVE wait, applied at the moment of blocking — never at birth: an
+   operator step scheduled for later is an ordinary item until its
+   moment comes, or it pollutes the operator's waiting-on-me view.
 8. **Board fields default aggressively — automation first.** Whatever
    goes on the board gets Start and Target of that day, a new
    milestone is due the day it is created, Team defaults to the
