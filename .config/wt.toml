@@ -4,10 +4,22 @@
 # TEMPLATE text, so one approval covers every branch's expansion; agents must
 # never bypass with --yes.
 
-# Runs during `wt merge` before the commit, on the exact tree that lands — so
-# the green claim is produced by the tool rather than asserted by whoever wrote
-# the change. All four are independent and seconds long, so they run
-# concurrently.
+# This repo's merge gate is the three [pre-merge] hooks below. Worktrunk runs a
+# repo's [pre-merge] hooks after the rebase and before the merge to the target,
+# on every shape of `wt merge` — the clean fast-forward included — with HEAD
+# equal to the sha that lands and the source worktree as cwd; a failing hook
+# aborts with exit 1 and nothing landed. So the green claim is produced by the
+# tool rather than asserted by whoever wrote the change. Measured across ten
+# merge shapes against worktrunk 0.57.0:
+# openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md
+#
+# Which worktree's CONFIGURATION supplies the hooks, when the source and target
+# worktrees carry different copies of this file, is an open question: that lab
+# ran symmetric configuration throughout, so no row of it distinguishes the two.
+# This file does not answer it in either direction. For the one merge where the
+# answer changes what to expect — this bolt's own merge-back — the reading is
+# openspec/changes/merge-gate-remedy/bolt.md's, and belongs there rather than
+# here.
 #
 # manifests: `claude plugin validate --strict` is the shipped validator, and
 #   its own help names CI as the use case. The script wraps it for two
@@ -23,7 +35,19 @@
 #   every relative reference resolves. Mermaid never parses at build time; a
 #   syntax error renders as a blank box rather than an error, so without this
 #   a broken diagram reaches production looking like a layout bug.
-[pre-commit]
+[pre-merge]
 manifests = "sh scripts/validate-manifests.sh"
 paths     = "node scripts/check-paths.mjs"
 site      = "node scripts/check-site.mjs"
+
+# A worktree `wt` cuts starts cold, and check-site.mjs needs jsdom out of
+# node_modules. `wt step copy-ignored` copies the gitignored files in rather
+# than paying a fresh `npm ci` — the cheaper path to the same state. Its source
+# is stated at the precision worktrunk states it: `wt step copy-ignored --help`
+# on wt 5fba0bd gives `--from` as "Defaults to main worktree".
+#
+# A herdr-created worktree fires no `wt` lifecycle hooks at all, so run
+# `wt -C <worktree-path> hook post-start` by hand right after creating one —
+# the instruction skills/_reference/herdr.md already carries.
+[post-start]
+warm = "wt step copy-ignored"
