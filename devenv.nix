@@ -51,4 +51,37 @@
       echo "vendored $(node -p "require('./node_modules/mermaid/package.json').version")"
     '';
   };
+
+  # Claude Code sessions in this repo run the flywheel's own machinery —
+  # the agentplot fleet's dispatch and conductors start here — so the
+  # plugin enables itself. Never edit .claude/settings.json directly:
+  # this block generates it, activation rewrites it, and drift from the
+  # declaration shows up as a git diff.
+  claude.code = {
+    enable = true;
+
+    # Empty on purpose: the module's default would write a .mcp.json
+    # (mcp.devenv.sh) that this repo does not use.
+    mcpServers = { };
+  };
+
+  files."${config.claude.code.settingsPath}" = {
+    # A real committed file, not the default symlink into /nix/store:
+    # sessions open in fresh worktrees before anything activates devenv,
+    # and git is the one delivery mechanism every worktree-creation path
+    # shares.
+    copyMode = "copy";
+
+    json.enabledPlugins = {
+      "flywheel@flywheel" = true;
+    };
+    json.extraKnownMarketplaces = {
+      flywheel = {
+        source = {
+          source = "github";
+          repo = "agentplot/flywheel";
+        };
+      };
+    };
+  };
 }
