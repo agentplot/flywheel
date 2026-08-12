@@ -188,7 +188,7 @@ apply:
     This instruction is what the dynamic workflow is built from
     (`/opsx:apply build a dynamic workflow with the instructions for
     <change>`). Two rules govern the run. The workflow IS the
-    loop: one run works the ready set to empty - re-query after the fold, bounce handling, and the next
+    loop: one run works the ready set to empty - re-query after the merge, bounce handling, and the next
     batch are stages inside the run, never a reason to build another
     workflow - and a fresh run is built only when this conductor is
     prompted again. A second rule binds every stage the workflow
@@ -235,7 +235,7 @@ apply:
       its session starts. Batch generously; split for the reasons above,
       never to make sessions smaller.
 
-    4 · FOLD — merge each finished session branch through the gate,
+    4 · MERGE — merge each finished session branch through the gate,
       promote what it delivered (decision records, assertion records,
       writebacks), comment each item with the outcome, and close finished
       items `closed:done`. New work a session surfaced is queued as new

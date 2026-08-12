@@ -236,7 +236,7 @@ herdr worktree remove --workspace <workspace-id>
 herdr agent list                  # confirm the agents are gone
 ```
 
-**A settled session's pane closes at fold.** When a session's outcome
+**A settled session's pane closes at the merge step.** When a session's outcome
 is returned and its items are commented, close its tab
 (`herdr tab close <tab-id>`): the pane's job ended with the report, and
 a settled pane left open makes the roster lie about what is running.

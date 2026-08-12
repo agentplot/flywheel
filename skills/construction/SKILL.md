@@ -163,7 +163,7 @@ New work pushed into a live bolt joins as queued items; scope that
 belongs elsewhere is queued elsewhere.
 
 **Cleanup is mechanical and immediate; archive is the operator's.**
-At fold, a merged-back session's pane, worktree and branch go — no
+At the merge, a merged-back session's pane, worktree and branch go — no
 word needed, it is all reproducible — and the bolt branch is
 reclaimed the moment it lands on main. When the milestone's items are
 all closed, report that and stop; the operator closes the milestone
