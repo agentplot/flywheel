@@ -67,9 +67,15 @@ second file.
 ## Merge criteria
 
 **Ordering, and the strength each part of it is known at.** That
-`[pre-merge]` hooks run after the rebase, on every shape of `wt merge`
-including the fast-forward, with `HEAD` equal to the landing sha, is
-measured — `sessions/2026-08-12-ff-gate-facts/finding.md`, ten shapes.
+`[pre-merge]` hooks run after the rebase, with `HEAD` equal to the landing
+sha, on every shape of `wt merge` that does not suppress them — the clean
+fast-forward included — is measured
+(`sessions/2026-08-12-ff-gate-facts/finding.md`, ten shapes). **The
+qualifier is not decoration and this record carried the claim without it
+for six commits:** that same lab's `nohooks` and `noverify` rows ran
+nothing, so "every shape" as a bare universal is refuted by the very
+evidence cited for it. `--no-hooks` and `--no-verify` are the suppressing
+shapes.
 That the hooks come from the *source* worktree's config is **inference,
 not measurement**: the lab exercised only symmetric config, where source
 and target carry the same file, so no row distinguishes them. The
@@ -83,11 +89,27 @@ record's acceptance criteria assume. If target config governs, that
 merge-back is ungoverned and the bolt branch's landing on main is the
 first governed merge, with #33's grant merely taken earlier than it
 strictly had to be. Only the locus of the first acceptance evidence
-moves; nothing about the order of the three steps changes. **If the
-merge-back runs zero hooks, that is the asymmetric-config question
-answering itself:** record it as the measurement it is, expect the
-landing on main to gate instead, and treat it as neither a green nor a
-defect.
+moves; nothing about the order of the three steps changes.
+
+**A zero-hook merge-back is NOT self-interpreting, and this record said it
+was.** It previously read that zero hooks would be the asymmetric-config
+question answering itself — a false dichotomy, and the same error this
+bolt already corrected in `herdr.md`'s prose while leaving it standing
+here. At least four causes produce zero hooks, three of them measured:
+`--no-hooks` and `--no-verify` suppressing them; a trailing `-C`, which
+`herdr.md` warns reads the wrong directory (prose, `b5d308b`, partially
+measured under #64 — `hook show` is unaffected, `wt merge` untested); and
+only then the config locus. **A zero-hook merge-back is evidence of
+nothing until the other three are excluded**, and pre-assigning it would
+have misattributed this bolt's own acceptance evidence to the one question
+it most wants answered.
+
+So the merge-backs in this bolt are run **from inside the worktree, with
+no `-C` at all** — `cd <worktree> && wt merge <bolt-branch> --no-remove
+--no-squash` — which removes the one variable that is both unmeasured for
+this command and trivially avoidable. What the gate prints is then
+recorded as the measurement it is, and read against the remaining causes
+rather than assigned to a favourite.
 
 #33's grant is therefore taken with cwd inside the construction worktree
 carrying #34's final text, never in `main`, whose `.config/wt.toml` still
