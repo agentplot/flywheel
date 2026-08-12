@@ -42,10 +42,11 @@ artifacts:
          The full release gate (wt merge with full hooks) is always
          implied and never weakened.
 
-      Two rules bind every section here. State a constraint at its MEASURED
-      strength, never its remembered or feared strength; if the strength is
-      unknown, say that instead of rounding up, because an agent told to
-      expect a failure that cannot happen learns to discount constraints.
+      Two rules bind every section here. State a constraint only as
+      strongly as you verified it, naming the tree and the check behind
+      it; where you have not verified it, say that plainly instead of
+      rounding up, because an agent told to expect a failure that cannot
+      happen learns to discount constraints.
       And where a section names something that constrains order, coupling
       or membership, state the fact that makes the constraint CORRECT, not
       the mechanism that makes it stick.

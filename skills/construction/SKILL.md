@@ -78,9 +78,11 @@ label stays `state:in-progress` from first spec work until it closes
 discoveries become new items: findings, readiness gaps, design-level
 faults queued to the source intent.
 
-1. **Spec.** A spec-writing session per batch (`opsx ff` in the built
-   repo) derives the spec-driven change from the assertion and its cited
-   decisions. `openspec validate` green before it counts. Specs cite by
+1. **Spec.** A spec-writing session per batch derives **one
+   spec-driven change per assertion** (`/opsx:ff` each, in the built
+   repo) from the assertion and its cited decisions — a session may
+   write several changes, but the change grain is the assertion: its
+   record binds one change id and one landing ref. `openspec validate` green before it counts. Specs cite by
    anchor or quoted phrase, never line number, and carry a build-time
    task to re-read every neighbour they assert something about — that is
    when neighbours have moved longest.
@@ -130,9 +132,10 @@ faults queued to the source intent.
 Stated in full in `flywheel:inception`; it binds every spec and charge
 written here. The short form: content over state, mechanism over
 snapshot, every measurement named with the tree it was taken on, cite by
-anchor never line number — and state a constraint at its measured
-strength, never its remembered or feared strength, because an agent told
-to expect a failure that cannot happen learns to discount constraints.
+anchor never line number — and state a constraint only as strongly as
+you verified it, never at remembered or feared strength, because an
+agent told to expect a failure that cannot happen learns to discount
+constraints.
 
 ## Reaching the operator
 
