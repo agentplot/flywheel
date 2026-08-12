@@ -1,0 +1,7 @@
+schema: bolt-quick
+created: 2026-08-12
+# A bolt change is a construction tracking record, not a spec-driven change:
+# its deltas, when it has any, live in the built repo's own change. This bolt
+# runs the no-spec path, so there is no such change either — the build
+# session's approved plan is the spec surrogate.
+skip_specs: true
