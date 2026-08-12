@@ -64,12 +64,17 @@ reports no hooks.
 
 **The name IS the classification.** The roster must read at a glance:
 conductors are `intent-<slug>` and `bolt-<slug>`, dispatch is
-`dispatch`, and every session starts with its session type —
-`research-<topic>`, `planning-<topic>`, `interactive-<topic>`,
-`prototype-<topic>`, `writeback-<topic>`, `handoff-<topic>`,
-`spec-<topic>`, `build-<topic>`, `test-<topic>`, `review-<topic>`.
-Type names never collide with `intent`/`bolt`/`dispatch`, so the
-prefix alone says what a row is. **The tab label is the agent name,
+`dispatch`, and every session starts with its session type — the FULL
+type name, exactly as the `type:*` label spells it: `research-<topic>`,
+`planning-<topic>`, `interactive-<topic>`, `prototype-<topic>`,
+`writeback-<topic>`, `handoff-<topic>`, `proposal-writing-<topic>`,
+`proposal-review-<topic>`, `spec-writing-<topic>`, `build-<topic>`,
+`test-<topic>`, `code-review-<topic>`, `human-code-review-<topic>`.
+Never a shorthand: `review-<topic>` cannot say which review type it is,
+and one bolt runs several. Type names never collide with
+`intent`/`bolt`/`dispatch`, so the prefix alone says what a row is.
+herdr caps names at 32 characters — the long type prefixes leave the
+topic little room, so keep topics to a word or two. **The tab label is the agent name,
 the same string** — a tab labeled one thing holding an agent named
 another is how a session becomes unfindable.
 
