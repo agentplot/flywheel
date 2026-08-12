@@ -236,6 +236,16 @@ herdr worktree remove --workspace <workspace-id>
 herdr agent list                  # confirm the agents are gone
 ```
 
+**A settled session's pane closes at fold.** When a session's outcome
+is returned and its items are commented, close its tab
+(`herdr tab close <tab-id>`): the pane's job ended with the report, and
+a settled pane left open makes the roster lie about what is running.
+The pane is not the worktree — the worktree and branch live until the
+merge step lands them, and their removal is the separate teardown
+below. A session the loop will re-prompt — a plan-mode build awaiting
+approval, a review awaiting a bounce — keeps its pane; close means
+finished.
+
 A herdr-removed worktree skips `post-remove`, so whatever that hook would
 have reclaimed is the teardown's own job. Kill processes **by PID or port,
 never by pattern** — `pkill -f <name>` reaches into sibling worktrees' runs.

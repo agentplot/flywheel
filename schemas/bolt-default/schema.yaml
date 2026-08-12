@@ -63,8 +63,9 @@ apply:
     runs: a WORK stage's agent never does the batch's work itself -
     its job is to drive herdr: start the session the batch names,
     deliver the work order — one prompt, the type's invocation as
-    its first line, the brief below — wait on it, and return the
-    outcome. The
+    its first line, the brief below — wait on it, return the
+    outcome, and close the session's pane (the worktree and branch
+    stay for the merge step). The
     operator supervises herdr sessions, and a session that needs the
     operator - a plannotator round, a lavish page, a plan-mode
     approval - can only reach them from a real pane; an in-process
