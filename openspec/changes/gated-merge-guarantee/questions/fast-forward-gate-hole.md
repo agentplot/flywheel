@@ -4,6 +4,7 @@
 - **Raised by:** the `bolt-site-refresh` conductor, landing #12
 - **Evidence:** `sessions/2026-08-12-ff-gate-facts/finding.md`, and the
   lab harness and raw per-scenario output beside it
+- **Decided:** `../decisions/gate-runs-under-pre-merge.md`
 
 ## The question
 
@@ -12,25 +13,11 @@ alone, and `[pre-commit]` gates only a commit `wt` itself writes. On the
 loop's standard shape — a clean rebased descendant — `wt` writes no such
 commit, so no check runs, and the merge prints the same ✓ as a gated one.
 
-Undecided: which remedy the loop takes so that a reported success and a
-gated tree are the same thing. Two survivors, both established as
-capable by experiment:
-
-- **Configure `[pre-merge]`** — alone, or alongside `[pre-commit]`.
-  `[pre-merge]` hooks run on every shape of merge, after the rebase, with
-  `HEAD` equal to the sha that lands. Configuring both additionally gates
-  the commit `wt` writes on the shapes where it writes one, at the cost of
-  the checks running twice there (~1.2 s).
-- **An explicit gate step the conductor runs** on the landing tree, with
-  the skills stating that.
-
-These are not exclusive, and the second presupposes the first: `wt hook
-pre-merge` propagates failure correctly but today prints `No pre-merge
-hooks configured` and exits 0, so an explicit step gates nothing until
-`[pre-merge]` exists.
-
-An answer names the remedy and says what `skills/_reference/herdr.md`
-then tells agents.
+Decided — `../decisions/gate-runs-under-pre-merge.md`: the three checks
+move to `[pre-merge]`, alone; no standing explicit gate step, with the
+fix-and-re-run `wt hook pre-merge` retry path kept; and new worktrees are
+warmed by a `[post-start]` hook running `wt step copy-ignored` so the
+checks' dependencies exist in the merging worktree.
 
 ## What turns on it
 
@@ -47,7 +34,7 @@ costs no merge commit and no history change, and its real cost is
 operational — see the two preconditions below.
 
 Two sentences in `skills/_reference/herdr.md` are wrong as written and
-move with whichever remedy wins:
+move with the remedy (queued as #35, same pass as #34):
 
 - Under "Merging through the gate", the claim that `wt merge` "runs the
   repo's `.config/wt.toml` checks on the exact rebased tree that lands".
@@ -59,7 +46,7 @@ move with whichever remedy wins:
 The comment block at the head of `.config/wt.toml` also describes the
 hooks as running "during `wt merge` before the commit, on the exact tree
 that lands", and says "all four are independent" while defining three.
-Whichever remedy wins rewrites that block; it is left alone until then.
+#34 rewrites that block with the config change.
 
 ## What is already known
 
@@ -101,5 +88,5 @@ it:
   nothing runs the checks at merge time. Timings on this machine:
   `npm ci` 2.0 s; manifests 0.68 s, paths 0.05 s, site 0.46 s.
 
-Blocked on nothing. Its own answer is what unblocks the doc correction
-and narrows #16's remedy shape.
+Its answer narrowed #16's remedy shape as expected; both closed in the
+same planning round, and the doc corrections are queued (#34, #35).

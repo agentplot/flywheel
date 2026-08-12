@@ -3,6 +3,7 @@
 - **Item:** #16
 - **Raised by:** the `bolt-site-refresh` conductor, landing #12 (the
   second gap named in item #14)
+- **Decided:** `../decisions/approvals-are-an-onboarding-grant.md`
 
 ## The question
 
@@ -10,20 +11,19 @@ Worktrunk gates hook execution on an approval keyed to the hook's
 template text, granted once by the operator with
 `wt config approvals add`. On this machine that has never been run for
 this repo, so a non-interactive agent asked to run the gate cannot.
-Undecided: where granting approvals belongs. Named candidates, none
-ruled out — an operator onboarding step the loop documents and the
-fleet skill checks; a converger, the way
-`<plugin-root>/bin/flywheel-setup` converges labels, the project and its
-fields idempotently; a fleet-layer precondition checked at `flywheel up`
-so the fleet refuses to start actors into a repo whose gate they cannot
-run. An answer says which, and what an agent that hits the missing
-approval does in the meantime.
 
-A converger here cannot shell out to `wt config approvals add` — that
-command cannot grant non-interactively by any invocation, `--yes`
-included. Whatever converges approvals writes the approvals TOML
-directly, which makes the file's format and its keying part of what an
-answer settles.
+Decided — `../decisions/approvals-are-an-onboarding-grant.md`: granting
+is an operator onboarding step, run interactively once per repo, with
+the fleet layer checking at `flywheel up`/`flywheel status` that every
+template in `.config/wt.toml` has its grant and refusing to start actors
+into a repo whose gate they cannot run. An agent that hits the missing
+approval stops and reports — never `--yes`, never hand-run scripts as a
+substitute gate. The converger candidate was declined: it would have the
+machinery approve its own hooks, and it could not shell out to
+`wt config approvals add` anyway — that command cannot grant
+non-interactively by any invocation, `--yes` included, so a converger
+would write the approvals TOML directly, a trust inversion on top of an
+internal file format.
 
 ## What turns on it
 
@@ -74,7 +74,7 @@ tree and machine you read this on.
   states the rule this question works within: hook approval is the
   operator's one-time `wt config approvals add`, and agents never bypass
   with `--yes`.
-- Coupled to #14, not blocked by it: #14's survivors both need
-  `[pre-merge]` configured, which is the first thing that would ever
-  demand an approval here — so approvals become load-bearing rather than
-  a convenience, and this question's answer must land in the same pass.
+- Coupled to #14, closed in the same round: its remedy configures
+  `[pre-merge]`, the first thing that ever demands an approval here — so
+  approvals are load-bearing, and the grant (#33) must land before or
+  with the config change (#34).

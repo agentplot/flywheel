@@ -61,12 +61,18 @@ merge from a fresh worktree aborts on a missing install, not a real defect.
 Latent today only because nothing runs the checks at merge time; the remedy
 makes it bite.
 
-**Option A — a `[post-start]` hook running `npm ci` (recommended).** Worktrees
-cut with `wt switch --create` get it automatically; herdr-created worktrees
-fire no `wt` lifecycle hooks, and the reference already instructs
+**Option A — a `[post-start]` hook warming the worktree (recommended; taken
+as `wt step copy-ignored`).** The hook copies gitignored files —
+`node_modules`, caches — from an existing worktree instead of paying a fresh
+install: worktrunk's "eliminate cold starts" pattern
+(worktrunk.dev/tips-patterns/#eliminate-cold-starts). Worktrees cut with
+`wt switch --create` get it automatically; herdr-created worktrees fire no
+`wt` lifecycle hooks, and the reference already instructs
 `wt -C <path> hook post-start` right after creating one, so the same hook
-covers both paths. Cost: ~2 s at worktree creation, and a fourth template
-needing approval — it joins the same grant #16 settles.
+covers both paths. Cost: a fourth template needing approval — it joins the
+same grant #16 settles. Residual: the copy carries what the source worktree
+has, so a machine whose primary checkout lacks `node_modules` still surfaces
+`check-site`'s exit 2 — fail closed, remedied by one `npm ci` there.
 
 **Option B — a documented manual step** ("run `npm ci` before merging").
 Cheaper to land, but it is exactly the silent must-happen-first step this
