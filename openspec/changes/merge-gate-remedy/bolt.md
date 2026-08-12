@@ -66,22 +66,47 @@ second file.
 
 ## Merge criteria
 
-**Ordering, which is a fact about the tool and not a preference.**
-`[pre-merge]` hooks run in the *source* worktree after the rebase
-(`sessions/2026-08-12-ff-gate-facts/finding.md`, every row where they
-ran), and the source worktree is the one carrying #34's committed
-`.config/wt.toml`. So the first merge governed by the new table is the
-merge-back of #34/#35's construction branch to the bolt branch — not the
-bolt branch's landing on main. #33's grant therefore precedes that
-merge-back, taken with cwd inside that construction worktree: `main`'s
-`.config/wt.toml` still holds the old `[pre-commit]` shape, so a grant
-taken there lists three templates and misses the `[post-start]` one. The
-listing must show **four**, one of them `wt step copy-ignored`; a listing
-of three is the wrong checkout. Approvals key on verbatim template text,
-so the grant is taken only on final text — the claim that moving a check
-between tables re-keys nothing is read from the old head comment and is
-**not measured** (`questions/hook-approvals-never-granted.md` marks it
-provisional), and this ordering does not depend on it either way.
+**Ordering, and the strength each part of it is known at.** That
+`[pre-merge]` hooks run after the rebase, on every shape of `wt merge`
+including the fast-forward, with `HEAD` equal to the landing sha, is
+measured — `sessions/2026-08-12-ff-gate-facts/finding.md`, ten shapes.
+That the hooks come from the *source* worktree's config is **inference,
+not measurement**: the lab exercised only symmetric config, where source
+and target carry the same file, so no row distinguishes them. The
+inference is strong — `wt merge` is invoked in the source worktree — but
+it is not a measurement and this record does not round it up.
+
+The sequence holds either way, which is why it is the sequence. If
+source config governs, the first merge the new table governs is the
+merge-back of #34/#35's construction branch to the bolt branch, as this
+record's acceptance criteria assume. If target config governs, that
+merge-back is ungoverned and the bolt branch's landing on main is the
+first governed merge, with #33's grant merely taken earlier than it
+strictly had to be. Only the locus of the first acceptance evidence
+moves; nothing about the order of the three steps changes. **If the
+merge-back runs zero hooks, that is the asymmetric-config question
+answering itself:** record it as the measurement it is, expect the
+landing on main to gate instead, and treat it as neither a green nor a
+defect.
+
+#33's grant is therefore taken with cwd inside the construction worktree
+carrying #34's final text, never in `main`, whose `.config/wt.toml` still
+holds the old `[pre-commit]` shape. Approvals key on verbatim template
+text — that keying is measured (the lab hand-seeded verbatim templates
+and the approved hooks ran); what is *not* measured is whether moving a
+check between tables re-keys it, and this ordering does not depend on
+that either way. The grant is taken last, after nothing further will
+touch `.config/wt.toml`, because text edited after a grant silently
+un-grants it.
+
+**The listing must show four templates, one of them `wt step
+copy-ignored`. Three rows is a stop-and-investigate, not a diagnosis.**
+The obvious cause is the wrong checkout — `main`'s three-check shape. The
+other, unmeasured, is that `wt config approvals add` may not enumerate
+`[post-start]` templates at all, in which case three rows is what the
+correct worktree produces and the fourth grant has to be got another way.
+Either way the grant is not approved from a three-row listing until which
+one it is has been established.
 
 **The reads `bolt-default` schedules, all three load-bearing here.** An
 independent proposal-review reads every assertion in a batch against its
@@ -126,6 +151,17 @@ and it also binds this bolt's own merges.
 **The landing.** With the criteria above holding, `bolt/merge-gate-remedy`
 lands on `main` through the full release gate — full hooks, never
 weakened, one writer to main at a time.
+
+**The landing is also when #36 starts biting, which is a second and
+independent reason the grant precedes it.** From the moment
+`fleet-approval-check` is on `main`, `flywheel up` refuses to start
+actors into `agentplot/flywheel` until #33 is granted — the assertion
+working exactly as written, its own words being that the check's "first
+useful act is to fail here". So the grant gates the landing whatever the
+answer to the source-vs-target-config question above turns out to be: if
+that question resolves the other way and the merge-back runs no hooks,
+#36 still stops the fleet at the landing. An ungranted landing is a fleet
+stoppage, not a gate failure, and the remedy is the same one command.
 
 **One residual, at measured strength.** `wt step copy-ignored` copies
 gitignored files from an existing worktree, so `check-site.mjs`'s `jsdom`
