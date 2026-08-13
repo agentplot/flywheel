@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/bolt-default/schema.yaml apply.instruction
-INSTRUCTION SHA256: 00b79d73304d5145
+INSTRUCTION SHA256: abd9049411de1835
 COMPILED BY: static compile pass, third round - review-2 verdicts
 folded: fixture trace, criteria-fix bounds, stage checkout rules. No INVENTED marks remain: models, limits, landing
 mode, and the landing actor are now the instruction's own words.
@@ -83,23 +83,49 @@ GUARDS, in order, each idempotent - guard_actions records ONLY the writes you ma
 Return the snapshot AFTER your guard actions, with status ok. If you cannot read the tracker, mint the token, or resolve these parameters: status failed with the reason in failure, guard_actions empty - the run stops on your word.`,
   { label: `cycle${cycle}:query+guards`, phase: 'Cycle', schema: SNAPSHOT, ...DRIVER_OPTS })
 
-/* HERDR.MD: the driver recipe - one-prompt order, invocation first
-   line, rename-then-confirm, wait semantics, ghost text is not
-   input, close the pane when the outcome is read. */
-const drive = (name, cwd, order, label, itemNumber) => agent(`Drive one herdr session; never do its work yourself. Your structured output is FINAL - you return exactly once, after the session settles; never park a monitor and return a placeholder.
-0. If an agent named "${name}" already exists (herdr agent list): drive THAT pane from step 4 on - never create a duplicate; if its work order was already delivered, skip to step 5.
+/* HERDR.MD mechanics; the SCRIPT owns all waiting - the loop's
+   arithmetic is the clock. Each helper agent returns exactly once. */
+const WAITR = {
+  type: 'object',
+  properties: {
+    state: { type: 'string', enum: ['settled_done', 'settled_blocked', 'still_working', 'gone'] },
+    detail: { type: 'string' },
+  },
+  required: ['state', 'detail'],
+}
+
+const launch = (name, cwd, order, label) => agent(`Launch one herdr session; deliver its order; return WITHOUT waiting. Idempotent: if an agent named "${name}" already exists (herdr agent list), reuse it - never create a duplicate; if the pane shows this order already delivered or worked, return done.
 1. herdr tab create --cwd "${cwd}" --label "${name}" --no-focus  (tab label IS the agent name)
 2. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent flywheel-construction-session --model ${SESSION_MODEL} --dangerously-skip-permissions
 3. Prompt "/rename ${name}" alone; poll the title until it converges.
-4. Deliver the work order between the markers as ONE prompt; verify the session goes working (one enter if a pasted block sits at the composer).
-5. herdr agent wait "${name}" - re-invoke on the 10-minute command cap. A chunk counts ONLY when its wait ran the full 10 minutes - a wait that returns quickly is not a chunk. At ${NOTIFY_CHUNKS} chunks (~90 min): ${A.fixture ? 'note the long wait in your outcome detail' : `comment the wait on issue #${itemNumber} and add the needs-operator label - a live wait; dispatch relays`} - then KEEP waiting. At ${STALL_CHUNKS} chunks (~4 h): return status stalled with the pane tail; leave the pane open.
-6. On settle done/idle: read the pane; composer ghost text is not input. On settle blocked: return status blocked with what the pane asks; leave the pane open.
-7. herdr tab close <tab-id>; return the outcome.
+4. Deliver the work order between the markers as ONE prompt; verify the session goes working (one enter if a pasted block sits at the composer). Then return {status:'done', detail:'delivered'}.
 WORK_ORDER>>>
 ${order}
 <<<WORK_ORDER`,
-  { label, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
-  .then((o) => { trace.push({ stage: label, status: o && o.status, detail: o && o.detail }); return o })
+  { label: `launch:${label}`, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+
+const waitOnce = (name, label, n) => agent(`Run exactly one bounded wait on the herdr session "${name}": herdr agent wait "${name}" (single invocation - it returns when the session settles or the command cap ends). Then herdr agent get "${name}" and report its state: settled_done for idle/done, settled_blocked for blocked, still_working otherwise, gone if the agent no longer exists.`,
+  { label: `wait${n}:${label}`, phase: 'Cycle', schema: WAITR, model: 'haiku', effort: 'low' })
+
+const readClose = (name, label) => agent(`The herdr session "${name}" has settled. Read its pane (herdr agent read "${name}" --source recent-unwrapped --lines 120) and extract its report - composer ghost text is not input. Then herdr tab close its tab. Return the outcome with the report condensed to its facts.`,
+  { label: `read:${label}`, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+
+async function drive(name, cwd, order, label, itemNumber) {
+  const l = await launch(name, cwd, order, label)
+  if (!l || l.status !== 'done') return { status: 'failed', detail: 'launch: ' + (l ? l.detail : 'agent lost') }
+  for (let chunk = 0; ; chunk++) {
+    if (chunk === NOTIFY_CHUNKS && !A.fixture) {
+      await agent(`${T} Comment on issue #${itemNumber}: session ${name} has been working ~90 minutes; add the needs-operator label (a live wait; dispatch relays).`,
+        { label: `notify:${label}`, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+    }
+    if (chunk >= STALL_CHUNKS) return { status: 'stalled', detail: `script clock: ${chunk} chunks; pane left open` }
+    const w = await waitOnce(name, label, chunk)
+    if (!w || w.state === 'gone') return { status: 'failed', detail: 'session gone: ' + (w ? w.detail : 'wait agent lost') }
+    if (w.state === 'settled_blocked') return { status: 'blocked', detail: w.detail }
+    if (w.state === 'settled_done') break
+  }
+  return await readClose(name, label)
+}
 
 const ready = (s) => s.items.filter((i) => i.labels.includes('state:ready'))
 const unblocked = (s, i) => i.blocked_by.every((b) => !s.items.some((x) => x.number === b))
@@ -126,12 +152,12 @@ while (true) {
     (it) => drive(
       `spec-writing-${it.change}`.slice(0, 32), A.repoDir,
       `/opsx:ff ${it.change}\n\nSpec for item #${it.number} - ${it.title}\nOne spec-driven change for this one assertion, derived from ${it.record} and the decisions it cites. Worktree: wt switch --create build/${it.change} --base ${A.boltBranch} --no-cd in ${A.repoDir}. openspec validate --strict green before it counts. ${T} Flip #${it.number} to state:in-progress. Commit; do not merge or push. Deliver by settling.`,
-      `spec:${it.change}`, it.number),
+      `spec:${it.change}`, it.number).then((o) => { trace.push({ stage: `spec:${it.change}`, status: o && o.status, detail: o && o.detail }); return o }),
     (spec, it) => (spec && spec.status === 'done')
       ? drive(
           `build-${it.change}`.slice(0, 32), A.repoDir,
           `/opsx:apply ${it.change}\n\nBuild for item #${it.number} - ${it.title}\nApply the change on the build/${it.change} worktree. Re-read every neighbour the spec claims something about from disk. ${T} Commit; do not merge or push. Deliver by settling.`,
-          `build:${it.change}`, it.number).then((build) => ({ it, spec, build }))
+          `build:${it.change}`, it.number).then((build) => { trace.push({ stage: `build:${it.change}`, status: build && build.status, detail: build && build.detail }); return { it, spec, build } })
       : { it, spec, build: null },
   )
 
@@ -140,7 +166,7 @@ while (true) {
     await drive(
       `merge-${r.it.change}`.slice(0, 32), A.boltWorktree,
       `Merge-back for item #${r.it.number}. In ${A.boltWorktree}: wt merge build/${r.it.change} - never --yes. On green: openspec archive ${r.it.change}, commit. ${T} On red: fix nothing; report the gate output verbatim. Deliver by settling.`,
-      `merge:${r.it.change}`, r.it.number)
+      `merge:${r.it.change}`, r.it.number).then((o) => { trace.push({ stage: `merge:${r.it.change}`, status: o && o.status, detail: o && o.detail }); return o })
   }
 }
 
@@ -151,7 +177,7 @@ if (A.fixture) {
   landing = 'fixture mode - landing never runs'
 } else if (lastSnapshot && ready(lastSnapshot).length === 0) {
   const land = await drive(
-    'land', A.repoDir,
+    'land-sandbox', A.repoDir,
     `Landing session. Read openspec/changes/${A.slug}/bolt.md on ${A.boltBranch}: verify every Merge criterion on that branch - if any fails, land NOTHING and report the failing criterion as status failed. Read its "Landing:" line (absent = merge).\n- Landing: merge -> land ${A.boltBranch} on main through the gate (wt merge, never --yes), one writer to main; comment the landing SHA on each item and close it closed:done.\n- Landing: pr -> push ${A.boltBranch} and open a pull request to main (gh pr create), report its URL; close nothing - items close when the PR merges.\nOn a failing criterion: create ONE fix item born state:ready on this bolt - unless an open fix item for that criterion already exists (then report and stop); a criterion failing again after its fix landed is the andon cord - stop and ask the operator, never another item.\n${T} Deliver by settling.`,
     'land', 0)
   landing = `${land ? land.status + ': ' + land.detail : 'land agent lost'}`

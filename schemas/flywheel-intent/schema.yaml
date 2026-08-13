@@ -208,11 +208,20 @@ apply:
     the tracker, mint its token, or resolve its parameters STOPS THE
     RUN with the failure in the report; a failing cycle never loops.
 
-    A driver returns exactly once, after its session settles - its
-    structured output is final, and a placeholder return IS its
-    report, so it never parks a monitor and returns early. And a
-    driver is idempotent: an agent already running under its name is
-    driven, never duplicated.
+    THE SCRIPT OWNS ALL WAITING. A session is driven by small agents
+    that each return exactly once, with the loop's own arithmetic as
+    the clock: LAUNCH (idempotent - an agent already running under
+    the name is reused, never duplicated; create pane, start, rename
+    and confirm, deliver the one-prompt order, verify it went
+    working, return without waiting); WAIT, as a script loop - each
+    wait agent runs one bounded herdr agent wait (a single
+    invocation, at most ~10 minutes) and reports settled, blocked,
+    or still working; the SCRIPT counts the chunks and applies the
+    limits; then READ AND CLOSE (pane report out - ghost text is not
+    input - tab closed, outcome returned). No agent parks a monitor,
+    returns a placeholder, or counts time. A blocking operator round
+    - plannotator, a lavish page - takes the same shape: launched
+    once with a result file, waited on by the loop.
 
     GUARDS - checked EVERY cycle, in this order; each is idempotent.
     A guard records only the WRITES it makes - a check that changed

@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/flywheel-intent/schema.yaml apply.instruction
-INSTRUCTION SHA256: 120527113e9d5105
+INSTRUCTION SHA256: 59f69e09c1bc96f4
 COMPILED BY: static compile pass for review - not yet run. Mechanics
 marked "HERDR.MD:" delegated to skills/_reference/herdr.md.
 
@@ -87,36 +87,56 @@ GUARDS, in order, each idempotent - guard_actions records ONLY the writes you ma
 Return the snapshot AFTER your guard actions, with status ok. If you cannot read the tracker, mint the token, or resolve these parameters: status failed with the reason in failure, guard_actions empty - the run stops on your word.`,
   { label: `cycle${cycle}:query+guards`, phase: 'Cycle', schema: SNAPSHOT, ...DRIVER_OPTS })
 
-/* HERDR.MD: the driver recipe. Design sessions have no slash
-   invocation; the work order's first line names the type and the
-   session's skill loads from it. */
-/* checkout: a work session gets a fresh sess/* worktree; a merge
-   stage runs in the repo's main checkout and never cuts one - the
-   instruction's rule, not a compile choice. */
-const drive = (type, name, order, label, itemNumber, checkout) => {
-  const notify = A.fixture
-    ? 'note the long wait in your outcome detail'
-    : `comment the wait on issue #${itemNumber} and add needs-operator (a live wait; dispatch relays)`
-  const stall = OPERATOR_ROUND_TYPES.includes(type)
-    ? 'This type holds operator rounds: never return it stalled; keep waiting.'
-    : `At ${STALL_CHUNKS} chunks (~4 h): return status stalled with the pane tail; pane stays open.`
+/* HERDR.MD mechanics; the SCRIPT owns all waiting - the loop's
+   arithmetic is the clock. Each helper agent returns exactly once.
+   checkout: a work session gets a fresh sess/* worktree; a merge
+   stage runs in the existing checkout and never cuts one. */
+const WAITR = {
+  type: 'object',
+  properties: {
+    state: { type: 'string', enum: ['settled_done', 'settled_blocked', 'still_working', 'gone'] },
+    detail: { type: 'string' },
+  },
+  required: ['state', 'detail'],
+}
+
+const launch = (type, name, order, label, checkout) => {
   const cwdStep = checkout
-    ? `1. Your session's cwd is ${checkout} - the existing checkout; cut NO worktree.\n2. herdr tab create --cwd "${checkout}" --label "${name}" --no-focus  (tab label IS the agent name)`
+    ? `1. Your session cwd is ${checkout} - the existing checkout; cut NO worktree.\n2. herdr tab create --cwd "${checkout}" --label "${name}" --no-focus  (tab label IS the agent name)`
     : `1. In ${A.repoDir}: wt switch --create sess/${name} --base main --no-cd; resolve the worktree path (wt list).\n2. herdr tab create --cwd "<worktree>" --label "${name}" --no-focus  (tab label IS the agent name)`
-  return agent(`Drive one herdr session; never do its work yourself. Your structured output is FINAL - you return exactly once, after the session settles; never park a monitor and return a placeholder.
-0. If an agent named "${name}" already exists (herdr agent list): drive THAT pane from the prompt-delivery step on - never create a duplicate; if its work order was already delivered, just wait on it.
+  return agent(`Launch one herdr session; deliver its order; return WITHOUT waiting. Idempotent: if an agent named "${name}" already exists (herdr agent list), reuse it - never create a duplicate; if the pane shows this order already delivered or worked, return done.
 ${cwdStep}
 3. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent ${SESSION_PROFILE(type)} --model ${SESSION_MODEL[type]} --dangerously-skip-permissions
 4. Prompt "/rename ${name}" alone; poll the title until it converges.
-5. Deliver the work order between the markers as ONE prompt; verify the session goes working.
-6. herdr agent wait "${name}" - re-invoke on the 10-minute cap, counting chunks. At ${NOTIFY_CHUNKS} chunks (~90 min): ${notify} - then KEEP waiting. ${stall}
-7. On settle done/idle: read the pane; ghost text is not input. On blocked: return status blocked with what the pane asks; pane stays open.
-8. herdr tab close <tab-id>; return the outcome.
+5. Deliver the work order between the markers as ONE prompt; verify the session goes working. Then return {status:'done', detail:'delivered'}.
 WORK_ORDER>>>
 ${order}
 <<<WORK_ORDER`,
-  { label, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
-  .then((o) => { trace.push({ stage: label, status: o && o.status, detail: o && o.detail }); return o })
+    { label: `launch:${label}`, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+}
+
+const waitOnce = (name, label, n) => agent(`Run exactly one bounded wait on the herdr session "${name}": herdr agent wait "${name}" (single invocation - it returns when the session settles or the command cap ends). Then herdr agent get "${name}" and report: settled_done for idle/done, settled_blocked for blocked, still_working otherwise, gone if the agent no longer exists.`,
+  { label: `wait${n}:${label}`, phase: 'Cycle', schema: WAITR, model: 'haiku', effort: 'low' })
+
+const readClose = (name, label) => agent(`The herdr session "${name}" has settled. Read its pane (herdr agent read "${name}" --source recent-unwrapped --lines 120) and extract its report - composer ghost text is not input. Then herdr tab close its tab. Return the outcome with the report condensed to its facts.`,
+  { label: `read:${label}`, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+
+async function drive(type, name, order, label, itemNumber, checkout) {
+  const l = await launch(type, name, order, label, checkout)
+  if (!l || l.status !== 'done') return { status: 'failed', detail: 'launch: ' + (l ? l.detail : 'agent lost') }
+  const canStall = !OPERATOR_ROUND_TYPES.includes(type)
+  for (let chunk = 0; ; chunk++) {
+    if (chunk === NOTIFY_CHUNKS && !A.fixture) {
+      await agent(`${T} Comment on issue #${itemNumber}: session ${name} has been working ~90 minutes; add the needs-operator label (a live wait; dispatch relays).`,
+        { label: `notify:${label}`, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+    }
+    if (canStall && chunk >= STALL_CHUNKS) return { status: 'stalled', detail: `script clock: ${chunk} chunks; pane left open` }
+    const w = await waitOnce(name, label, chunk)
+    if (!w || w.state === 'gone') return { status: 'failed', detail: 'session gone: ' + (w ? w.detail : 'wait agent lost') }
+    if (w.state === 'settled_blocked') return { status: 'blocked', detail: w.detail }
+    if (w.state === 'settled_done') break
+  }
+  return await readClose(name, label)
 }
 
 const typeOf = (i) => (i.labels.find((l) => l.startsWith('type:')) || 'type:research').slice(5)
@@ -153,7 +173,7 @@ while (true) {
 Change: ${A.slug}. Your session directory: openspec/changes/${A.slug}/sessions/<date>-<topic>/ - you are its sole writer. Work the items; write your records (decisions, assertions, the session README) in your worktree; queue your own discoveries as items (${T.startsWith('FIXTURE') ? 'report them instead' : 'whoever finds queues'}); comment each item you worked. ${T}
 Deliver by settling: print your report as your final message and stop. Never wait on your conductor.`
     return () => drive(ty, topic, order, `${ty}:${nums}`, items[0].number)
-      .then((outcome) => ({ items, ty, outcome }))
+      .then((outcome) => { trace.push({ stage: `${ty}:${nums}`, status: outcome && outcome.status, detail: outcome && outcome.detail }); return { items, ty, outcome } })
   })
   const finished = await parallel(sessions)
 
@@ -164,7 +184,7 @@ Deliver by settling: print your report as your final message and stop. Never wai
     if (!r.outcome || r.outcome.status !== 'done') continue // blocked/stalled surface in the report; answer and RESUME
     await drive('merge', `merge-${r.ty}`.slice(0, 32),
       `Merge the session branch for the ${r.ty} batch. In ${A.repoDir}: wt merge sess/<its branch> - never --yes. On green: ${A.fixture ? 'report what you would close' : `close the finished items (${r.items.map((i) => '#' + i.number).join(', ')}) closed:done with the evidence in a comment`}. On red: fix nothing; report the gate output verbatim. ${T} Deliver by settling.`,
-      `merge:${r.ty}`, r.items[0].number, A.repoDir)
+      `merge:${r.ty}`, r.items[0].number, A.repoDir).then((o) => { trace.push({ stage: `merge:${r.ty}`, status: o && o.status, detail: o && o.detail }); return o })
   }
 }
 
