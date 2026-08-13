@@ -1572,12 +1572,15 @@ class BoltLoop:
              f"\"Cannot prompt for approval in non-interactive environment\", stop and "
              f"report it rather than working around it.\n\n"
              + (f"On green: openspec archive {change}, and commit.\n\n" if change else "")
-             + f"On red: fix NOTHING and report the gate output verbatim. Write "
-               f"nothing on the tracker either way — no comment, no label, no "
-               f"close. The LOOP closes each assertion `closed:merged` with the "
-               f"merge SHA once git confirms the ancestry, and the landing "
-               f"upgrades that to `closed:done`; closing is bookkeeping, and the "
-               f"loop and the session must not race for it. "
+             + f"On red: fix NOTHING and report the gate output verbatim. Do not "
+               f"comment the SHA, do not label, do not close: the LOOP closes each "
+               f"assertion `closed:merged` with the merge SHA once git confirms "
+               f"the ancestry, and the landing upgrades that to `closed:done`; "
+               f"closing is bookkeeping, and the loop and the session must not "
+               f"race for it. THE ANDON CORD IS THE EXCEPTION and is always "
+               f"yours: if the work has gone wrong in a way no further round "
+               f"fixes, write the andon marker in an item comment and settle — "
+               f"the loop reads that marker back and pauses the batch. "
                f"Deliver by settling."))
         outcome = self.drive("merge", self.spec_for(
             "merge", name, self.params.bolt_worktree, order), batch.numbers)
@@ -1858,7 +1861,21 @@ class BoltLoop:
             return False                       # there is still released work
         if not unlanded:
             return False                       # nothing to upgrade, nothing to land
-        return land == "force" or self._merged > 0
+        if land == "force" or self._merged > 0:
+            return True
+        # `_merged` is PER PROCESS, and the server now starts a loop for a
+        # milestone whose items are all `closed:merged` precisely so it can
+        # land. That fresh process merges nothing itself, so counting only
+        # its own merges declines the landing it was started for.
+        #
+        # The caution `_merged` encodes is kept: an empty ready set is also
+        # what a process sees while a sibling's session is still building.
+        # But an assertion at `closed:merged` HAS reached the bolt branch,
+        # so a bolt whose every unlanded assertion is merge-closed has no
+        # sibling still building, and the criteria are verified against a
+        # whole branch rather than a half-built one.
+        assertions = [i for i in unlanded if i.is_assertion]
+        return bool(assertions) and all(i.merge_closed for i in assertions)
 
     def describe(self, result):
         parts = [f"cycle {result.number}:"]

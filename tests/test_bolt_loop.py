@@ -923,6 +923,29 @@ class LandingTest(unittest.TestCase):
         program._merged = 1
         self.assertTrue(program.landing_wanted("auto", box, open_items))
 
+    def test_a_restarted_process_lands_a_bolt_whose_work_is_all_merged(self):
+        # `_merged` is per process, and the server starts a loop for an
+        # all-merge-closed milestone precisely so it can land. Counting
+        # only this process's merges declined the landing it was started
+        # for. The previous test pinned it only after setting `_merged`.
+        merged = [Item(number=n, milestone="bolt/x", title=str(n), state="closed",
+                       labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
+                  for n in (1, 2)]
+        program = a_loop(FakeTracker())
+        box = inbox.BoltInbox(milestone="bolt/x")
+        self.assertEqual(program._merged, 0, "a fresh process merged nothing")
+        self.assertTrue(program.landing_wanted("auto", box, merged))
+
+    def test_a_bolt_with_an_assertion_still_building_is_not_landed(self):
+        # The caution `_merged` encoded, kept: an empty ready set is also
+        # what a process sees while a sibling's session is still building.
+        merged = Item(number=1, milestone="bolt/x", title="1", state="closed",
+                      labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
+        building = item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)
+        program = a_loop(FakeTracker())
+        box = inbox.BoltInbox(milestone="bolt/x")
+        self.assertFalse(program.landing_wanted("auto", box, [merged, building]))
+
     def test_a_milestone_with_nothing_unlanded_has_nothing_to_land(self):
         program = a_loop(FakeTracker())
         self.assertFalse(program.landing_wanted(
@@ -1022,8 +1045,11 @@ class MergeCloseTest(unittest.TestCase):
         a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(
             loop.WorkBatch(slug="add-thing", items=(item(1, inbox.READY),)))
         order = runner.launched[0].order
-        self.assertIn("The LOOP closes each assertion `closed:merged`", order)
+        self.assertIn("the LOOP closes each assertion `closed:merged`", order)
         self.assertNotIn("do not close them", order)
+        # …and the one write it must never be told to withhold.
+        self.assertIn("ANDON CORD IS THE EXCEPTION", order)
+        self.assertIn("andon marker", order)
 
     def test_a_full_cycle_merges_and_closes_in_one_go(self):
         snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.READY,

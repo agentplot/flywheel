@@ -49,13 +49,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _flywheel_inbox import (CLOSED_DONE, INTENT_PREFIX, IN_PROGRESS,
+from _flywheel_inbox import (CLOSED_DONE, INTENT_PREFIX, IN_PROGRESS, Item,
                              NEEDS_OPERATOR, QUEUED, READY, STAGE_COLLECTED,
                              STAGE_DONE, STAGE_IN_SESSION, TYPE_ASSERTION,
                              Tracker, TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, set_needs_operator,
                              set_stage, unblocked)
-from _flywheel_sessions import (MAX_NAME, SessionSpec, WaitState, runner_for,
+from _flywheel_sessions import (MAX_NAME, SessionHandle, SessionSpec,
+                                WaitState, runner_for,
                                 supervise, work_order)
 
 
@@ -883,11 +884,22 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
             # A flip the loop was not there to see. Collected BEFORE the
             # ready set is worked, so a restarted process finishes what it
             # left behind before starting anything new.
-            if resume_collect(inbox, writer, config, snapshot, report):
+            if resume_collect(inbox, writer, runner, config, snapshot, report):
                 continue               # the tracker moved; re-query
 
             batches, undispatchable = batch_ready(snapshot, inbox.ready)
             for item, kind in undispatchable:
+                if kind == "assertion":
+                    # NOT an escalation. A released assertion is guard 2's
+                    # and construction's, never a design session's — and
+                    # since the handoff unit carries the assertions as
+                    # sub-issues, the operator's flip to Ready relabels
+                    # every one of them `state:ready` on this milestone.
+                    # They are SUPPOSED to arrive here undispatched; the
+                    # handoff session's custody move is what takes them
+                    # off. Escalating each one turned the release that
+                    # charges a handoff into a `needs-operator` storm.
+                    continue
                 set_needs_operator(
                     writer, item.number,
                     f"The intent loop cannot dispatch this item: its type is "
@@ -928,7 +940,7 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
     return report
 
 
-def resume_collect(inbox, writer, config, snapshot, report):
+def resume_collect(inbox, writer, runner, config, snapshot, report):
     """Collect items flipped while no loop was watching. True if it wrote.
 
     The pane path is handled inside `land`, which re-reads the tracker
@@ -946,12 +958,19 @@ def resume_collect(inbox, writer, config, snapshot, report):
     so the comment says plainly that there was no pane to read rather than
     inventing one.
 
-    The `sess/*` merge is deliberately NOT done here. Which session an item
-    belonged to is not recoverable from the item alone once its pane is
-    gone, and merging the wrong branch — or a branch whose session never
-    finished its siblings — is the one mistake that costs work. The item is
-    collected and closed; the branch is left for the operator, and the
-    report says so.
+    **The `sess/*` branch IS merged**, once every item of that session has
+    been collected. The earlier reading — that which session an item
+    belonged to is not recoverable once its pane is gone — was wrong:
+    `session_name` is deterministic in the type and the slug precisely so a
+    restarted process finds the same name, and a lone type appends the item
+    it rides alone with. Leaving the branch unmerged made the tracker half
+    complete and the work invisible: the item closed, the deliverables
+    stranded on a branch nobody would look for. That is the failure this
+    whole capability exists to prevent, arriving by a quieter route.
+
+    The pane is closed with it when a runner is on hand, and left open when
+    one is not — an orphan pane is visible to the operator and costs
+    nothing, where an unmerged branch is lost work.
     """
     if not inbox.to_collect or not config.apply:
         return False
@@ -981,9 +1000,52 @@ def resume_collect(inbox, writer, config, snapshot, report):
             reason=CLOSED_DONE)
     report.notes += (
         "collected after the fact: " + ", ".join(f"#{n}" for n in numbers)
-        + " carried stage:done with no live session. Their `sess/*` "
-          "branches are not merged by this path — check and merge them.",)
+        + " carried stage:done with no live session.",)
+    merge_resumed(inbox, writer, runner, config, snapshot, report, numbers)
     return True
+
+
+def merge_resumed(inbox, writer, runner, config, snapshot, report, collected):
+    """Merge the `sess/*` branch of every session this pass finished.
+
+    Session-scoped, exactly as it is on the live path: a branch is merged
+    only once EVERY item that session carries has reached
+    `stage:collected`, because a branch merged while siblings are still
+    open merges a half-finished tree.
+
+    Membership is reconstructed the way the name is — from the type and the
+    slug — so what is merged is the branch the dispatch would have named,
+    never a guess.
+    """
+    done = set(collected)
+    for kind in sorted({type_of(i) for i in inbox.to_collect} - {None}):
+        if kind not in TYPES or not TYPES[kind].worktree:
+            continue
+        siblings = [i for i in snapshot.on(config.milestone)
+                    if i.is_open and i.in_progress and type_of(i) == kind]
+        outstanding = [i.number for i in siblings
+                       if i.number not in done
+                       and not writer.has_label(i.number, STAGE_COLLECTED)]
+        if outstanding:
+            report.notes += (
+                f"the {kind} session's `sess/*` branch is not merged yet — "
+                + ", ".join(f"#{n}" for n in outstanding) + " still open.",)
+            continue
+        first = min(i.number for i in siblings) if siblings else min(done)
+        name = session_name(DesignBatch(kind, (Item(number=first),)),
+                            config.slug)
+        worktree = worktree_path(config.repo_dir, f"sess/{name}",
+                                 run=writer._run)
+        if not worktree:
+            report.notes += (f"no worktree for `sess/{name}` — nothing to "
+                             f"merge for the {kind} session.",)
+            continue
+        merge_session(writer, config, worktree)
+        if runner is not None:
+            try:
+                runner.close(SessionHandle(name=name, runner="herdr"))
+            except Exception:            # a pane already gone is not a fault
+                pass
 
 
 def land(batch, spec, handle, writer, runner, tracker, config, snapshot,

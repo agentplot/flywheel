@@ -339,7 +339,7 @@ class ResumeCollectTest(unittest.TestCase):
         tracker = FakeTracker(snapshot=snap)
         writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
         report = intent.Report(slug="x")
-        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer,
+        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer, None,
                                       config(apply=True), snap, report)
         self.assertTrue(wrote)
         self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
@@ -356,7 +356,7 @@ class ResumeCollectTest(unittest.TestCase):
         writer = intent.Writer(apply=False, snapshot=snap)
         report = intent.Report(slug="x")
         self.assertFalse(intent.resume_collect(
-            inbox.intent_inbox(snap, "x"), writer, config(), snap, report))
+            inbox.intent_inbox(snap, "x"), writer, None, config(), snap, report))
         self.assertEqual(writer.writes, [])
 
     def test_dispatch_never_walks_the_operators_flip_back(self):
@@ -413,7 +413,7 @@ class PausedBatchTest(unittest.TestCase):
         tracker = FakeTracker(snapshot=snap, comments={
             1: [{"body": inbox.format_andon("the spec contradicts its decision")}]})
         writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
-        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer,
+        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer, None,
                                       config(apply=True), snap,
                                       intent.Report(slug="x"))
         self.assertFalse(wrote)
@@ -426,9 +426,105 @@ class PausedBatchTest(unittest.TestCase):
         tracker = FakeTracker(snapshot=snap)
         writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
         self.assertTrue(intent.resume_collect(
-            inbox.intent_inbox(snap, "x"), writer, config(apply=True), snap,
-            intent.Report(slug="x")))
+            inbox.intent_inbox(snap, "x"), writer, None, config(apply=True),
+            snap, intent.Report(slug="x")))
         self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+
+
+class ResumeMergeTest(unittest.TestCase):
+    """The staggered flip must not strand the session's branch.
+
+    `land` runs only for batches dispatched in the same cycle, and a
+    dispatched item never re-enters the ready set — so a flip arriving
+    later is `resume_collect`'s. Collecting the item without merging its
+    branch made the tracker read finished while the deliverables sat on a
+    branch nobody would look for.
+    """
+
+    def session_of(self, *items):
+        snap = Snapshot(items=list(items))
+        run = FakeRun(stdout="worktree /tmp/sess-x\nbranch refs/heads/sess/writeback-x\n")
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, run=run,
+                               snapshot=snap)
+        report = intent.Report(slug="x")
+        runner = ScriptedRunner()
+        intent.resume_collect(inbox.intent_inbox(snap, "x"), writer, runner,
+                              config(apply=True), snap, report)
+        return run, report, runner
+
+    def test_the_last_flip_merges_the_session_branch_and_closes_the_pane(self):
+        run, report, runner = self.session_of(
+            item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done"))
+        merges = [c for c in run.calls if c[:2] == ["wt", "merge"]]
+        self.assertEqual(len(merges), 1, run.calls)
+        for suppressor in ("--yes", "--no-hooks", "--no-verify"):
+            self.assertNotIn(suppressor, merges[0])
+        self.assertEqual(runner.closed, ["writeback-x"])
+
+    def test_a_half_flipped_session_merges_nothing(self):
+        # Session-scoped, exactly as on the live path: a branch merged
+        # while a sibling is still open merges a half-finished tree.
+        run, report, runner = self.session_of(
+            item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done"),
+            item(2, "type:writeback", inbox.IN_PROGRESS, "stage:in-session"))
+        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
+        self.assertEqual(runner.closed, [])
+        self.assertTrue(any("#2 still open" in n for n in report.notes),
+                        report.notes)
+
+    def test_a_type_that_gets_no_worktree_merges_nothing(self):
+        # Research edits no files, so it gets no worktree and there is no
+        # branch to merge — the resume path must not invent one.
+        self.assertFalse(intent.TYPES["research"].worktree)
+        run, report, runner = self.session_of(
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"))
+        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
+
+
+class HandoffReleaseTest(unittest.TestCase):
+    """The flip that charges a handoff must not escalate its own batch.
+
+    `apply_handoff` attaches the assertions to the unit, so the operator's
+    flip to Ready relabels every one of them `state:ready` via
+    `flip_consume_plan`. `batch_ready` then reports them undispatchable —
+    correctly, they are not a design type — and the loop used to write
+    `needs-operator` on each. The old code avoided this only by attaching
+    no sub-issues at all.
+    """
+
+    def released(self):
+        return Snapshot(
+            items=[item(1, "type:handoff", inbox.READY, parent_batch=10),
+                   item(2, "type:assertion", inbox.READY, parent_batch=10),
+                   item(3, "type:assertion", inbox.READY, parent_batch=10)],
+            batches=[Batch(number=10, kind="unit", status=inbox.STATUS_READY,
+                           sub_issues=(1, 2, 3), milestone="intent/x")])
+
+    def test_the_assertions_arrive_undispatchable_by_design(self):
+        snap = self.released()
+        batches, undispatchable = intent.batch_ready(snap, snap.items)
+        self.assertEqual([b.type for b in batches], ["handoff"])
+        self.assertEqual(sorted(k for _, k in undispatchable), ["assertion"] * 2)
+
+    def test_the_release_that_charges_a_handoff_escalates_nothing(self):
+        snap = self.released()
+        tracker = FakeTracker(snapshot=snap)
+        intent.run(config(slug="x", apply=True), tracker=tracker,
+                   runner=ScriptedRunner(), clock=Clock())
+        self.assertEqual(
+            [c for c in tracker.calls
+             if c[0] == "add_label" and c[2] == inbox.NEEDS_OPERATOR], [],
+            "the assertions are guard 2's and construction's, not a fault")
+
+    def test_a_genuinely_untyped_item_is_still_escalated(self):
+        # The exclusion is for assertions only; an item the loop cannot
+        # type at all is still the operator's to answer.
+        snap = Snapshot(items=[item(1, inbox.READY)])
+        tracker = FakeTracker(snapshot=snap)
+        intent.run(config(slug="x", apply=True), tracker=tracker,
+                   runner=ScriptedRunner(), clock=Clock())
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.calls)
 
 
 class ParentageTest(unittest.TestCase):
