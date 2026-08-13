@@ -219,9 +219,10 @@ spec-driven change in the built repo, the bolt declares the plan-mode
 path — the phrase the release writes into the milestone description, or
 `plan_mode:` in the change's binding — and the build session is started
 in plan mode (`--permission-mode plan`): every edit is blocked
-mechanically until the plan is approved. Approval is a judgment, so it
-is the OPERATOR's: they read the plan against the item's claim and
-answer the plan dialog themselves, and the loop waits. The plan-mode
+mechanically until the plan is approved. Approval is a judgment, so the
+loop asks an approver session whether the plan does what the item's
+claim says and drives the plan dialog on the one line it answers with;
+two returns on one batch pause it with `needs-operator`. The plan-mode
 call rides the bolt type: it exists only where the
 operator already chose `bolt-quick` — on `bolt-default` and
 `bolt-adversarial` every item is specced through a spec-driven change,

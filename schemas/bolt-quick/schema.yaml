@@ -157,11 +157,14 @@ apply:
     (the milestone description, or the handoff plan), no spec-driven
     change is written for the items. Each build session is STARTED IN
     PLAN MODE (--permission-mode plan, never the skip flag): the plan
-    is the spec surrogate, checked against the item's claim, and the
-    OPERATOR is the approver - checking a plan against a claim is
-    judgment, and judgment never lives in the loop. They read the plan
-    from the pane and approve through the plan dialog, or return it with
-    the mismatch named; the loop launched the session and waits. Everything else - the item's comments as the stages, the
+    is the spec surrogate, checked against the item's claim. Approval is
+    a judgment, so it is ASKED OF A SESSION and never taken by the loop:
+    an approver session reads the plan from the pane against the claims
+    and answers one parsed line - approved, or returned with the
+    mismatch named - and the loop drives the plan dialog on that
+    verdict. Two returns on one batch and the loop pauses it with
+    needs-operator rather than bouncing a third time.
+    Everything else - the item's comments as the stages, the
     unweakened merge gate, closure with the landing SHA - is
     unchanged.
     Design-level findings - the design is wrong, not the build - go to

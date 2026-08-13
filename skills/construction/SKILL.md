@@ -100,9 +100,10 @@ is the practice shared by every stage the loop does run:
   time.
 - **The plan-mode path — quick bolts only**: where a `bolt-quick`
   declares it, the build session starts in plan mode
-  (`--permission-mode plan`); approval is a judgment, so it is the
-  OPERATOR's — they check the plan against the item's claim and answer
-  the plan dialog, and the loop waits. On other types every item is
+  (`--permission-mode plan`); approval is a judgment, so an approver
+  session checks the plan against the item's claim and the loop drives
+  the plan dialog on the verdict it answers with, pausing the batch
+  after two returns rather than bouncing again. On other types every item is
   specced — the bolt type is the scrutiny the operator chose at
   release, and a declaration against those types is refused rather than
   honoured quietly.

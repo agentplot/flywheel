@@ -74,9 +74,9 @@ dispatch is `dispatch`, and every session starts with its session type
 `test-<topic>`, `code-review-<topic>`, `human-code-review-<topic>`.
 Never a shorthand: `review-<topic>` cannot say which review type it is,
 and one bolt runs several. A loop's own mechanical sessions are named
-for the stage that launched them — `scaffold-`, `route-`, `verify-`,
-`merge-`, `land-` — and no type name collides with those or with
-`dispatch`, so the prefix alone says what a row is.
+for the stage that launched them — `scaffold-`, `route-`, `plan-`,
+`verify-`, `merge-`, `land-` — and no type name collides with those or
+with `dispatch`, so the prefix alone says what a row is.
 herdr caps names at 32 characters — the long type prefixes leave the
 topic little room, so keep topics to a word or two. **The tab label is the agent name,
 the same string** — a tab labeled one thing holding an agent named
@@ -320,12 +320,15 @@ start it in the launch directory, and skip the merge and teardown too.
 every ordinary session (the fleet layer passes it for the actors it
 starts). The one exception is a plan-mode build session, started with
 `--permission-mode plan` instead: plan mode blocks every edit until
-the plan is approved. **The OPERATOR is the approver** — checking a plan
-against the item's claim is judgment, and judgment never lives in the
-loop. They read the plan from the pane and answer the plan dialog
-themselves, approving or returning it with the mismatch named, and the
-loop waits. A `blocked` settle afterwards is a permission ask the
-operator answers in the same pane.
+the plan is approved. Approval is a judgment, so it is asked of a
+session and never taken by the launcher itself: an approver session gets
+the pane as the session produced it plus the items' claims, and answers
+one parsed line — `APPROVED: …` or `RETURNED: …`. The launcher drives the
+plan dialog on that verdict with `herdr agent send-keys <name> <key>`
+(enter on approval; the mismatch prompted back on a return), and two
+returns on one batch pause it with `needs-operator` rather than bouncing
+again. Parked on `herdr agent wait` afterwards, a `blocked` settle is a
+real permission ask, not a plan.
 
 The work order is four things: the change id, the session type, the item
 numbers of its batch, and one or two plain sentences of goal. Worktree,
