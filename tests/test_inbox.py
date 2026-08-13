@@ -522,3 +522,67 @@ class NeedsOperatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# The prose surfaces the loops' docstrings cite as their definition
+# ---------------------------------------------------------------------------
+
+class RecordConsistencyTest(unittest.TestCase):
+    """A behaviour with no record is a behaviour the next reader undoes.
+
+    These pin the sentences that describe THIS change's behaviour in the
+    files a session or a loop actually reads — not every mention, just the
+    propositions the change retires, which can be written without the
+    literal label name.
+    """
+
+    ROOT = BIN.parent
+
+    def read(self, *parts):
+        return (self.ROOT.joinpath(*parts)).read_text()
+
+    def test_the_record_and_the_construction_skill_know_about_the_merge_close(self):
+        for parts in (("design", "loop-programs.md"),
+                      ("skills", "construction", "SKILL.md"),
+                      ("skills", "_reference", "tracker.md"),
+                      ("skills", "_reference", "herdr.md")):
+            self.assertIn("closed:merged", self.read(*parts), str(parts))
+
+    def test_no_reader_still_says_items_close_at_the_landing(self):
+        record = self.read("design", "loop-programs.md")
+        self.assertNotIn("Items close at landing with the SHA", record)
+
+    def test_the_records_server_filter_carries_the_merge_closed_condition(self):
+        # `server_inbox`'s docstring cites this record as its definition.
+        record = self.read("design", "loop-programs.md")
+        server = record.split("- **server**", 1)[1].split("- **bolt loop", 1)[0]
+        self.assertIn("closed:merged", server)
+
+    def test_milestone_closure_carves_out_merge_closed_items_everywhere(self):
+        for parts in (("skills", "construction", "SKILL.md"),
+                      ("skills", "_reference", "tracker.md")):
+            text = self.read(*parts)
+            window = text.split("all closed", 1)
+            self.assertGreater(len(window), 1, str(parts))
+            self.assertIn("closed:merged", window[1][:400], str(parts))
+
+    def test_every_design_surface_names_the_operators_flip(self):
+        # Task 4.6: the pane half of the flip, in the skills a design
+        # session loads as well as in the profiles that host them.
+        for skill in ("planning", "research", "writeback", "interactive",
+                      "prototype", "handoff"):
+            self.assertIn("stage:done",
+                          self.read("skills", skill, "SKILL.md"), skill)
+        for profile in ("flywheel-design-session", "flywheel-interactive-session"):
+            self.assertIn("stage:done",
+                          self.read("agents", f"{profile}.md"), profile)
+
+    def test_the_pane_written_flip_removes_the_previous_stage(self):
+        # The one path the loop cannot fix for itself: the same rule as
+        # `inbox.set_stage`, stated where the writer reads it.
+        for profile in ("flywheel-design-session", "flywheel-interactive-session"):
+            flat = " ".join(self.read("agents", f"{profile}.md").split())
+            self.assertIn("removes `stage:in-session`", flat, profile)
+        self.assertIn("--remove-label stage:in-session --add-label stage:done",
+                      self.read("skills", "_reference", "herdr.md"))

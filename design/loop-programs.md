@@ -36,7 +36,9 @@ through GitHub issues, and each consumer has an exact filter:
 
 - **server**: milestones with a job — any open `intent/*` or `bolt/*`
   milestone holding an open item labelled `state:ready` or
-  `state:in-progress`, or a batch at board Status Ready; plus closed
+  `state:in-progress`, or a bolt milestone holding a `closed:merged`
+  item still awaiting its landing, or a batch at board Status Ready;
+  plus closed
   milestones whose change still sits in openspec/changes/ (archive).
 - **bolt loop for bolt/<slug>**: open items on that milestone
   labelled `state:ready`, plus that bolt's units at board Status
@@ -79,9 +81,12 @@ without one.)
   `Landing: pr`. A failing criterion births one born-ready fix item,
   idempotently; the same criterion failing after its fix landed
   pauses the bolt and sets needs-operator.
-- Items close at landing with the SHA; STOP when nothing is ready and
-  the guards wrote nothing; all items closed -> propose closure; the
-  operator's milestone close is the archive signal.
+- Each assertion closes `closed:merged` with the merge SHA at the
+  merge-back — which is what checks it off on its unit parent's native
+  bar — and the landing upgrades that reason to `closed:done` with the
+  landing SHA; STOP when nothing is ready and the guards wrote nothing;
+  all items closed AND none left at `closed:merged` -> propose closure;
+  the operator's milestone close is the archive signal.
 
 ## The bolt types — named configs of the same program
 

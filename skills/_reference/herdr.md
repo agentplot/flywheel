@@ -352,6 +352,11 @@ GH_TOKEN=$tok gh issue create --repo <org>/<tracker> --title "<the work, imperat
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
   --remove-label state:ready --add-label state:in-progress
 GH_TOKEN=$tok gh issue comment <n> --repo <org>/<tracker> --body "<what happened>"
+# A stage move REPLACES the previous stage — an item carries exactly one
+# `stage:*`, naming its leading edge. The operator's flip, written by a
+# design session on their word, is a move like any other:
+GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
+  --remove-label stage:in-session --add-label stage:done
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label closed:done
 GH_TOKEN=$tok gh issue close <n> --repo <org>/<tracker> --comment "<landing SHA / outcome>"
 ```

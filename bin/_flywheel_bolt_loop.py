@@ -276,15 +276,42 @@ def read_binding(change_dir):
 
     Binding a schema IS choosing the type, so the binding on disk is what
     the loop believes, ahead of anything it was told on the command line.
+
+    Reads scalars, flow lists and dash lists — the same three shapes
+    `parse_loop_block` handles, and for the same reason. A key this parser
+    cannot SEE is a key nothing can refuse: `refuse_stage_declaration`
+    rejects a `stages:` declaration only if it is in this dict, so a
+    block-style list would have been ignored rather than refused, which is
+    exactly the outcome that function's docstring argues against.
     """
     path = Path(change_dir) / ".openspec.yaml"
     if not path.exists():
         return {}
     binding = {}
+    pending = None
     for line in path.read_text().splitlines():
-        match = re.match(r"^([A-Za-z_][\w-]*):\s*(.+)$", line)
-        if match:
-            binding[match.group(1)] = _scalar(match.group(2))
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        stripped = line.strip()
+        if stripped.startswith("- ") and pending is not None:
+            binding.setdefault(pending, []).append(_scalar(stripped[2:]))
+            continue
+        match = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", line)
+        if not match:
+            continue
+        key, raw = match.group(1), match.group(2).strip()
+        if raw.startswith("["):
+            binding[key] = [_scalar(v) for v in raw.strip("[]").split(",") if v.strip()]
+            pending = None
+        elif raw:
+            binding[key] = _scalar(raw)
+            pending = None
+        else:
+            # A key with no value on its line opens a block list. It is
+            # recorded even if no `- ` item follows, so an empty declaration
+            # is still a declaration and still refusable.
+            binding[key] = []
+            pending = key
     return binding
 
 

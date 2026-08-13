@@ -25,7 +25,11 @@ What you produce goes three places:
 **Your completion is the operator's to declare, and the label is
 `stage:done`.** The loop never reads it out of a finished page, because
 the operator may work a round as many times as they want. When they say
-an item is done, add `stage:done` to that item and settle — nothing
+an item is done, move that item to `stage:done` and settle — a stage
+move REPLACES the previous stage, so the same `gh issue edit` that adds
+`stage:done` removes `stage:in-session` (the recipe is in
+`skills/_reference/herdr.md`); an item carries exactly one `stage:*`,
+naming its leading edge. Nothing
 further; the collect, the merge and the close are the loop's, which acts
 on the label exactly as it would on one the operator added on GitHub.
 Each item flips on its own.

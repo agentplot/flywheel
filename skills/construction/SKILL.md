@@ -116,10 +116,15 @@ is the practice shared by every stage the loop does run:
   honoured quietly.
 - **Merging**: session branch to bolt branch through the gate
   (`wt merge <bolt-branch> --no-remove -C <worktree>`, never
-  `--yes`); bolt branch to main through the merge gate, one
-  writer at a time, when `bolt.md`'s merge criteria hold. Comment the
-  SHA, close the item, archive the built repo's spec-driven change,
-  and comment the source intent's assertion item so the intent
+  `--yes`). At that merge-back the loop closes each assertion
+  `closed:merged` with the merge SHA — which is what checks it off on
+  its unit parent's native bar. Bolt branch to main through the merge
+  gate, one
+  writer at a time, when `bolt.md`'s merge criteria hold: the landing
+  comments the landing SHA and **upgrades** each item's reason from
+  `closed:merged` to `closed:done` on the already-closed item, archives
+  the built repo's spec-driven change,
+  and comments the source intent's assertion item so the intent
   records the landing.
 
 ## State claims
@@ -162,7 +167,9 @@ elsewhere.
 At the merge, a merged-back session's pane, worktree and branch go — no
 word needed, it is all reproducible — and the bolt branch is
 reclaimed the moment it lands on main. When the milestone's items are
-all closed, the loop proposes closure and stops; the operator closes
+all closed **and none is left at `closed:merged`** — a merge-closed item
+is closed and still in flight, and the landing is what finishes it —
+the loop proposes closure and stops; the operator closes
 the milestone on GitHub (directly, or through dispatch), and the
 server's next pass runs the archive itself — `openspec archive <slug>
 --yes --json`, committed by pathspec. It needs no session because it

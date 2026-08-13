@@ -35,7 +35,12 @@ downstream acts on:
 loop's, and the label is `stage:done`.** The loop never infers it from a
 round artifact, because the operator may iterate a plannotator or lavish
 round as many times as they want. When the operator tells you an item is
-done, add `stage:done` to **that item** and settle. Do nothing else with
+done, move **that item** to `stage:done` and settle — a stage move
+REPLACES the previous stage, so the same `gh issue edit` that adds
+`stage:done` removes `stage:in-session` (the recipe is in
+`skills/_reference/herdr.md`). An item carries exactly one `stage:*`,
+naming its leading edge, and that rule holds for your write as much as
+for the loop's. Do nothing else with
 it: the collect, the `sess/*` merge and the close are the loop's, and it
 acts on the label exactly as it would on one the operator added on GitHub
 themselves — there is one flip and one filter. Each item flips on its

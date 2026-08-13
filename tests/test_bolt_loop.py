@@ -287,6 +287,37 @@ class TypeConfigTest(unittest.TestCase):
             loop.refuse_stage_declaration({"schema": "bolt-default"}, default),
             default)
 
+    def test_a_block_style_declaration_is_seen_and_so_can_be_refused(self):
+        # A key the binding parser cannot SEE is a key nothing can refuse.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".openspec.yaml").write_text(
+                "schema: bolt-default\ncreated: 2026-08-13\n"
+                "stages:\n  - spec\n  - build\n")
+            binding = loop.read_binding(tmp)
+        self.assertEqual(binding["schema"], "bolt-default")
+        self.assertEqual(binding["stages"], ["spec", "build"])
+        with self.assertRaises(loop.LoopError):
+            loop.refuse_stage_declaration(
+                binding, loop.load_type("bolt-default", ROOT))
+
+    def test_an_empty_declaration_is_still_a_declaration(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".openspec.yaml").write_text(
+                "schema: bolt-default\nverify:\n")
+            binding = loop.read_binding(tmp)
+        with self.assertRaises(loop.LoopError):
+            loop.refuse_stage_declaration(
+                binding, loop.load_type("bolt-default", ROOT))
+
+    def test_the_binding_parser_still_reads_every_binding_on_disk(self):
+        # Flow lists and scalars must survive the block-list addition.
+        for path in sorted((ROOT / "openspec" / "changes").glob("*/.openspec.yaml")):
+            binding = loop.read_binding(path.parent)
+            self.assertIn("schema", binding, str(path))
+            self.assertIsInstance(binding["schema"], str, str(path))
+
     def test_the_refusal_holds_on_bolt_direct_too(self):
         # Even where the declaration would agree with the bound type: the
         # stage set has one writer, and it is the schema.
