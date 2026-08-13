@@ -272,6 +272,49 @@ class TypeConfigTest(unittest.TestCase):
         with self.assertRaises(loop.LoopError):
             loop.resolve_plan_mode(True, loop.load_type("bolt-direct", ROOT))
 
+    def test_a_per_bolt_stage_declaration_is_refused_not_ignored(self):
+        # Symmetric with resolve_plan_mode: the bolt type is the scrutiny
+        # the release approved, so skipping verify is bolt-direct's property
+        # and not something a binding can ask for on another type.
+        default = loop.load_type("bolt-default", ROOT)
+        for key in loop.STAGE_DECLARATION_KEYS:
+            with self.assertRaises(loop.LoopError, msg=key):
+                loop.refuse_stage_declaration({key: "false"}, default)
+
+    def test_a_clean_binding_passes_the_config_through(self):
+        default = loop.load_type("bolt-default", ROOT)
+        self.assertIs(
+            loop.refuse_stage_declaration({"schema": "bolt-default"}, default),
+            default)
+
+    def test_the_refusal_holds_on_bolt_direct_too(self):
+        # Even where the declaration would agree with the bound type: the
+        # stage set has one writer, and it is the schema.
+        with self.assertRaises(loop.LoopError):
+            loop.refuse_stage_declaration(
+                {"stages": "spec, build, merge, land"},
+                loop.load_type("bolt-direct", ROOT))
+
+    def test_no_schema_still_calls_the_loop_block_a_stub(self):
+        # It is read — least stubbily on bolt-direct, whose whole reason to
+        # exist is that read_schema_config reads its stage set.
+        for path in sorted((ROOT / "schemas").glob("bolt-*/schema.yaml")):
+            self.assertNotIn("STUB", path.read_text(), str(path))
+
+    def test_every_schema_keeps_the_warning_that_openspec_strips_the_block(self):
+        # The part of that comment which is still load-bearing.
+        for path in sorted((ROOT / "schemas").glob("bolt-*/schema.yaml")):
+            text = path.read_text()
+            self.assertIn("MUST read schema.yaml itself", text, str(path))
+            self.assertIn("schema fork", text, str(path))
+
+    def test_no_schema_still_describes_the_landing_as_the_only_close(self):
+        # The merge boundary closes `closed:merged`; the landing upgrades.
+        for path in sorted((ROOT / "schemas").glob("bolt-*/schema.yaml")):
+            text = path.read_text()
+            self.assertIn("closed:merged", text, str(path))
+            self.assertNotIn("close it `closed:done`", text, str(path))
+
     def test_install_schemas_would_publish_the_new_type_with_the_others(self):
         # `bin/install-schemas` copies every directory under schemas/ that
         # holds a schema.yaml — so a new type needs no change to it.
@@ -820,6 +863,51 @@ class LandingTest(unittest.TestCase):
         program.land_stage(self.snapshot())
         outcome = program.land_stage(self.snapshot())
         self.assertEqual(outcome.status, "paused")
+
+    def merge_closed_only(self):
+        """The NORMAL state at the landing once the merge boundary closes:
+        every assertion closed at `closed:merged`, nothing open."""
+        return Snapshot(items=[
+            Item(number=1, milestone="bolt/x", title="one", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+            Item(number=2, milestone="bolt/x", title="two", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+        ], milestone="bolt/x")
+
+    def test_a_failed_landing_on_an_all_merge_closed_milestone_still_pauses(self):
+        # The landing is the last boundary, with no session downstream to
+        # catch what it drops. An open-items-only set is empty here, and
+        # the pause would write nothing at all.
+        snapshot = self.merge_closed_only()
+        program, tracker = self.program("Landing: merge", ancestor=1,
+                                        tracker=FakeTracker(snapshot))
+        program.land_stage(snapshot)
+        outcome = program.land_stage(snapshot)
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+
+    def test_an_andon_on_a_merge_closed_item_is_still_read(self):
+        # The landing session's own work order tells it to raise the andon
+        # on an item; by then every assertion is closed.
+        snapshot = self.merge_closed_only()
+        tracker = FakeTracker(snapshot, comments={
+            1: [{"body": inbox.format_andon("criterion two failed again")}]})
+        program, tracker = self.program("Landing: merge", ancestor=1,
+                                        tracker=tracker)
+        outcome = program.land_stage(snapshot)
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn("andon on #1", outcome.detail)
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+
+    def test_the_landing_records_its_launch_on_merge_closed_items(self):
+        # `drive` skips mark_launch on an empty number set, and the stall
+        # budget is recovered from that marker across a restart.
+        snapshot = self.merge_closed_only()
+        program, tracker = self.program("Landing: merge", ancestor=1,
+                                        tracker=FakeTracker(snapshot))
+        program.land_stage(snapshot)
+        self.assertTrue(any(loop.SESSION_OPEN in w[2] for w in tracker.writes
+                            if w[0] == "comment"))
 
 
 class MergeCloseTest(unittest.TestCase):

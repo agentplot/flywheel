@@ -54,7 +54,7 @@ from _flywheel_inbox import (CLOSED_DONE, INTENT_PREFIX, IN_PROGRESS,
                              STAGE_DONE, STAGE_IN_SESSION, TYPE_ASSERTION,
                              Tracker, TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, set_needs_operator,
-                             unblocked)
+                             set_stage, unblocked)
 from _flywheel_sessions import (MAX_NAME, SessionSpec, WaitState, runner_for,
                                 supervise, work_order)
 
@@ -170,6 +170,7 @@ class Writer:
         self.snapshot = snapshot
         self.writes = []
         self._added = {}
+        self._removed = {}
 
     # -- bookkeeping -------------------------------------------------------
 
@@ -188,6 +189,8 @@ class Writer:
     def has_label(self, number, label):
         if label in self._added.get(number, set()):
             return True
+        if label in self._removed.get(number, set()):
+            return False           # this cycle took it off; the snapshot is stale
         if self.snapshot is not None:
             item = self.snapshot.item(number)
             if item is not None:
@@ -198,12 +201,14 @@ class Writer:
 
     def add_label(self, number, label):
         self._added.setdefault(number, set()).add(label)
+        self._removed.get(number, set()).discard(label)
         self._record("label", f"#{number}", f"+{label}")
         if self.apply and self.tracker:
             self.tracker.add_label(number, label)
 
     def remove_label(self, number, label):
         self._added.get(number, set()).discard(label)
+        self._removed.setdefault(number, set()).add(label)
         self._record("label", f"#{number}", f"-{label}")
         if self.apply and self.tracker:
             self.tracker.remove_label(number, label)
@@ -824,8 +829,7 @@ def dispatch_batch(batch, writer, runner, config, clock):
     for item in batch.items:
         if READY in item.labels:
             writer.relabel(item.number, remove=[READY], add=[IN_PROGRESS])
-        if not writer.has_label(item.number, STAGE_IN_SESSION):
-            writer.add_label(item.number, STAGE_IN_SESSION)
+        set_stage(writer, item.number, STAGE_IN_SESSION)
     writer.comment(batch.first, format_dispatch(name, clock()))
     handle = runner.launch(spec) if writer.apply else None
     return spec, handle
@@ -966,7 +970,7 @@ def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
         evidence = (collected.report or "").strip().splitlines()
         tail = evidence[-1][:200] if evidence else "no pane report"
         for number in fresh:
-            writer.add_label(number, STAGE_COLLECTED)
+            set_stage(writer, number, STAGE_COLLECTED)
             writer.close_issue(
                 number,
                 comment=f"Collected from `{spec.name}`. {tail}",

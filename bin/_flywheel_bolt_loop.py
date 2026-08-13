@@ -312,6 +312,39 @@ def plan_mode_declared(binding=None, milestone_description=None, flag=None):
     return bool(re.search(r"plan[- ]mode path", milestone_description or "", re.I))
 
 
+#: The keys a bolt might try to vary its stage set with. Read only so they
+#: can be REFUSED — the stage set is the bound type's, never the bolt's.
+STAGE_DECLARATION_KEYS = ("stages", "verify", "skip_verify")
+
+
+def refuse_stage_declaration(binding, config):
+    """A per-bolt stage declaration is refused, not honoured quietly.
+
+    Symmetric with `resolve_plan_mode`, and for the same reason: **the bolt
+    type is the scrutiny the release approved, and no program downgrades
+    it.** Skipping verify is `bolt-direct`'s property alone, exactly as the
+    plan-mode path is `bolt-quick`'s, so a `stages:` or `verify:` key in a
+    change's binding raises here rather than being ignored.
+
+    Ignoring it would satisfy the letter of "not reachable" and lose the
+    point: a bolt that wrote `verify: false` into its binding and watched
+    verify run anyway learns that the declaration is noise, and the next
+    reader wires it up. A refusal says which rule it broke.
+
+    Raises `LoopError`; returns the config unchanged when the binding is
+    clean, so callers can use it inline.
+    """
+    for key in STAGE_DECLARATION_KEYS:
+        if key in (binding or {}):
+            raise LoopError(
+                f"the binding declares {key!r}, but the stage set is the bound "
+                f"type's and not the bolt's — {config.name!r} runs "
+                f"{', '.join(config.stages)}. A type that omits verify is a "
+                f"named config (bolt-direct); the bolt type is the scrutiny "
+                f"the release approved, and no program downgrades it.")
+    return config
+
+
 def resolve_plan_mode(declared, config):
     """Permitted only where the bound type says `plan_mode: available`.
 
@@ -830,31 +863,14 @@ class BoltLoop:
                 self.tracker.remove_label(number, inbox.READY)
 
     def set_stage(self, numbers, stage):
-        """Move items to one `stage:*` label, removing any other.
+        """`inbox.set_stage` over a batch. Returns the numbers it wrote.
 
-        An item carries exactly ONE stage label, naming its leading edge —
-        the shape the tracker already uses for `state:*` — so that "the
-        items at `stage:built`" is a question with an answer rather than a
-        set that also holds everything further along.
-
-        **Nothing here touches a `closed:*` label.** `stage:merged` and
-        `closed:done` are two different facts — on the bolt branch, and on
-        main — and the landing stays the sole writer of the second.
-
-        Idempotent, and cheaply so: an item already at the target carries
-        no other stage by this method's own invariant, so the sweep is paid
-        only on a real transition. Returns the numbers it wrote.
+        The rule — one stage label, naming the leading edge, written by
+        removing the previous one — lives in `_flywheel_inbox` beside the
+        vocabulary itself, because the intent loop writes stages too and a
+        rule only this loop obeyed would not be a rule about the set.
         """
-        wrote = []
-        for number in numbers:
-            if self.tracker.has_label(number, stage):
-                continue
-            for other in inbox.STAGE_LABELS:
-                if other != stage and self.tracker.has_label(number, other):
-                    self.tracker.remove_label(number, other)
-            self.tracker.add_label(number, stage)
-            wrote.append(number)
-        return wrote
+        return [n for n in numbers if inbox.set_stage(self.tracker, n, stage)]
 
     def pause(self, numbers, reason):
         """Invariant 7: the label marks a live wait, applied at the moment
@@ -1572,9 +1588,18 @@ class BoltLoop:
         mode = self.landing_mode()
         on_milestone = snapshot.on(self.params.milestone)
         items = [i for i in on_milestone if i.is_open or i.merge_closed]
-        # The session is prompted about the items a human would still call
-        # open; a merge-closed item needs no verification, only its upgrade.
-        numbers = [i.number for i in items if i.is_open]
+        # EVERY unlanded item, open or merge-closed. This set is not "what
+        # the session is told to work" — the order below names the bolt, not
+        # items — it is the loop's own tracker surface for this stage: the
+        # launch marker the stall budget is recovered from, the notify and
+        # failure pauses, and the andon the landing session may raise. Once
+        # the merge boundary closes every assertion, an open-items-only set
+        # is EMPTY on the handoff path, and all four of those go silent:
+        # the pause writes no `needs-operator` anywhere and the andon marker
+        # the landing session's own work order tells it to write is never
+        # read. The landing is the last boundary, with no session downstream
+        # to catch what it drops.
+        numbers = [i.number for i in items]
         name = session_name("land", self.params.slug)
         order = sessions.work_order(
             f"Land bolt/{self.params.slug} per its bolt.md.",

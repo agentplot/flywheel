@@ -6,10 +6,10 @@ description: Flywheel construction tracking, the default bolt type - one change 
   adversarial code-review, and batched acceptance. Picked for normal work
   touching code others read.
 
-# The type as a named loop config. STUB: declared, nothing built. The loop
-# programs that will read it are #72 and #74; until they exist, a bolt type's
-# behaviour comes from apply.instruction below, which is what the current
-# compile-then-run machinery reads.
+# The type as a named loop config, and it is READ: bin/_flywheel_bolt_loop.py's
+# read_schema_config parses this block into a LoopConfig, and the loop runs the
+# strategy and the stage set it finds here. apply.instruction below remains the
+# prose a session reads; this block is what the program reads.
 #
 # Whatever ends up reading this block MUST read schema.yaml itself. openspec
 # 1.8.0 parses the file without complaint and then DROPS the block: its
@@ -50,8 +50,11 @@ artifacts:
       this change's artifacts. The work items are the released assertions' tracker items,
       moved into the milestone `bolt/<slug>` at release; anyone may queue
       an item or comment there. An item's progress through spec, review,
-      build and merge is its comment history; it closes `closed:done` with
-      the landing SHA in the closing comment.
+      build and merge is its comment history and its one `stage:*` label.
+      It closes `closed:merged` with the merge SHA when its work reaches
+      the bolt branch - which is what checks it off on the unit parent's
+      native bar - and the landing UPGRADES that reason to `closed:done`
+      with the landing SHA in the closing comment.
 
       NOTHING the bolt lands is edited without an item. A repo's
       CLAUDE.md, an architecture decision record (into the built repo's
@@ -196,9 +199,9 @@ apply:
     declare in its Merge criteria: "Landing: merge" (the default)
     lands the bolt branch on each repo's main through the gate, one
     writer at a time, comments the landing SHA on each item and
-    closes it closed:done; "Landing: pr" opens a pull request from
-    the bolt branch instead and reports its URL, items closing when
-    the PR merges. The landing session runs in the repo's main
+    upgrades its reason from closed:merged to closed:done; "Landing:
+    pr" opens a pull request from the bolt branch instead and reports
+    its URL, the items staying at closed:merged until the PR merges. The landing session runs in the repo's main
     checkout. A failing criterion births ONE fix item, born
     state:ready on this bolt - the release that approved the merge
     criteria covers meeting them; an open fix item for that criterion

@@ -472,6 +472,27 @@ class CompletionTest(unittest.TestCase):
         self.assertEqual(list(inspect.signature(intent.is_done).parameters),
                          ["number", "snapshot"])
 
+    def test_the_intent_loop_moves_the_leading_edge_like_the_bolt_loop(self):
+        # One vocabulary means one rule about the set: writing a stage
+        # removes the previous one, in BOTH loops. Accumulating them made
+        # `stage_of(..., DESIGN_STAGES)` answer `stage:in-session` for a
+        # finished item, because it returns the first match in order.
+        snap = Snapshot(items=[item(1, "stage:in-session", "stage:done")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        intent.set_stage(writer, 1, "stage:collected")
+        self.assertEqual([w.detail for w in writer.writes],
+                         ["-stage:in-session", "-stage:done",
+                          "+stage:collected"])
+        self.assertTrue(writer.has_label(1, "stage:collected"))
+        self.assertFalse(writer.has_label(1, "stage:in-session"),
+                         "the writer must not report a label it just removed")
+
+    def test_moving_to_a_stage_the_item_already_holds_writes_nothing(self):
+        snap = Snapshot(items=[item(1, "stage:collected")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        self.assertFalse(intent.set_stage(writer, 1, "stage:collected"))
+        self.assertEqual(writer.writes, [])
+
     def test_nothing_names_a_completion_signal_any_more(self):
         # The state in which no signal is configured, and completion is
         # therefore *unknown* rather than false, has ceased to exist.
@@ -596,6 +617,17 @@ class LandingTest(unittest.TestCase):
         self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
         self.assertEqual(runner.closed, ["research-x"],
                          "every item collected, so the session may be torn down")
+
+    def test_a_collected_item_ends_carrying_one_stage_label(self):
+        tracker = FakeTracker()
+        writer, report, runner = self._land(
+            config(apply=True), tracker,
+            items=[item(1, "stage:in-session", "stage:done")])
+        self.assertIn(("remove_label", 1, "stage:in-session"), tracker.calls)
+        self.assertIn(("remove_label", 1, "stage:done"), tracker.calls)
+        self.assertEqual(tracker.labels[1] & {"stage:in-session", "stage:done",
+                                              "stage:collected"},
+                         {"stage:collected"})
 
     def test_two_of_three_flipped_collects_exactly_those_two(self):
         tracker = FakeTracker()

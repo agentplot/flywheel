@@ -19,10 +19,13 @@ The five OpenSpec workflow schemas the loops track their work under:
   deliberately not a schema: plan mode replaces the spec step, and is
   `bolt-quick`'s option alone.)
 
-The `loop:` block is a stub in all four: declared, nothing built. It is
-also invisible to `openspec`, whose workflow-schema validator strips
-unknown top-level keys rather than rejecting or keeping them — so the
-programs that come to read it read `schema.yaml` themselves, and
+The `loop:` block is **read**: `bin/_flywheel_bolt_loop.py`'s
+`read_schema_config` parses it into a `LoopConfig`, and the loop runs the
+strategy and the stage set it finds there — which is what makes
+`bolt-direct` a named config rather than a branch in the loop's code. It
+is invisible to `openspec`, whose workflow-schema validator strips
+unknown top-level keys rather than rejecting or keeping them — which is
+why the programs that read it read `schema.yaml` themselves, and why
 `openspec schema fork` erases it from the copy it writes. Each schema's
 own comment carries the measurement.
 

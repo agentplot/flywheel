@@ -152,6 +152,15 @@ class ServerInboxTest(unittest.TestCase):
         self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
                          [("bolt/a", "run")])
 
+    def test_only_a_bolt_milestone_gets_a_job_from_a_merge_closed_item(self):
+        # `closed:merged` is the construction loop's label and the landing
+        # is a bolt's act; an intent milestone has no landing to wait for,
+        # so a stray one there must not keep an intent loop alive forever.
+        snap = Snapshot(items=[
+            Item(number=1, milestone="intent/a", state="closed",
+                 labels=frozenset({inbox.CLOSED_MERGED}))])
+        self.assertEqual(inbox.server_inbox(snap), [])
+
     def test_a_landed_item_gives_its_milestone_no_job(self):
         snap = Snapshot(items=[
             Item(number=1, milestone="bolt/a", state="closed",
@@ -387,6 +396,28 @@ class DispatchInboxTest(unittest.TestCase):
         snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR, state="closed"),
                                item(2, milestone=None, state="closed")])
         self.assertTrue(inbox.dispatch_inbox(snap).empty)
+
+    def test_a_merge_closed_escalation_is_still_relayed(self):
+        # The landing can now find every assertion already closed, so its
+        # pause lands on a closed item. A needs-operator nobody reads is
+        # the same silence as one never written.
+        snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR,
+                                    inbox.CLOSED_MERGED, state="closed",
+                                    milestone="bolt/x")])
+        self.assertEqual([i.number for i in inbox.dispatch_inbox(snap).relay], [1])
+
+    def test_a_landed_escalation_drops_out_of_the_relay(self):
+        # Bounded: the landing upgrades the reason and the item is gone
+        # from this filter for good.
+        snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR,
+                                    inbox.CLOSED_DONE, state="closed",
+                                    milestone="bolt/x")])
+        self.assertTrue(inbox.dispatch_inbox(snap).empty)
+
+    def test_a_merge_closed_item_is_never_triage(self):
+        snap = Snapshot(items=[item(1, inbox.CLOSED_MERGED, state="closed",
+                                    milestone=None)])
+        self.assertEqual(inbox.dispatch_inbox(snap).triage, ())
 
 
 # ---------------------------------------------------------------------------

@@ -368,7 +368,14 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
             # the SHA. Without this a loop killed between the last merge and
             # the landing is never restarted, because every other test here
             # reads open items.
-            add(item.milestone, "run", f"#{item.number} merged, awaiting the landing")
+            #
+            # Bolt milestones only. `closed:merged` is the construction
+            # loop's label and the landing is a bolt's act; an intent
+            # milestone has no landing to wait for, so a stray one there
+            # must not keep an intent loop alive forever.
+            if item.milestone.startswith(BOLT_PREFIX):
+                add(item.milestone, "run",
+                    f"#{item.number} merged, awaiting the landing")
             continue
         if not item.is_open:
             continue
@@ -614,11 +621,19 @@ def dispatch_inbox(snapshot):
     running bolt has a milestone and still needs relaying. Narrowing this to
     unmilestoned issues is a tempting tidy-up that silently breaks the one
     path the operator hears about live work on.
+
+    For the same reason it has no *open* condition either, quite: it relays
+    an item that is closed at `closed:merged`, because such an item is still
+    in flight — its bolt has not landed — and the landing is exactly where a
+    pause can now find every assertion already closed. A `needs-operator`
+    nobody reads is the same silence as one never written. The condition
+    stays bounded: the landing upgrades the reason to `closed:done`, and the
+    item drops out of this filter for good.
     """
-    open_items = [i for i in snapshot.items if i.is_open]
+    live = [i for i in snapshot.items if i.is_open or i.merge_closed]
     return DispatchInbox(
-        triage=tuple(i for i in open_items if not i.milestone),
-        relay=tuple(i for i in open_items if NEEDS_OPERATOR in i.labels),
+        triage=tuple(i for i in live if i.is_open and not i.milestone),
+        relay=tuple(i for i in live if NEEDS_OPERATOR in i.labels),
     )
 
 
@@ -718,6 +733,38 @@ def set_needs_operator(tracker, number, comment=None):
     if comment:
         tracker.comment(number, comment)
     tracker.add_label(number, NEEDS_OPERATOR)
+    return True
+
+
+def set_stage(tracker, number, stage):
+    """Move an item to one `stage:*` label, removing any other. True on a write.
+
+    An item carries exactly ONE stage label, naming its **leading edge** —
+    the shape the tracker already uses for `state:*` — so that "the items at
+    `stage:built`" is a question with an answer rather than a set that also
+    holds everything further along.
+
+    **Both loops write through here**, which is what makes the vocabulary
+    one vocabulary: the bolt loop owns four of the names, the intent loop
+    two and the operator one, and a rule about the set that only one loop
+    obeyed would be a rule about that loop instead.
+
+    Nothing here touches a `closed:*` label. `stage:merged` and
+    `closed:merged` are written at the same boundary but are not the same
+    act, and the closure vocabulary has its own writer.
+
+    Idempotent, and cheaply so: an item already at the target carries no
+    other stage by this function's own invariant, so the sweep is paid only
+    on a real transition. Takes any of the four-method label surfaces —
+    `Tracker`, `BoltTracker`, the intent loop's `Writer` — as its other two
+    writes here do.
+    """
+    if tracker.has_label(number, stage):
+        return False
+    for other in STAGE_LABELS:
+        if other != stage and tracker.has_label(number, other):
+            tracker.remove_label(number, other)
+    tracker.add_label(number, stage)
     return True
 
 
