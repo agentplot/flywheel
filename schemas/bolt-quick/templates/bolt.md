@@ -10,4 +10,4 @@
 - [repo] · bolt branch `bolt/[slug]` · worktree `~/.herdr/worktrees/[repo]/bolt-[slug]`
 
 ## Merge criteria
-[Acceptance suites green on the bolt branch; review requirements; full release gate always.]
+[Acceptance suites green on the bolt branch; review requirements; merge gate always.]

@@ -24,7 +24,7 @@ export const meta = {
     { title: 'Spec', detail: 'one spec-driven change per assertion, via /opsx:ff in a herdr session' },
     { title: 'Build', detail: 'apply each change, via /opsx:apply in a herdr session' },
     { title: 'Merge', detail: 'serialized: session branch -> bolt branch through the gate, then archive' },
-    { title: 'Land', detail: 'bolt branch -> main through the full gate, when bolt.md merge criteria hold; never in fixture mode' },
+    { title: 'Land', detail: 'bolt branch -> main through the merge gate, when bolt.md merge criteria hold; never in fixture mode' },
   ],
 }
 
@@ -162,7 +162,7 @@ if (!A.tracker) {
   landing = 'withheld - unmerged or blocked stages remain; answer panes and resume this run'
 } else {
   const land = await agent(
-    `Landing agent. First read the Merge criteria section of openspec/changes/${A.change}/bolt.md on ${A.boltBranch} and verify each criterion holds on that branch; if any does not, land NOTHING and return status failed with the failing criterion as the detail. When all hold: in ${A.repoDir}, land ${A.boltBranch} on main through the full release gate (wt merge, all hooks, never --yes) - one writer to main. ${trackerRules} Comment the landing SHA on each item and close it closed:done. Report the SHA.`,
+    `Landing agent. First read the Merge criteria section of openspec/changes/${A.change}/bolt.md on ${A.boltBranch} and verify each criterion holds on that branch; if any does not, land NOTHING and return status failed with the failing criterion as the detail. When all hold: in ${A.repoDir}, land ${A.boltBranch} on main through the merge gate (wt merge, all hooks, never --yes) - one writer to main. ${trackerRules} Comment the landing SHA on each item and close it closed:done. Report the SHA.`,
     { label: 'land', phase: 'Land', model: 'sonnet', schema: OUTCOME },
   )
   landing = land ? `${land.status}: ${land.detail}` : 'land agent lost'

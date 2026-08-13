@@ -191,7 +191,7 @@ apply instruction holds the loop, launched as
 
 - **Ready items get sessions**, batched, in parallel where batches
   are disjoint. Flip items `state:in-progress` as sessions start.
-- **Fold**: merge each finished session branch through the full gate
+- **Fold**: merge each finished session branch through the merge gate
   (`wt merge --no-remove -C <worktree>`) — books, mermaid and map are
   exactly what a documentation session should pass — then promote:
   decision records into `decisions/`, findings into `prototypes/`,

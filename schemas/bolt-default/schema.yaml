@@ -39,7 +39,7 @@ artifacts:
       4. **Merge criteria** - what "thorough enough to land on main" means
          for this bolt: the acceptance suites that must be green on the
          bolt branch, review requirements, and any repo-specific gates.
-         The full release gate (wt merge with full hooks) is always
+         The merge gate (wt merge, the repo's hooks) is always
          implied and never weakened.
 
       Two rules bind every section here. State a constraint only as

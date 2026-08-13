@@ -81,8 +81,9 @@ faults queued to the source intent.
 **WHICH STAGES EXIST IS THE BOLT TYPE'S FACT, NOT THIS SKILL'S.** The
 loop — its stages, their order, whether any review runs — is defined
 solely by the change's schema (`openspec instructions` shows it), and
-for `bolt-default` the loop IS the plugin's canonical script at
-`workflows/bolt-default.js`. This skill never adds a stage the loop
+is compiled from that instruction into the change's own
+`openspec/changes/<slug>/workflow.js`, mechanics taken verbatim from
+`workflows/reference-loop.js`. This skill never adds a stage the loop
 did not schedule: no review, no re-review, no bounce round exists
 unless the bolt type's own instruction names it. What this skill holds
 is the practice shared by every stage the loop does run:
@@ -100,7 +101,7 @@ is the practice shared by every stage the loop does run:
   conductor never downgrades it.
 - **Merging**: session branch to bolt branch through the gate
   (`wt merge <bolt-branch> --no-remove -C <worktree>`, never
-  `--yes`); bolt branch to main through the full release gate, one
+  `--yes`); bolt branch to main through the merge gate, one
   writer at a time, when `bolt.md`'s merge criteria hold. Comment the
   SHA, close the item, archive the built repo's spec-driven change,
   and comment the source intent's assertion item so the intent

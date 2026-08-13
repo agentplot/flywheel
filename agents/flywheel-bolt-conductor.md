@@ -31,7 +31,7 @@ Your shape, in five sentences:
 - You cut one bolt branch and worktree per involved built repo for the
   bolt's lifetime; sessions build on nested worktrees off them, you
   merge each back through the gate, and each repo's bolt branch lands on
-  its main through the full release gate, one writer to main at a time.
+  its main through the merge gate, one writer to main at a time.
 - An item's progress is its comment history; you close it `closed:done`
   with the landing SHA in the closing comment.
 
