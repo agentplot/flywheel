@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/bolt-default/schema.yaml apply.instruction
-INSTRUCTION SHA256: 6360d1296ad1023b
+INSTRUCTION SHA256: 72a7716e532caee0
 COMPILED BY: static compile pass, third round - review-2 verdicts
 folded: fixture trace, criteria-fix bounds, stage checkout rules. No INVENTED marks remain: models, limits, landing
 mode, and the landing actor are now the instruction's own words.
@@ -86,7 +86,8 @@ Return the snapshot AFTER your guard actions, with status ok. If you cannot read
 /* HERDR.MD: the driver recipe - one-prompt order, invocation first
    line, rename-then-confirm, wait semantics, ghost text is not
    input, close the pane when the outcome is read. */
-const drive = (name, cwd, order, label, itemNumber) => agent(`Drive one herdr session; never do its work yourself.
+const drive = (name, cwd, order, label, itemNumber) => agent(`Drive one herdr session; never do its work yourself. Your structured output is FINAL - you return exactly once, after the session settles; never park a monitor and return a placeholder.
+0. If an agent named "${name}" already exists (herdr agent list): drive THAT pane from step 4 on - never create a duplicate; if its work order was already delivered, skip to step 5.
 1. herdr tab create --cwd "${cwd}" --label "${name}" --no-focus  (tab label IS the agent name)
 2. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent flywheel-construction-session --model ${SESSION_MODEL} --dangerously-skip-permissions
 3. Prompt "/rename ${name}" alone; poll the title until it converges.

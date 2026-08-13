@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/flywheel-intent/schema.yaml apply.instruction
-INSTRUCTION SHA256: 2313d86708ee2093
+INSTRUCTION SHA256: 800469f9efab62b4
 COMPILED BY: static compile pass for review - not yet run. Mechanics
 marked "HERDR.MD:" delegated to skills/_reference/herdr.md.
 
@@ -103,7 +103,8 @@ const drive = (type, name, order, label, itemNumber, checkout) => {
   const cwdStep = checkout
     ? `1. Your session's cwd is ${checkout} - the existing checkout; cut NO worktree.\n2. herdr tab create --cwd "${checkout}" --label "${name}" --no-focus  (tab label IS the agent name)`
     : `1. In ${A.repoDir}: wt switch --create sess/${name} --base main --no-cd; resolve the worktree path (wt list).\n2. herdr tab create --cwd "<worktree>" --label "${name}" --no-focus  (tab label IS the agent name)`
-  return agent(`Drive one herdr session; never do its work yourself.
+  return agent(`Drive one herdr session; never do its work yourself. Your structured output is FINAL - you return exactly once, after the session settles; never park a monitor and return a placeholder.
+0. If an agent named "${name}" already exists (herdr agent list): drive THAT pane from the prompt-delivery step on - never create a duplicate; if its work order was already delivered, just wait on it.
 ${cwdStep}
 3. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent ${SESSION_PROFILE(type)} --model ${SESSION_MODEL[type]} --dangerously-skip-permissions
 4. Prompt "/rename ${name}" alone; poll the title until it converges.

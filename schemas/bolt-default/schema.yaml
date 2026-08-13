@@ -84,6 +84,12 @@ apply:
     the tracker, mint its token, or resolve its parameters STOPS THE
     RUN with the failure in the report; a failing cycle never loops.
 
+    A driver returns exactly once, after its session settles - its
+    structured output is final, and a placeholder return IS its
+    report, so it never parks a monitor and returns early. And a
+    driver is idempotent: an agent already running under its name is
+    driven, never duplicated.
+
     GUARDS - checked EVERY cycle, in this order; each is idempotent:
 
     0. No change dir at openspec/changes/<slug>: scaffold it
