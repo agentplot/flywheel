@@ -96,7 +96,8 @@ const SNAPSHOT = {
       labels: { type: 'array', items: { type: 'string' } },
       blocked_by: { type: 'array', items: { type: 'number' } },
       parent_batch: { type: ['number', 'null'] },
-    }, required: ['number', 'title', 'labels', 'blocked_by', 'parent_batch'] } },
+      merged: { type: 'boolean' },
+    }, required: ['number', 'title', 'labels', 'blocked_by', 'parent_batch', 'merged'] } },
     batches: { type: 'array', items: { type: 'object', properties: {
       number: { type: 'number' }, status: { type: 'string' },
       sub_issues: { type: 'array', items: { type: 'number' } },
@@ -142,7 +143,9 @@ Create no build worktrees and start no sessions.`,
 
 const queryAndGuards = (cycle) => agent(`Read the bolt tracker state and apply the guards, then return the post-guard snapshot as your structured output. ${T}
 
-Milestone: bolt/${A.slug}. Fields per item: number, title, body (the FULL body - on this bolt there are no assertion record files and the body IS the claim), labels, blocked_by (GitHub's dependency edges, read from the API, never inferred), parent_batch.
+Milestone: bolt/${A.slug}. Fields per item: number, title, body (the FULL body - on this bolt there are no assertion record files and the body IS the claim), labels, blocked_by (GitHub's dependency edges, read from the API, never inferred), parent_batch, and merged.
+
+merged is TRUE only if the item's comments record a merge-back of its work onto ${A.boltBranch} with a SHA. Read the comments; do not infer it from a label. state:in-progress does NOT mean merged - an item is flipped to in-progress when its build session STARTS, and it keeps that label until the landing closes it, so the label says nothing about whether any code landed. When in doubt, return false: the loop lands only on merged, and a false positive here lands a tree missing that item's work.
 
 GUARDS, in order, each idempotent - guard_actions records ONLY the writes you make; a check that changed nothing records NOTHING (an empty array is the normal, correct result):
 0. If openspec/changes/${A.slug} does not exist in the bolt worktree: scaffold it (/opsx:new ${A.slug}, bind bolt-quick), commit, continue. (It exists today; expect to record nothing.)
@@ -299,7 +302,7 @@ while (true) {
   lastSnapshot = s
 
   const readyNumbers = ready(s).map((i) => i.number)
-  if (readyNumbers.length === 0 && s.guard_actions.length === 0) break // STOP
+  if (readyNumbers.length === 0 && s.guard_actions.length === 0) break // STOP - nothing left to START
 
   /* The wave that owns the lowest-numbered ready wave; its batches run together. */
   const currentWave = Math.min(...readyNumbers.map(waveOf))
@@ -327,10 +330,20 @@ while (true) {
   }
 }
 
-/* LAND - a driven session like every stage. bolt.md declares "Landing: merge". */
+/* LAND - a driven session like every stage. bolt.md declares "Landing: merge".
+   THE GATE IS "EVERY ITEM MERGED", NOT "NOTHING READY". An item leaves the
+   ready set when its build session STARTS, so an empty ready set is satisfied
+   while that session is still building - and a landing fired then lands a tree
+   missing that item's work. This ran for real: a restarted loop found #74
+   already in-progress under a session it had not launched, read the empty
+   ready set as done, and started a landing while the build was live. Only the
+   merge record on each item is evidence that code landed. */
+const unmerged = lastSnapshot ? lastSnapshot.items.filter((i) => !i.merged) : []
 let landing = 'not attempted'
 if (A.fixture) {
   landing = 'fixture mode - landing never runs'
+} else if (unmerged.length > 0) {
+  landing = `NOT LANDING - ${unmerged.length} item(s) carry no merge record: ${unmerged.map((i) => '#' + i.number).join(', ')}. A session may still be building them, or a merge failed. Land only when every item's work is on the bolt branch.`
 } else if (lastSnapshot && ready(lastSnapshot).length === 0) {
   const name = 'land-loop-server'
   const order = `Landing session for bolt/${A.slug}, in the main checkout "${A.repoDir}".
