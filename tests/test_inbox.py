@@ -64,6 +64,36 @@ class FixtureContractTest(unittest.TestCase):
 # 1 · server
 # ---------------------------------------------------------------------------
 
+class TokenRefreshTest(unittest.TestCase):
+
+    def test_a_bad_credentials_exit_re_mints_and_retries_once(self):
+        calls = []
+        def flaky(token, *args, **kw):
+            calls.append(token)
+            if len(calls) == 1:
+                raise SystemExit("flywheel: gh api x failed: gh: Bad credentials (HTTP 401)")
+            return {"ok": True}
+        t = inbox.Tracker("stale", "o", "r", gh=flaky, graphql=lambda *a, **k: {})
+        t_resolve = lambda org: "fresh"
+        import _flywheel_gh
+        old = _flywheel_gh.resolve_token
+        _flywheel_gh.resolve_token = t_resolve
+        try:
+            out = t._gh("stale", "api", "/x")
+        finally:
+            _flywheel_gh.resolve_token = old
+        self.assertEqual(out, {"ok": True})
+        self.assertEqual(calls, ["stale", "fresh"])
+        self.assertEqual(t.token, "fresh")
+
+    def test_any_other_exit_is_not_retried(self):
+        def broken(token, *args, **kw):
+            raise SystemExit("flywheel: gh api x failed: HTTP 502")
+        t = inbox.Tracker("tok", "o", "r", gh=broken, graphql=lambda *a, **k: {})
+        with self.assertRaises(SystemExit):
+            t._gh("tok", "api", "/x")
+
+
 class ServerInboxTest(unittest.TestCase):
 
     def test_a_ready_or_in_progress_item_gives_its_milestone_a_run_job(self):

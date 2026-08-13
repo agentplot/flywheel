@@ -703,8 +703,31 @@ class Tracker:
             from _flywheel_gh import gh as _gh, graphql as _graphql
             gh = gh or _gh
             graphql = graphql or _graphql
-        self._gh = gh
+        self._gh = self._with_refresh(gh)
         self._graphql = graphql
+
+    def _with_refresh(self, raw):
+        """Retry exactly once with a re-minted token on Bad credentials.
+
+        Installation tokens live one hour and flywheel-token's cache
+        refreshes five minutes before expiry — but a long-lived process
+        holding the token STRING in memory sails past the hour (observed
+        live: a loop 401'd on the deliverables check after waiting out a
+        30-minute build; the server daemon would hit the same wall). The
+        wrapper ignores the stale first argument and re-resolves through
+        flywheel-token, whose cache makes the refresh cheap.
+        """
+        def call(token, *args, **kw):
+            try:
+                return raw(token, *args, **kw)
+            except SystemExit as err:
+                if "Bad credentials" not in str(err):
+                    raise
+                os.environ.pop("GH_TOKEN", None)   # never re-read a stale copy
+                from _flywheel_gh import resolve_token
+                self.token = resolve_token(self.org)
+                return raw(self.token, *args, **kw)
+        return call
 
     # -- reads -------------------------------------------------------------
 
