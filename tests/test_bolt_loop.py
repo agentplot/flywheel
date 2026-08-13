@@ -192,6 +192,25 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
                          run=shell or FakeShell(), clock=clock or FakeClock())
 
 
+class ContainerRoutingTest(unittest.TestCase):
+
+    def test_a_unit_parent_is_never_routed(self):
+        # Observed live: the loop composed discoveries into unit #120, then
+        # the next cycle routed the container itself and the keep path
+        # wrapped it in #121. A container is never work.
+        snap = Snapshot(items=[
+            item(120, inbox.QUEUED, inbox.UNIT, milestone="bolt/x"),
+            item(7, inbox.QUEUED, milestone="bolt/x"),
+        ])
+        l = a_loop(FakeTracker())
+        l.dry_run = True
+        actions = []
+        l.guard_route(snap, actions)
+        said = " ".join(actions)
+        self.assertIn("#7", said)
+        self.assertNotIn("#120", said)
+
+
 class WorktreeOrchestrationTest(unittest.TestCase):
 
     def test_an_existing_branch_without_a_worktree_gets_plain_switch(self):

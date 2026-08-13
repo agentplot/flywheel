@@ -1003,6 +1003,10 @@ class BoltLoop:
             i for i in snapshot.on(self.params.milestone)
             if i.is_open and i.queued and i.number not in skip
             and i.parent_batch is None and i.number not in claimed
+            # A container is never work: routing a unit asks the
+            # merge-criteria test of a box, and the keep path then wraps
+            # the box in another box, forever (observed live: #120 → #121).
+            and not ({inbox.UNIT, inbox.ELABORATION} & i.labels)
         ]
         if not orphans:
             return None
