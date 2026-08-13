@@ -1,0 +1,8 @@
+schema: bolt-quick
+created: 2026-08-13
+# A bolt change is a construction tracking record, not a spec-driven change.
+# This one is a bolt-quick on the plan-mode path — the operator's choice at
+# release, recorded in the milestone description — so no spec-driven change is
+# written for its items at all: each build session's approved plan, checked
+# against the item's claim, is the spec surrogate.
+skip_specs: true
