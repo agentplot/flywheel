@@ -2,17 +2,29 @@
 # above the org's repos). Not checked into git: placement is
 # machine-local, and cwd: entries below are relative to this folder.
 #
-# The fleet runs in the herdr session named here (default: this folder's
-# name, with any `github_` prefix dropped). Start it once with
+# This file is SERVER CONFIG PLUS DISPATCH. The work is not in it: the
+# tracker says which milestones have jobs, and `flywheel server` starts
+# one loop process per milestone that does.
+#
+# The fleet's agents run in the herdr session named here (default: this
+# folder's name, with any `github_` prefix dropped). Start it once with
 # `herdr --session <name>`; it persists.
+#
+# Server config, top-level (FULL-LINE comments only — a `#` inside a
+# value is part of the value):
+#   session   — the herdr session the fleet's agents run in
+#   tracker   — `org/repo`, the org's tracker; the server reads no other
+#   project   — the org Project whose Status lane carries the approval
+#               (default: Flywheel)
+#   loops_cwd — the checkout the loop processes run in, relative to this
+#               folder; the repo holding openspec/changes/
 #
 # States:
 #   running — `flywheel up` starts this actor if it is not alive
 #   parked  — deliberately not running; requests park in the change's
 #             queued items and comments until the actor is next started
 #
-# Every actor row (FULL-LINE comments only — a `#` inside a value is part
-# of the value):
+# Every actor row:
 #   name    — the herdr agent name (the addressing scheme)
 #   profile — the agent profile loaded by --agent (bare names resolve to
 #             this plugin's copies)
@@ -21,17 +33,25 @@
 #   host    — a name from hosts: below
 #   state   — running | parked
 #   cwd     — working tree, relative to this folder
-#   prompt  — the first prompt, sent as its own message; for a conductor
-#             this is the whole invocation:
-#             /opsx:apply build a dynamic workflow with the instructions
-#             for <change>
+#   prompt  — the first prompt, sent as its own message rather than
+#             folded into a longer one, which is what makes a slash
+#             command in it load
 
 session: myorg
+tracker: myorg/my-tracker-repo
+loops_cwd: my-coordination-repo/main
 
 hosts:
   workstation:
     hostname: my-machine
     default: true
+
+# Optional. A board Team routes its milestone's loop to a host, so a
+# server takes only the loops that map to it. Work with no team, or a
+# team no host claims, runs wherever the server sees it.
+#
+# teams:
+#   Platform: workstation
 
 actors:
   - name: dispatch

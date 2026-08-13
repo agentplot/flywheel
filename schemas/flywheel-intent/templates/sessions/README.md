@@ -9,5 +9,5 @@
 - [file in this directory] — [what it is]
 
 ## Delivered
-- [what went back to the conductor: decisions closed, findings, tasks to
-  check or append, what the next batch should work]
+- [what the loop collects: decisions closed, findings, tasks to check or
+  append, what the next batch should work]

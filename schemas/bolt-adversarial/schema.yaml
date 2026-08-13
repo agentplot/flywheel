@@ -46,19 +46,19 @@ artifacts:
       You are writing the bolt record for a flywheel construction change.
 
       A bolt is one construction iteration: the record for building a batch
-      of released assertions across one or more built repos. Its conductor
-      (herdr agent `bolt-<slug>`) is the sole writer of this change's
-      artifacts. The work items are the released assertions' tracker items,
+      of released assertions across one or more built repos. Its loop
+      process (`flywheel-bolt-loop --slug <slug>`) is the sole writer of
+      this change's artifacts. The work items are the released assertions' tracker items,
       moved into the milestone `bolt/<slug>` at release; anyone may queue
       an item or comment there. An item's progress through spec, review,
       build and merge is its comment history; it closes `closed:done` with
       the landing SHA in the closing comment.
 
-      Three edits the bolt conductor makes DIRECTLY, with no item: a
-      repo's CLAUDE.md, an architecture decision record (into the built
-      repo's log4brains layout - the bolt is where the material for one
-      exists), and the loop's own machinery where the change is small and
-      self-evident. Everything else the bolt lands is carried by an item.
+      NOTHING the bolt lands is edited without an item. A repo's
+      CLAUDE.md, an architecture decision record (into the built repo's
+      log4brains layout - the bolt is where the material for one exists),
+      a machinery tweak however small and self-evident: each is a GitHub
+      issue like all other work. There is no direct-edit route.
 
       **Output:** bolt.md with exactly these sections:
       1. **Scope** - what this bolt builds, in one paragraph.

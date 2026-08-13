@@ -16,8 +16,9 @@ carry the underscore and the extension precisely so they read as
 not-a-command — `_flywheel_gh.py` (tracker plumbing), `_flywheel_sessions.py`
 (session launch and supervision), `_flywheel_inbox.py` (the tracker's four
 inbox filters), `_flywheel_bolt_loop.py` (the construction loop itself, which
-`flywheel-bolt-loop` runs) and `_flywheel_intent.py` (the design loop's cycle,
-guards and dispatch). A loop program's logic lives in a module rather than in
+`flywheel-bolt-loop` runs), `_flywheel_intent.py` (the design loop's cycle,
+guards and dispatch) and `_flywheel_server.py` (the reconcile pass and the
+daemon that repeats it). A loop program's logic lives in a module rather than in
 the command because the command is extensionless and so not importable, and
 the unit suite in `../tests/` has to reach it. A sibling imports one by
 putting its own directory on the path, since the commands beside them are
@@ -36,8 +37,12 @@ settled mid-bolt, because moving `_flywheel_gh.py` touches five commands.
 The commands here are zero-dependency stdlib scripts, which is the bar for
 skipping the `../tools/` split:
 
-- `flywheel` — drive an org fleet from its `fleet.yaml` (`up` /
-  `status`); the `flywheel:fleet` skill wraps it.
+- `flywheel` — drive an org fleet from its `fleet.yaml`. `server` is the
+  daemon: every 60s it starts one loop process per milestone with a job,
+  stops those without, and runs a one-shot archive for a closed
+  milestone whose change is still on disk. `up` starts dispatch and then
+  the server, detached; `status` reports both against the tracker. The
+  `flywheel:fleet` skill wraps it.
 - `flywheel-bolt-loop` — run one bolt's construction loop: query+guards,
   spec by the type's strategy, apply, verify, merge through the gate,
   landing per `bolt.md`, STOP. `--dry-run` reads and decides without

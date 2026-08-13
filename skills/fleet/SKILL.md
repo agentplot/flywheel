@@ -1,14 +1,18 @@
 ---
 name: fleet
-description: Drive an org's flywheel fleet from its manifest — flywheel up starts every running-state actor into the org's named herdr session, flywheel status reports every row against the live roster. Use when the operator asks to bring the fleet up, check on the fleet, park or place conductors, or set up a new org's fleet.yaml.
+description: Drive an org's flywheel fleet from its manifest — flywheel up starts dispatch and the server that runs the loops, flywheel server is that daemon, flywheel status reports every row against the live roster and every milestone with a job. Use when the operator asks to bring the fleet up, check on the fleet, join a host to the fleet, park or place an actor, or set up a new org's fleet.yaml.
 ---
 
-# Fleet — the org's conductors, placed and restored
+# Fleet — the org's server, its loops, and dispatch
 
 One fleet per GitHub org, in its own named herdr session. The manifest is
 `fleet.yaml` at the **org folder root** — the directory above the org's
 repos — and it is not checked into git: placement is machine-local, and
 `cwd:` entries are relative to that folder.
+
+The manifest is **server config plus dispatch**. The work itself is not
+in it and never was: the tracker says which milestones have jobs, and the
+server starts one loop process per milestone that does.
 
 ## The command
 
@@ -17,12 +21,14 @@ directory-marketplace install leaves it off), so invoke by the plugin
 root — `${CLAUDE_PLUGIN_ROOT}` is substituted into this skill at load:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel status     # every row vs the live roster
-"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel up         # start running-state manifest rows
-"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel reconcile  # the whole pass: rows + tracker-driven conductors + nudges
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel status  # rows vs the roster, and the tracker's jobs
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel up      # dispatch, then the server, detached
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel server  # the daemon itself, in the foreground
 ```
 
-Both take `--fleet <path>` when invoked outside the org tree, and
+`server` takes `--interval SECONDS` (default 60), `--once` for a single
+pass, and `--dry-run` to read and plan without starting, stopping or
+writing anything. All three take `--fleet <path>` when invoked outside the org tree, and
 `--host <name>` to override host detection. The command walks up from the
 working directory to find `fleet.yaml`, so from any repo in the org the
 bare command does the right thing.
@@ -43,16 +49,17 @@ Starting the session is the operator's — attach it once and it persists.
 ## Setting up a new org
 
 Copy `template-fleet.yaml` (beside this skill) to the org folder root as
-`fleet.yaml`, then fill in the hosts' hostnames and the actor rows. A
-conductor row's `prompt:` is the whole load-bearing invocation, slash
-command included:
+`fleet.yaml`, then fill in `tracker:`, `loops_cwd:`, the hosts'
+hostnames, and the dispatch row.
 
-```
-/opsx:apply build a dynamic workflow with the instructions for <change>
-```
+`loops_cwd:` is the checkout the loop processes run in, relative to the
+org folder — the repo holding `openspec/changes/`. Without it the server
+has nowhere to start a loop and says so rather than starting nothing
+quietly.
 
-Sent as prose inside a longer message it loads nothing — the prompt field
-is delivered as its own message, which is why it works.
+An actor row's `prompt:` is delivered as its own message rather than
+folded into a longer one, which is what makes a slash command in it
+load.
 
 ### Grant each built repo's hook approvals
 
@@ -65,9 +72,10 @@ wt config approvals add
 
 `wt` runs a project hook only against a standing grant, so a repo whose
 `.config/wt.toml` hooks are ungranted is a repo whose merge gate its
-agents cannot run. `flywheel up` and `flywheel reconcile` check this
-before starting anything and **refuse to start actors into a repo that
-fails it**, naming the ungranted templates and this command;
+agents cannot run. `flywheel up` checks this before starting an actor
+and the server checks it before starting a loop process — both **refuse
+to start work into a repo that fails it**, naming the ungranted
+templates and this command;
 `flywheel status` reports it as a row per repo. Ungranted, the stoppage
 would otherwise land mid-merge, on an agent with no way to fix it.
 
@@ -87,27 +95,37 @@ right outcome is the refusal you get — not a way around it.
 
 It never decides ownership (the tracker items' assignee does), never
 stops a manifest row (dispatch and any hand-placed actor are the
-manifest's; only tracker-driven conductors are stopped, and only by
-the reconcile pass when their milestone has no job), and never starts
-a `parked` row — parked is a statement that requests wait as queued
-items and comments until the actor is next started. Rows on other
-hosts are reported, not driven.
+manifest's), and never starts a `parked` row — parked is a statement
+that requests wait as queued items and comments until the actor is next
+started. Rows on other hosts are reported, not driven.
 
-`flywheel reconcile` is the deterministic pass that runs the whole
-fleet: it converges the manifest rows, then gives every `intent/*` and
-`bolt/*` milestone its conductor when it has a job — **ready** (open
-`state:ready`/`state:in-progress` items, or a batch moved to Ready on
-the board), **compose** (queued items with no open batch), or
-**archive** (the operator closed the milestone and the change still
-sits in `openspec/changes/`) — nudges settled conductors with a job,
-nudges dispatch on waiting `needs-operator` relays and on unmilestoned
-open items awaiting triage, and **stops** any settled conductor whose
-milestone has no job; a later job starts a fresh session that
-rehydrates from the records. One-shot, on `--interval`, or `--dry-run`
-to print the plan. Placement reads the board's Team field through the
-manifest's `teams:` map; conductors start in `conductors_cwd:` on
-`conductor_model:`.
+## The server
 
-After hand-starting a conductor outside this command, record it in
+`flywheel server` is the daemon the operator starts on any host they
+want in the fleet. Every 60 seconds it reads the tracker and starts one
+**loop process** per milestone with a job — `flywheel-bolt-loop` for a
+`bolt/*` milestone, `flywheel-intent-loop` for an `intent/*` one — stops
+the process for any milestone that no longer has one, and runs a
+one-shot archive for a closed milestone whose change still sits in
+`openspec/changes/`.
+
+A milestone has a job when it holds an open `state:ready` or
+`state:in-progress` item, or a batch the operator moved to Ready on the
+board. The loops are stateless: stopping one loses nothing, and a later
+job starts a fresh process that re-reads the tracker and the records.
+
+**Multi-host is one server per host, sharing the tracker.** A board Team
+routes its milestone through the manifest's `teams:` map, and a server
+takes only the loops that map to it; work with no team, or a team no
+host claims, runs wherever the server sees it. One server per org per
+host — a second would start every loop twice, and the first one's
+pidfile is what stops that.
+
+Operator visibility is the server's log, under
+`$XDG_STATE_HOME` (or `~/.local/state`) `/flywheel/<org>/` — `server.log`
+for the pass, and one `loops/<kind>-<slug>.log` per loop process.
+`flywheel status` names both.
+
+After hand-starting an actor outside this command, record it in
 `fleet.yaml` — the manifest is placement's one record, and an actor it
 does not carry is invisible to `flywheel status`.

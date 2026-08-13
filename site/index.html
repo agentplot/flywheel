@@ -621,19 +621,22 @@ flowchart TB
 <section class="panel" id="actors">
   <div class="wrap">
     <h2>The actors</h2>
-    <p class="sub">Nine profiles — six actors and three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
+    <p class="sub">Two loop programs, four agent profiles, three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
 
     <div class="figure">
 <pre class="mermaid">
 flowchart TD
   op(["you"])
 
+  srv["flywheel server<br/><small>one per host · every 60s</small>"]
   disp["dispatch<br/><small>standing singleton</small>"]
-  ic["intent conductor<br/><small>one per intent</small>"]
+  ic["intent loop<br/><small>one process per intent</small>"]
   rs["design session<br/><small>planning · research · prototype · writeback · handoff</small>"]
   is["interactive session<br/><small>builds a surface you work</small>"]
-  bc["bolt conductor<br/><small>one per bolt</small>"]
+  bc["bolt loop<br/><small>one process per bolt</small>"]
   agents["construction sessions<br/><small>proposal-writing · review · spec · build · test</small>"]
+
+  tracker["the tracker<br/><small>the only bus</small>"]
 
   wIntent["the intent's own records<br/>decisions · tasks · design"]
   wSession["that session's own directory"]
@@ -641,11 +644,14 @@ flowchart TD
   wBolt["the bolt's registry<br/>and its tasks"]
   wCode["the built repositories"]
 
+  op --> tracker
   op --> disp
-  disp --> ic
+  disp --> tracker
+  tracker --> srv
+  srv -- "a job" --> ic
+  srv -- "a job" --> bc
   ic --> rs
   ic --> is
-  ic -- "at the gate" --> bc
   bc --> agents
 
   ic --> wIntent
@@ -662,17 +668,20 @@ flowchart TD
   classDef b stroke-width:1.5px
   classDef w stroke-width:1.5px,stroke-dasharray:4 3
   class op hu
-  class disp,ic,rs,is d
-  class bc,agents b
-  class wIntent,wSession,wBooks,wBolt,wCode w
+  class disp,rs,is d
+  class srv,ic,bc,agents b
+  class tracker,wIntent,wSession,wBooks,wBolt,wCode w
 </pre>
     </div>
     <p class="caption">
       Grey boxes are write scopes. A design session never writes a decision
-      record and never checks its own task off — it reports, and the conductor
-      promotes. A conductor never edits inside a session's directory. The books
+      record and never checks its own task off — it reports, and the loop
+      promotes. A loop never edits inside a session's directory. The books
       and the context map are the one scope two actors share, and that is
       deliberate: they are the destination, and both loops read them.
+      Nothing here messages anything else: every arrow into a loop is a
+      tracker query, and every arrow out of a session is a commit, an item
+      comment, or a label.
     </p>
 
     <table>
@@ -681,18 +690,19 @@ flowchart TD
       </thead>
       <tbody>
         <tr><td><code>dispatch</code></td><td>always — one per org fleet</td><td>new intent changes, at the moment of triage, and nothing else</td></tr>
-        <tr><td><code>intent conductor</code></td><td>its intent</td><td>that intent's records; the books; the context map</td></tr>
+        <tr><td><code>flywheel server</code></td><td>always — one per host in the fleet</td><td>nothing; it starts and stops loop processes</td></tr>
+        <tr><td><code>intent loop</code></td><td>one process, while its intent has a job</td><td>that intent's records; the books; the context map</td></tr>
         <tr><td><code>design session</code></td><td>one task batch</td><td>its session directory, its own task lines, its charged closures; the books; the context map</td></tr>
-        <tr><td><code>bolt conductor</code></td><td>its bolt</td><td>the bolt's proposal registry and tasks</td></tr>
+        <tr><td><code>bolt loop</code></td><td>one process, while its bolt has a job</td><td>the bolt's proposal registry and tasks</td></tr>
         <tr><td><code>spec / apply / testing</code></td><td>one job</td><td>the change and branch their registry row names</td></tr>
       </tbody>
     </table>
 
     <p>
-      Dispatch is the only actor bridged to you. A question a bolt conductor
-      cannot answer travels out through dispatch and the answer comes back to
-      the conductor that raised it — never to a different actor, and never as
-      an edit to that conductor's change.
+      Dispatch is the only actor bridged to you. A question a construction
+      session cannot answer travels out through dispatch and the answer comes
+      back as a comment on the item that raised it — never to a different
+      actor, and never as an edit to that bolt's change.
     </p>
 
     <p class="more"><a href="https://github.com/agentplot/flywheel#the-actors">Read this in full in the README</a></p>

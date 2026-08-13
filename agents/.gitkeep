@@ -1,18 +1,24 @@
 # agents/
 
-The nine agent profiles — six actors and three `user-*` personas. (This
+The seven agent profiles — four actors and three `user-*` personas. (This
 note lives in .gitkeep because a README.md here would be parsed as a
 profile and fail `claude plugin validate --strict`.)
 
-Actors: `flywheel-dispatch`, `flywheel-intent-conductor`,
-`flywheel-bolt-conductor`, `flywheel-design-session`,
+Actors: `flywheel-dispatch`, `flywheel-design-session`,
 `flywheel-interactive-session`, `flywheel-construction-session`.
 Personas — lenses a review session runs under, never actors:
 `user-data-scientist`, `user-devops-engineer`, `user-app-developer`.
+
+**A profile exists where a mind is needed and nowhere else.** Dispatch is
+the one standing agent, because triage and relay need judgment and a
+Discord channel; the other three are the session hosts the loops launch.
+The loops themselves are programs — `bin/flywheel-bolt-loop` and
+`bin/flywheel-intent-loop`, started by `flywheel server` — and a program
+needs argv, not a profile.
 
 **The profiles keep their `flywheel-` prefix where the skills drop theirs, and
 the asymmetry is deliberate.** `claude --agent` resolves a plugin agent by its
 bare name as well as its namespaced one, so the bare name is the addressable
 one and has to stay globally unique. A skill invoked as `/flywheel:inception`
 carries its namespace in the invocation; an agent launched as
-`--agent flywheel-intent-conductor` does not.
+`--agent flywheel-design-session` does not.

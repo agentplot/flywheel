@@ -11,8 +11,8 @@ artifacts:
     instruction: |
       You are writing the intent record for a flywheel outer-loop change.
 
-      The intent conductor (herdr agent `intent-<slug>`) is the sole
-      writer of this change's artifacts. Work items live on the org's
+      The intent loop process (`flywheel-intent-loop --slug <slug>`) is
+      the sole writer of this change's artifacts. Work items live on the org's
       tracker under the milestone `intent/<slug>` - anyone may queue an
       item or comment there; the operator's own word is applied directly
       by whoever holds it, with a comment recording the change.
@@ -136,13 +136,13 @@ artifacts:
   - id: sessions
     generates: sessions/**/*
     description: Design session directories - one per session, the working record
-      the conductor promotes from
+      the loop promotes from
     template: sessions/README.md
     instruction: |
       You are opening or closing a tracked design session for a flywheel intent.
 
-      The intent conductor launches every design session, names its type
-      in the work order, and assigns it a directory under the change:
+      The intent loop launches every design session, names its type in
+      the work order, and assigns it a directory under the change:
       `sessions/<YYYY-MM-DD>-<slug>/`. The date is the day the session is
       charged; the slug names the batch of work, not its outcome. The
       session is the sole writer inside its directory.
@@ -154,8 +154,11 @@ artifacts:
       Each directory opens with `README.md`: the work order, what the
       session produced (reports, decision drafts, prototype notes - all
       real committed files, here and nowhere else), and what it delivered.
-      The session comments each item it worked; the conductor merges the
-      session's branch and closes items on the evidence.
+      The session comments each item it worked; the loop merges the
+      session's branch and closes items on the evidence, once the
+      OPERATOR has marked the session done on the tracker. Completion is
+      never inferred from a round artifact - a plannotator or lavish
+      round may be worked as many times as the operator wants.
 
       A closed session directory is never rewritten - it is the trail. When
       later work revises what a session decided, the decision record moves;

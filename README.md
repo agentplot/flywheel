@@ -108,14 +108,20 @@ shortcut around it.
 
 ## The actors
 
-Nine profiles: six actors and three persona lenses. Each actor owns a
-write scope, and the scopes do not overlap.
+Two loop programs, four agent profiles, three persona lenses. Each actor
+owns a write scope, and the scopes do not overlap.
+
+The loops are programs, not agents: `flywheel server` is a daemon the
+operator starts on any host, and every 60 seconds it starts one stateless
+loop process per milestone the tracker gives a job to and stops those
+without. A profile exists where a mind is needed and nowhere else.
 
 | actor | lives as long as | writes |
 |---|---|---|
+| `flywheel server` | always — one per host in the fleet | nothing; it starts and stops loop processes |
 | `flywheel-dispatch` | always — one per fleet | new intent changes, at the moment of triage; inbox files; nothing else |
-| `flywheel-intent-conductor` | its intent | that intent's records on main; the books; the context map |
-| `flywheel-bolt-conductor` | its bolt | the bolt's proposal registry and its tasks, on main |
+| `flywheel-intent-loop` | one process, while its intent has a job | that intent's records on main; the books; the context map |
+| `flywheel-bolt-loop` | one process, while its bolt has a job | the bolt's proposal registry and its tasks, on main |
 | `flywheel-design-session` | one task batch | its session directory, its own task lines, its charged closures, the books and map — in its worktree |
 | `flywheel-interactive-session` | one task batch | the same, and it builds a page you work |
 | `flywheel-construction-session` | one task batch | the built repo and its own task lines — in its worktree |
@@ -126,17 +132,21 @@ actors, never owners.
 
 Two consequences worth stating outright, because both are load-bearing:
 
-- **A session closes what it was charged with; the conductor opens what
-  it discovered.** In its own worktree a session checks off exactly its
+- **A session closes what it was charged with; the loop opens what it
+  discovered.** In its own worktree a session checks off exactly its
   assigned task lines and writes the decision records for questions it
-  closed firsthand; the conductor is sole writer on main, and its merge
-  is what admits a session's work. A conductor, symmetrically, never
-  edits inside a session's directory.
-- **Dispatch is the only actor bridged to a human.** A question a bolt
-  conductor cannot answer travels out through dispatch — resolved change
-  → owner → DM — and the answer comes back to the conductor that raised
-  it, never to a different actor, and never as an edit to that
-  conductor's change.
+  closed firsthand; the loop is sole writer on main, and its merge is
+  what admits a session's work. A loop, symmetrically, never edits
+  inside a session's directory.
+- **Dispatch is the only actor bridged to a human.** A question a
+  construction session cannot answer travels out through dispatch —
+  resolved change → owner → DM — and the answer comes back as a comment
+  on the item that raised it, never to a different actor, and never as
+  an edit to that bolt's change.
+- **Nothing messages anything else.** The tracker is the only bus: a
+  discovery is an issue, an escalation is a label, a completion is item
+  state, and each consumer — server, bolt loop, intent loop, dispatch —
+  reads one exact filter over it.
 
 ## Install
 
