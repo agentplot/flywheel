@@ -10,6 +10,24 @@ be called by name and nothing else.
 This repository's own gate scripts live in `../scripts/`, precisely because
 they are not that.
 
+The `_`-prefixed `.py` files here are the exception the rule needs: shared
+modules the commands beside them import, and that no user ever calls. They
+carry the underscore and the extension precisely so they read as
+not-a-command — `_flywheel_gh.py` (tracker plumbing), `_flywheel_sessions.py`
+(session launch and supervision) and `_flywheel_inbox.py` (the tracker's four
+inbox filters). A sibling imports one by putting its own directory on the
+path, since the commands beside them are extensionless:
+
+```python
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _flywheel_gh import resolve_token, gh
+```
+
+Whether shared modules like these belong here at all or under `../tools/` is
+an open question — the bar stated below is "self-contained", and a command
+importing a sibling module is arguably not that. It is queued rather than
+settled mid-bolt, because moving `_flywheel_gh.py` touches five commands.
+
 Two commands live here now, whole — each is a self-contained,
 zero-dependency script, which is the bar for skipping the `../tools/`
 split:

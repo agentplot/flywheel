@@ -1,11 +1,13 @@
 { pkgs, config, ... }:
 
 {
-  # Three gates and a preview server, and that is the whole reason this repo
-  # has a devenv. node runs two of the three checks and the mermaid bundle the
-  # site check parses with, while sh runs the manifest validator;
-  # python3 serves site/ locally, because the page must work as plain static
-  # files or GitHub Pages will not serve it either.
+  # Three gates, a unit suite and a preview server, and that is the whole
+  # reason this repo has a devenv. node runs two of the three checks and the
+  # mermaid bundle the site check parses with, while sh runs the manifest
+  # validator; python3 serves site/ locally, because the page must work as
+  # plain static files or GitHub Pages will not serve it either — and it runs
+  # the loop programs' unit suite, which is stdlib unittest and needs nothing
+  # added here.
   packages = [
     pkgs.nodejs_22
     pkgs.python3
@@ -23,6 +25,21 @@
       sh scripts/validate-manifests.sh
       node scripts/check-paths.mjs
       node scripts/check-site.mjs
+    '';
+  };
+
+  # `devenv shell -- tests` — the loop programs' unit suite. The same script
+  # `npm test` runs, so a green claim means the same thing either way. It is
+  # deliberately NOT part of `gates` above: the three gates are also the
+  # [pre-merge] hooks in .config/wt.toml, those are approval-gated per
+  # command, and a fourth entry would block every merge on an interactive
+  # grant nobody can give in a loop. Wiring it into the gate is its own item.
+  scripts.tests = {
+    description = "Run the unit suite for the loop programs";
+    exec = ''
+      set -euo pipefail
+      cd ${config.devenv.root}
+      sh scripts/test.sh
     '';
   };
 
