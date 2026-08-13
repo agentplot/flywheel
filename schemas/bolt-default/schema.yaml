@@ -40,7 +40,9 @@ artifacts:
          for this bolt: the acceptance suites that must be green on the
          bolt branch, review requirements, and any repo-specific gates.
          The merge gate (wt merge, the repo's hooks) is always
-         implied and never weakened.
+         implied and never weakened. A "Landing:" line sets how the
+         bolt reaches main - "merge" (default, direct through the
+         gate) or "pr" (a pull request opened from the bolt branch).
 
       Two rules bind every section here. State a constraint only as
       strongly as you verified it, naming the tree and the check behind
@@ -81,6 +83,22 @@ apply:
        the intent that owns its subject, or leave it unmilestoned for
        dispatch. Compose what remains into a unit at Backlog.
 
+    MODELS - explicit in every call the compiled script makes;
+    nothing inherits a default silently. The workflow's own agents -
+    query+guards and every driver - run model sonnet, effort low.
+    The sessions drivers start take their model at agent start
+    (--model): spec-writing, build, merge, and landing sessions run
+    sonnet while the mechanics are pinned (this overrides the type
+    table's opus[1m] for construction; reviews will re-raise it).
+
+    LIMITS, by session type, compiled into each driver: for
+    construction sessions (spec, build, merge, land), after 90
+    minutes of waiting the driver comments the wait on the item and
+    adds needs-operator - a live wait, dispatch relays - and KEEPS
+    waiting; after 4 hours it returns stalled and leaves the pane
+    open. Other types take these defaults until their own limits are
+    stated here.
+
     WORK - while any item is state:ready. Stripped while the loop
     mechanics are pinned: no review steps; the merge gate is the only
     reviewer; reviews return to this instruction once the mechanics
@@ -103,10 +121,14 @@ apply:
       then re-run the guards and re-query.
 
     LAND when every item is merged and bolt.md's merge criteria hold
-    - verified by the landing agent, which refuses to land otherwise:
-    the bolt branch to each repo's main through the gate, one writer
-    at a time; comment the landing SHA on each item and close it
-    closed:done.
+    - verified by the landing session, a driven stage like any other,
+    which refuses to land otherwise. The landing mode is bolt.md's to
+    declare in its Merge criteria: "Landing: merge" (the default)
+    lands the bolt branch on each repo's main through the gate, one
+    writer at a time, comments the landing SHA on each item and
+    closes it closed:done; "Landing: pr" opens a pull request from
+    the bolt branch instead and reports its URL, items closing when
+    the PR merges.
 
     A session that edits files or may need the operator always gets a
     herdr pane; pure read-and-report may run in-process. Tracker

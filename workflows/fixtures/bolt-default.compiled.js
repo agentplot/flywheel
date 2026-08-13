@@ -1,17 +1,11 @@
 /*
 COMPILED FROM: schemas/bolt-default/schema.yaml apply.instruction
-INSTRUCTION SHA256: 8287f575da1b62d0
-COMPILED BY: a static compile pass for review - not yet run.
-
-Everything here traces to a line of the instruction, with two sourced
-exceptions, marked in place:
-- "HERDR.MD:" mechanics the instruction delegates by pointing at
-  skills/_reference/herdr.md (the one-prompt rule, rename-confirm,
-  wait semantics, ghost text, pane close). That file is the mechanics
-  source; no reference-loop.js was consulted.
-- "INVENTED:" details the instruction and herdr.md are both silent
-  on. Each is a review question: either the instruction gains a line,
-  or the detail genuinely doesn't matter.
+INSTRUCTION SHA256: 72349a167518c7d1
+COMPILED BY: static compile pass, second round - operator rulings of
+2026-08-12 folded. No INVENTED marks remain: models, limits, landing
+mode, and the landing actor are now the instruction's own words.
+Mechanics marked "HERDR.MD:" are delegated to
+skills/_reference/herdr.md, the maintained mechanics source.
 
 args = {
   slug:        "sandbox-loop",              // the bolt's change slug
@@ -25,10 +19,10 @@ args = {
 */
 export const meta = {
   name: 'bolt-default-sandbox-loop',
-  description: 'Compiled bolt-default loop: guards, then spec/build pipelined and merge serialized, until no ready work and quiet guards',
+  description: 'Compiled bolt-default loop: guards then spec/build pipelined and merge serialized, repeating until no ready work and quiet guards; landing per bolt.md',
   phases: [
     { title: 'Cycle', detail: 'query -> guards -> work -> merge, repeated' },
-    { title: 'Land', detail: 'when all merged and bolt.md merge criteria verify' },
+    { title: 'Land', detail: 'per bolt.md: Landing merge (default) or pr; never in fixture mode' },
   ],
 }
 
@@ -37,7 +31,15 @@ const T = A.fixture
   ? `FIXTURE MODE: read the tracker snapshot from ${A.fixture}; make NO tracker writes; report what you would have written.`
   : `Tracker writes run as the app: GH_TOKEN=$("${A.pluginRoot}/bin/flywheel-token" --org ${A.org}); if the token cannot mint, stop and return status failed - never ambient credentials.`
 
-/* The QUERY contract - field names from workflows/fixtures/bolt-tracker.json. */
+/* MODELS - the instruction's tiers, explicit in every call. */
+const DRIVER_OPTS = { model: 'sonnet', effort: 'low' }
+const SESSION_MODEL = 'sonnet' // construction sessions while mechanics are pinned; reviews will re-raise
+
+/* LIMITS - construction: 90 min -> comment + needs-operator, keep
+   waiting; 4 h -> stalled, pane open. In 10-minute wait chunks. */
+const NOTIFY_CHUNKS = 9
+const STALL_CHUNKS = 24
+
 const SNAPSHOT = {
   type: 'object',
   properties: {
@@ -65,10 +67,6 @@ const OUTCOME = {
   required: ['status', 'detail'],
 }
 
-/* One agent per cycle reads the tracker AND executes the guards -
-   both are tracker acts, and the guards are stated as idempotent, so
-   read-apply-reread in a single pass is faithful to "checked every
-   cycle, in this order". */
 const queryAndGuards = (cycle) => agent(`Read the bolt tracker state and apply the guards, then return the post-guard snapshot as your structured output. ${T}
 
 Milestone: bolt/${A.slug}. Fields per item: number, title, labels, blocked_by (GitHub's dependency edges, read from the API, never inferred), parent_batch, record path, change name.
@@ -79,73 +77,73 @@ GUARDS, in order, each idempotent - record every action you take in guard_action
 2. Any state:queued item with no parent_batch: keep it on this bolt ONLY if the bolt cannot land without it; otherwise move it to the intent that owns its subject, or leave it unmilestoned for dispatch. Compose what remains into a unit at Backlog.
 
 Return the snapshot AFTER your guard actions.`,
-  { label: `cycle${cycle}:query+guards`, phase: 'Cycle', schema: SNAPSHOT }) /* INVENTED: model/effort left at session default - the instruction names no tiers (that is #69's open question) */
+  { label: `cycle${cycle}:query+guards`, phase: 'Cycle', schema: SNAPSHOT, ...DRIVER_OPTS })
 
-/* HERDR.MD: the whole driver recipe below - one-prompt order with the
-   invocation first line, rename-then-confirm, wait semantics, ghost
-   text is not input, close the pane when the outcome is read. */
-const drive = (name, cwd, order, label) => agent(`Drive one herdr session; never do its work yourself.
+/* HERDR.MD: the driver recipe - one-prompt order, invocation first
+   line, rename-then-confirm, wait semantics, ghost text is not
+   input, close the pane when the outcome is read. */
+const drive = (name, cwd, order, label, itemNumber) => agent(`Drive one herdr session; never do its work yourself.
 1. herdr tab create --cwd "${cwd}" --label "${name}" --no-focus  (tab label IS the agent name)
-2. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent flywheel-construction-session --dangerously-skip-permissions
+2. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent flywheel-construction-session --model ${SESSION_MODEL} --dangerously-skip-permissions
 3. Prompt "/rename ${name}" alone; poll the title until it converges.
 4. Deliver the work order between the markers as ONE prompt; verify the session goes working (one enter if a pasted block sits at the composer).
-5. herdr agent wait "${name}" - re-invoke on the 10-minute command cap. /* INVENTED: give up and return status stalled after 9 chunks - neither source names a limit */
+5. herdr agent wait "${name}" - re-invoke on the 10-minute command cap, counting chunks. At ${NOTIFY_CHUNKS} chunks (~90 min): ${A.fixture ? 'note the long wait in your outcome detail' : `comment the wait on issue #${itemNumber} and add the needs-operator label - a live wait; dispatch relays`} - then KEEP waiting. At ${STALL_CHUNKS} chunks (~4 h): return status stalled with the pane tail; leave the pane open.
 6. On settle done/idle: read the pane; composer ghost text is not input. On settle blocked: return status blocked with what the pane asks; leave the pane open.
 7. herdr tab close <tab-id>; return the outcome.
 WORK_ORDER>>>
 ${order}
 <<<WORK_ORDER`,
-  { label, phase: 'Cycle', schema: OUTCOME })
+  { label, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
 
 const ready = (s) => s.items.filter((i) => i.labels.includes('state:ready'))
 const unblocked = (s, i) => i.blocked_by.every((b) => !s.items.some((x) => x.number === b))
 
-let cycle = 0
+/* No cycle bound: the ready set cannot refill itself (new items are
+   queued, never ready, without an operator flip) and the guards are
+   idempotent, so guard_actions drains and STOP fires. Revisit when
+   review stages return. */
 let lastSnapshot = null
+let cycle = 0
 while (true) {
   cycle++
-  if (cycle > 12) { log('cycle limit reached - stopping for review'); break } /* INVENTED: runaway bound; the instruction's stop condition should always fire first */
   const s = await queryAndGuards(cycle)
   lastSnapshot = s
   const work = ready(s).filter((i) => unblocked(s, i))
   if (work.length === 0 && s.guard_actions.length === 0) break // STOP: no ready work and the guards changed nothing
 
-  /* WORK - pipelined: item B specs while item A builds. Stripped: no
-     reviews; the merge gate is the only reviewer. */
   const builtItems = await pipeline(
     work,
     (it) => drive(
       `spec-writing-${it.change}`.slice(0, 32), A.repoDir,
       `/opsx:ff ${it.change}\n\nSpec for item #${it.number} - ${it.title}\nOne spec-driven change for this one assertion, derived from ${it.record} and the decisions it cites. Worktree: wt switch --create build/${it.change} --base ${A.boltBranch} --no-cd in ${A.repoDir}. openspec validate --strict green before it counts. ${T} Flip #${it.number} to state:in-progress. Commit; do not merge or push. Deliver by settling.`,
-      `spec:${it.change}`),
+      `spec:${it.change}`, it.number),
     (spec, it) => (spec && spec.status === 'done')
       ? drive(
           `build-${it.change}`.slice(0, 32), A.repoDir,
           `/opsx:apply ${it.change}\n\nBuild for item #${it.number} - ${it.title}\nApply the change on the build/${it.change} worktree. Re-read every neighbour the spec claims something about from disk. ${T} Commit; do not merge or push. Deliver by settling.`,
-          `build:${it.change}`).then((build) => ({ it, spec, build }))
+          `build:${it.change}`, it.number).then((build) => ({ it, spec, build }))
       : { it, spec, build: null },
   )
 
-  /* MERGE - one item at a time: the bolt branch has one writer. */
   for (const r of builtItems.filter(Boolean)) {
-    if (!r.build || r.build.status !== 'done') continue // blocked/stalled stages surface in the report; answer the pane and RESUME this run
+    if (!r.build || r.build.status !== 'done') continue // blocked/stalled surfaces in the report; answer the pane and RESUME this run
     await drive(
       `merge-${r.it.change}`.slice(0, 32), A.boltWorktree,
       `Merge-back for item #${r.it.number}. In ${A.boltWorktree}: wt merge build/${r.it.change} - never --yes. On green: openspec archive ${r.it.change}, commit. ${T} On red: fix nothing; report the gate output verbatim. Deliver by settling.`,
-      `merge:${r.it.change}`)
+      `merge:${r.it.change}`, r.it.number)
   }
 }
 
-/* LAND - when every item is merged and bolt.md's merge criteria
-   hold, verified by the landing agent, which refuses otherwise. */
+/* LAND - a driven session like every stage. Mode from bolt.md:
+   "Landing: merge" (default) or "Landing: pr". */
 let landing = 'not attempted'
 if (A.fixture) {
   landing = 'fixture mode - landing never runs'
 } else if (lastSnapshot && ready(lastSnapshot).length === 0) {
   const land = await drive(
-    'land', A.repoDir, /* INVENTED: the landing runs through a driven session like every other stage; the instruction does not say who executes the landing */
-    `Landing. First read the Merge criteria in openspec/changes/${A.slug}/bolt.md on ${A.boltBranch}; verify each on that branch; if any fails, land NOTHING and report the failing criterion. When all hold: land ${A.boltBranch} on main through the gate (never --yes), one writer to main. ${T} Comment the landing SHA on each item and close it closed:done. Deliver by settling.`,
-    'land')
+    'land', A.repoDir,
+    `Landing session. Read openspec/changes/${A.slug}/bolt.md on ${A.boltBranch}: verify every Merge criterion on that branch - if any fails, land NOTHING and report the failing criterion as status failed. Read its "Landing:" line (absent = merge).\n- Landing: merge -> land ${A.boltBranch} on main through the gate (wt merge, never --yes), one writer to main; comment the landing SHA on each item and close it closed:done.\n- Landing: pr -> push ${A.boltBranch} and open a pull request to main (gh pr create), report its URL; close nothing - items close when the PR merges.\n${T} Deliver by settling.`,
+    'land', 0)
   landing = `${land ? land.status + ': ' + land.detail : 'land agent lost'}`
 }
 
