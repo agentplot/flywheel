@@ -739,10 +739,15 @@ class BoltLoop:
 
     # -- objective checks: the world, not a report -------------------------
 
-    def change_validates(self, change):
-        """`openspec validate --strict` — green before a spec counts."""
+    def change_validates(self, change, cwd=None):
+        """`openspec validate --strict` — green before a spec counts.
+
+        Run in the tree that HOLDS the change: a spec committed on a build
+        worktree does not exist in the main checkout, and validating there
+        fails a change that is green where it lives.
+        """
         proc = self.shell(["openspec", "validate", change, "--strict"],
-                          cwd=self.params.repo_dir)
+                          cwd=cwd or self.params.repo_dir)
         return proc.returncode == 0
 
     def branch_has_commits(self, branch):
@@ -779,7 +784,8 @@ class BoltLoop:
         deliverables are named, so the re-prompt can name them too.
         """
         missing = []
-        if change and not self.change_validates(change):
+        if change and not self.change_validates(
+                change, cwd=self.batch_worktree(batch)):
             missing.append(f"`openspec validate {change} --strict` is not green")
         if not self.branch_has_commits(f"build/{batch.slug}"):
             missing.append(f"no commit on build/{batch.slug} beyond {self.params.bolt_branch}")
@@ -1165,9 +1171,9 @@ class BoltLoop:
                 runner.send(handle, f"{invocation} {change}")
                 outcome = self.settle("spec", runner, handle, batch.numbers,
                                       origin, close=False)
-                if not outcome.ok or self.change_validates(change):
+                if not outcome.ok or self.change_validates(change, cwd=cwd):
                     break
-        if outcome.ok and not self.change_validates(change):
+        if outcome.ok and not self.change_validates(change, cwd=cwd):
             outcome = StageOutcome("spec", "failed",
                                    f"`openspec validate {change} --strict` is not green")
         if outcome.handle is not None:
@@ -1383,7 +1389,7 @@ class BoltLoop:
             if not outcome.ok:
                 return outcome
             findings = (outcome.report or "").strip()
-            if self.change_validates(change) and _no_findings(findings):
+            if self.change_validates(change, cwd=cwd) and _no_findings(findings):
                 return StageOutcome("verify", "done", "verify is clean")
             key = _finding_key(findings)
             seen[key] = seen.get(key, 0) + 1
