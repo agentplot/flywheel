@@ -438,7 +438,7 @@ def handoff_plan(snapshot, slug):
 
         An assertion is settled and unbolted when its item is open on
         intent/<slug>, has no parent batch, and has no open blockers.
-        Whenever such assertions exist at the queue, the conductor births one
+        Whenever such assertions exist at the queue, the loop births one
         type:handoff item naming exactly that set, or extends the open
         unstarted one — and while that handoff's unit still sits at Backlog,
         newcomers join it.

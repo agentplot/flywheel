@@ -1,38 +1,39 @@
 #!/usr/bin/env python3
 """flywheel — drive an org fleet from its manifest and its tracker.
 
-  flywheel status    [--host H] [--fleet PATH]
-  flywheel up        [--host H] [--fleet PATH]
-  flywheel reconcile [--host H] [--fleet PATH] [--interval SECONDS] [--dry-run]
+  flywheel status [--host H] [--fleet PATH]
+  flywheel up     [--host H] [--fleet PATH]
+  flywheel server [--host H] [--fleet PATH] [--interval SECONDS]
+                  [--once] [--dry-run]
 
 The manifest is `fleet.yaml` at the org folder root — the directory above
 the org's repos — found by walking up from the working directory (or
 named explicitly with --fleet). It is not checked into git: placement is
 machine-local. `cwd:` entries are relative to the manifest's directory.
 
-`up` converges the manifest's standing rows. `reconcile` is the
-deterministic pass that runs the whole fleet from observed state: it
-converges the manifest rows, then reads the tracker (the `tracker:`
-line, an `org/repo`) and gives every `intent/*` and `bolt/*` milestone
-its conductor when it has a job — three jobs, and the prompt names
-which: **ready** (an open item labelled `state:ready`/`state:in-progress`,
-or a batch the operator moved to Ready on the board), **compose**
-(queued items with no open batch to carry them), and **archive** (the
-operator closed the milestone on GitHub and the change still sits in
-`openspec/changes/`). It nudges a settled conductor whose milestone has
-a job, nudges dispatch on waiting `needs-operator` relays and on
-unmilestoned open items awaiting triage, and **stops** any settled
-conductor whose milestone has no job — the symmetric rule; a later job
-starts a fresh session that rehydrates from the records. It decides
-nothing itself: every action is a pure function of manifest + tracker +
-herdr roster, so the same pass runs by hand, on `--interval`, or from a
-webhook later. Conductor placement: a batch's Team field routes its
-milestone's conductor via the manifest's `teams:` map (team → host);
-unmapped work runs on this host. Conductors start in `conductors_cwd:`
-with the model `conductor_model:` (default `opus[1m]`).
+`server` is the daemon. The operator starts it on any host they want in
+the fleet; it runs the reconcile pass every 60 seconds and starts or
+stops ONE LOOP PROCESS per milestone with a job — `flywheel-bolt-loop`
+for a `bolt/*` milestone, `flywheel-intent-loop` for an `intent/*` one —
+and runs a one-shot archive for a closed milestone whose change still
+sits in `openspec/changes/`. No job stops the process; the loops are
+stateless, so a later job starts a fresh one that re-reads the tracker
+and the records. Multi-host is a server per host sharing the tracker: a
+board Team routes its milestone through the manifest's `teams:` map, and
+a server takes only the loops that map to it. Loops start in
+`loops_cwd:`. Operator visibility is the server's log.
 
-The fleet runs in its own named herdr session — the org's — so its
-roster, workspaces, and teardown are isolated from other work. The
+The pass decides nothing itself. The job list is the tracker's server
+inbox filter (`_flywheel_inbox.server_inbox`), the arithmetic over it is
+a pure function of manifest + tracker + the live registry, and the
+judgment lives in the sessions the loops launch.
+
+`up` converges the manifest's standing rows — dispatch, the one standing
+agent, whose triage and relay need a mind and a Discord channel — and
+then starts the server, detached, if none is running here for this org.
+
+The fleet's agents run in their own named herdr session — the org's — so
+the roster, workspaces, and teardown are isolated from other work. The
 session name is the manifest's `session:` field, defaulting to the org
 folder's name with any `github_` prefix dropped (github_willdan → the
 session `willdan`). When that session is not running, this command says so
@@ -40,9 +41,9 @@ and names the start command rather than starting agents into the wrong
 session.
 
 Placement only: this command starts and reports actors; it never decides
-what they own (the tracker items' assignee does) and never tears one
-down (teardown is deliberate, not a sync step). Rows on other hosts are
-reported, not driven.
+what they own (the tracker items' assignee does) and never tears a
+manifest row down (teardown is deliberate, not a sync step). Rows on
+other hosts are reported, not driven.
 
 Before starting any actor, the repo it would sit in must have its
 worktrunk hook approvals granted — every project hook template worktrunk
@@ -78,9 +79,24 @@ from pathlib import Path
 from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _flywheel_gh import GraphqlError, find_project, gh, graphql, resolve_token
+import _flywheel_inbox as inbox    # noqa: E402
+import _flywheel_server as server  # noqa: E402
+from _flywheel_gh import GraphqlError, resolve_token  # noqa: E402
 
 STATES = {"running", "parked"}
+
+# Two manifest keys retired with the agent fleet they configured: one named
+# the directory those agents started in, the other the model they launched
+# on. The server starts loop PROCESSES, which have a working directory and no
+# model. A manifest still carrying either key is stale in a way that would
+# otherwise be silent — the server would look for `loops_cwd:`, find nothing
+# and start nothing — so these are named, matched, and refused with the fix.
+# `fleet.yaml` is machine-local and no commit can migrate it; only a message
+# can. The strings below are that matcher, not a live reference.
+RETIRED_KEYS = {
+    "conductors_cwd": "loops_cwd",
+    "conductor_model": None,
+}
 
 
 def find_manifest(override: str | None) -> Path:
@@ -147,6 +163,12 @@ def parse_manifest(path: Path) -> dict:
 
 def validate(manifest: dict) -> None:
     problems = []
+    for key, replacement in RETIRED_KEYS.items():
+        if key in manifest["top"]:
+            problems.append(
+                f"`{key}:` retired with the agent fleet — "
+                + (f"rename it to `{replacement}:`" if replacement
+                   else "drop it; a loop process has no model"))
     for a in manifest["actors"]:
         name = a.get("name", "<unnamed>")
         for field in ("name", "profile", "host", "state", "cwd"):
@@ -574,10 +596,11 @@ def gate_readiness(cwd: Path, cache: dict[str, GateCheck]) -> GateCheck:
 
     Every failure is contained here and becomes an indeterminate verdict
     for this one repo. Nothing raises out of this function: the check is
-    consulted from inside `up`, `status` and `reconcile`, and a repo whose
+    consulted from inside `up`, `status` and `server`, and a repo whose
     approvals store is reshaped must not take down a pass that also has
-    unrelated actors to place, conductors to nudge and sessions to stop —
-    least of all a `reconcile --interval` daemon.
+    unrelated actors to place and loop processes to start — least of all
+    the server, which holds this open for as long as the host is in the
+    fleet.
     """
     key = repo_key(cwd)
     if key in cache:
@@ -654,9 +677,10 @@ def report_gate(check: GateCheck, reported: set[str], indent: str = "",
 # Per-pass gate state. Module-level on purpose: the precondition binds at
 # `start_actor`, the one seam every actor start goes through, so a caller
 # added later inherits the guard by construction instead of having to
-# remember to thread a cache through — which is exactly how `reconcile`'s
-# conductor starts came to be missed. Cleared at the top of every pass, so
-# a grant taken between passes is seen on the next one.
+# remember to thread a cache through — which is exactly how the tracker-driven
+# starts came to be missed once already, and why the server's loop starts go
+# through `fresh_gate`. Cleared at the top of every pass, so a grant taken
+# between passes is seen on the next one.
 GATE_CACHE: dict[str, GateCheck] = {}
 GATE_REPORTED: set[str] = set()
 
@@ -684,9 +708,9 @@ def start_targets(manifest: dict, host: str
     skipped: list[tuple[str, str]] = []
     rows = [(a.get("name", "?"), a.get("host"), a.get("cwd"))
             for a in manifest["actors"]]
-    cwd_rel = manifest["top"].get("conductors_cwd")
+    cwd_rel = manifest["top"].get("loops_cwd")
     if cwd_rel:
-        rows.append(("(conductors)", host, cwd_rel))
+        rows.append(("(loops)", host, cwd_rel))
     for name, a_host, rel in rows:
         if a_host != host:
             skipped.append((name, f"placed on {a_host or '?'}, not this host"))
@@ -747,6 +771,7 @@ def status(manifest: dict, host: str, session: str, env: dict) -> int:
             print(f"{name}: not checked from here — {why}")
     if not targets and not skipped:
         print("no actors on this host")
+    server_rows(manifest)
     return 1 if drift else 0
 
 
@@ -867,324 +892,164 @@ def up(manifest: dict, host: str, session: str, env: dict) -> int:
 SETTLED = {"idle", "done"}
 
 
-def tracker_state(top: dict) -> dict:
-    """Read the whole actionable picture from the tracker, in two calls."""
+# ---------------------------------------------------------------------------
+# The server — one loop process per milestone with a job
+#
+# The job set is `_flywheel_inbox.server_inbox`, the actor it starts is a loop
+# PROCESS, and there is no launch prompt anywhere in it: a program needs no
+# invocation, only argv. Everything the operator sees, it sees in the log.
+# ---------------------------------------------------------------------------
+
+def server_config(manifest: dict, host: str, interval: int):
+    top = manifest["top"]
     tracker = top.get("tracker", "")
     if "/" not in tracker:
-        sys.exit("reconcile needs a `tracker: org/repo` line in fleet.yaml")
+        sys.exit("the server needs a `tracker: org/repo` line in fleet.yaml")
     org, repo = tracker.split("/", 1)
-    token = resolve_token(org)
-
-    pages = gh(token, "api",
-               f"/repos/{org}/{repo}/issues?state=open&per_page=100",
-               "--paginate", "--slurp")
-    issues = [i for page in pages for i in page if "pull_request" not in i]
-
-    ready_ms, inprog_ms, needs_operator = set(), set(), []
-    queued_ms, batch_ms, no_milestone = set(), set(), []
-    for i in issues:
-        labels = {l["name"] for l in i["labels"]}
-        milestone = i.get("milestone")
-        ms = (milestone or {}).get("title", "")
-        if "needs-operator" in labels:
-            needs_operator.append(i["number"])
-        if not milestone:
-            no_milestone.append(i["number"])
-            continue
-        if milestone.get("state") != "open":
-            continue
-        if "state:ready" in labels:
-            ready_ms.add(ms)
-        if "state:in-progress" in labels:
-            inprog_ms.add(ms)
-        if "state:queued" in labels:
-            queued_ms.add(ms)
-        if "unit" in labels or "elaboration" in labels:
-            batch_ms.add(ms)
-
-    # Closed milestones are the archive signal: the operator closes one
-    # on GitHub, and the conductor is charged to archive the change.
-    pages = gh(token, "api",
-               f"/repos/{org}/{repo}/milestones?state=closed&per_page=100",
-               "--paginate", "--slurp")
-    closed_ms = {m["title"] for page in pages for m in page}
-
-    # A unit or elaboration the operator has moved to Ready wakes its
-    # milestone's conductor before any item is relabelled — the flip
-    # alone is work. (Board query: any Ready item with a milestone.)
-    ready_batches: dict[str, str | None] = {}
-    ready_board_nums: set[int] = set()
-    project_id = find_project(token, org, top.get("project", "Flywheel"))
-    after = None
-    while project_id:
-        items = graphql(token, """
-          query($project: ID!, $after: String) {
-            node(id: $project) { ... on ProjectV2 {
-              items(first: 100, after: $after) {
-                pageInfo { hasNextPage endCursor }
-                nodes {
-                  status: fieldValueByName(name: "Status") {
-                    ... on ProjectV2ItemFieldSingleSelectValue { name } }
-                  team: fieldValueByName(name: "Team") {
-                    ... on ProjectV2ItemFieldSingleSelectValue { name } }
-                  content { ... on Issue {
-                    number state milestone { title } } }
-                } } } } }""",
-          {"project": project_id, "after": after})["node"]["items"]
-        for n in items["nodes"]:
-            c = n.get("content") or {}
-            if ((n.get("status") or {}).get("name") == "Ready"
-                    and c.get("state") == "OPEN" and c.get("milestone")):
-                ready_batches.setdefault(c["milestone"]["title"],
-                                         (n.get("team") or {}).get("name"))
-                ready_board_nums.add(c["number"])
-        if not items["pageInfo"]["hasNextPage"]:
-            break
-        after = items["pageInfo"]["endCursor"]
-
-    # Context for the conductor's launch prompt: the change record is
-    # thin by design — the detail lives on the tracker — so the prompt
-    # carries the Ready batches' bodies and sub-issues, and the loose
-    # ready items, alongside the trigger line.
-    context: dict[str, list[str]] = {}
-    for i in issues:
-        milestone = i.get("milestone")
-        if not milestone or milestone.get("state") != "open":
-            continue
-        ms = milestone["title"]
-        labels = {l["name"] for l in i["labels"]}
-        kind = ("unit" if "unit" in labels
-                else "elaboration" if "elaboration" in labels else None)
-        if kind and i["number"] in ready_board_nums:
-            lines = [f"{kind} #{i['number']} (Ready on the board): "
-                     f"{i['title']}"]
-            body = (i.get("body") or "").strip()
-            if body:
-                lines.append("  " + body[:600].replace("\n", "\n  "))
-            subs = gh(token, "api",
-                      f"/repos/{org}/{repo}/issues/{i['number']}/sub_issues")
-            if subs:
-                lines.append("  sub-issues: " + "; ".join(
-                    f"#{s['number']} {s['title']} "
-                    f"[{','.join(l['name'] for l in s['labels'])}]"
-                    for s in subs))
-            context.setdefault(ms, []).extend(lines)
-        elif not kind and "state:ready" in labels:
-            context.setdefault(ms, []).append(
-                f"ready item #{i['number']}: {i['title']} "
-                f"[{','.join(sorted(labels))}]")
-
-    # Composition is due where queued items sit with no open batch to
-    # carry them to the board. (v1 reads "no open batch on the
-    # milestone"; queued items arriving beside a pending Backlog batch
-    # wait for it to resolve.)
-    compose_ms = queued_ms - batch_ms - ready_ms - set(ready_batches)
-
-    return {"ready_ms": ready_ms, "inprog_ms": inprog_ms,
-            "needs_operator": needs_operator, "ready_batches": ready_batches,
-            "compose_ms": compose_ms, "closed_ms": closed_ms,
-            "no_milestone": no_milestone, "context": context}
+    cwd_rel = top.get("loops_cwd")
+    if not cwd_rel:
+        sys.exit("the server needs a `loops_cwd:` line in fleet.yaml — the "
+                 "checkout its loop processes run in")
+    loops_cwd = (manifest["root"] / cwd_rel).resolve()
+    if not loops_cwd.is_dir():
+        sys.exit(f"loops_cwd: {cwd_rel} does not resolve under "
+                 f"{manifest['root']}")
+    return server.ServerConfig(
+        org=org, repo=repo, project=top.get("project", "Flywheel"),
+        host=host, loops_cwd=loops_cwd, teams=manifest["teams"],
+        interval=interval, bin_dir=Path(__file__).resolve().parent)
 
 
-def reconcile(manifest: dict, host: str, session: str, env: dict,
-              dry_run: bool = False) -> int:
-    failures = 0
-    alive = herdr_agents(env)
+def fresh_gate(cwd: Path):
+    """Gate-readiness for a loop start, never cached across passes.
 
-    # 1 · the manifest's standing rows
-    if dry_run:
-        for a in manifest["actors"]:
-            if (a.get("state") == "running" and a["name"] not in alive
-                    and a.get("host") == host):
-                cwd = (manifest["root"] / a["cwd"]).resolve()
-                check = (gate_readiness(cwd, GATE_CACHE) if cwd.is_dir()
-                         else None)
-                if check and not check.ok:
-                    print(f"would REFUSE {a['name']} ({a['profile']}) — "
-                          "its repo's merge gate is not runnable")
-                    report_gate(check, GATE_REPORTED, "  ")
-                else:
-                    print(f"would start {a['name']} ({a['profile']})")
-    else:
-        failures += up(manifest, host, session, env)
-        alive = herdr_agents(env)
+    A loop process runs `wt merge` through the repo's hooks, so the actor
+    precondition binds it too: ungranted, it would stop mid-merge with no
+    way to fix it. The server is long-lived, so
+    the cache is cleared on every call — a grant taken while it runs is seen
+    at the next start rather than never.
+    """
+    begin_pass()
+    check = gate_readiness(cwd, GATE_CACHE)
+    if not check.ok:
+        report_gate(check, GATE_REPORTED, "  ")
+    return check
 
-    # 2 · conductors the tracker wants — one per milestone with a job,
-    # none decided here. Three jobs, in precedence order: work the ready
-    # set; compose the queue into batches; archive a closed milestone's
-    # change. The prompt (and the nudge) names the job.
-    state = tracker_state(manifest["top"])
-    cwd_rel = manifest["top"].get("conductors_cwd")
 
-    wanted: dict[str, tuple[str, str]] = {}  # name -> (milestone, job)
-    for ms in state["closed_ms"]:
-        kind, _, slug = ms.partition("/")
-        if kind not in ("intent", "bolt") or not slug:
-            continue
-        change = (manifest["root"] / (cwd_rel or ".") /
-                  "openspec" / "changes" / slug)
-        if change.is_dir():
-            wanted[f"{kind}-{slug}"] = (ms, "archive")
-    for ms in state["compose_ms"]:
-        kind, _, slug = ms.partition("/")
-        if kind in ("intent", "bolt") and slug:
-            wanted[f"{kind}-{slug}"] = (ms, "compose")
-    for ms in (state["ready_ms"] | state["inprog_ms"]
-               | set(state["ready_batches"])):
-        kind, _, slug = ms.partition("/")
-        if kind in ("intent", "bolt") and slug:
-            wanted[f"{kind}-{slug}"] = (ms, "ready")
+def dispatch_nudge(env: dict):
+    """The only prompt the server ever sends.
 
-    def change_schema(slug: str) -> str | None:
-        """The schema the change binds, or None when it has no change dir."""
-        binding = (manifest["root"] / (cwd_rel or ".") / "openspec" /
-                   "changes" / slug / ".openspec.yaml")
-        if not binding.is_file():
-            return None
-        for line in binding.read_text().splitlines():
-            if line.strip().startswith("schema:"):
-                return line.partition(":")[2].strip().strip("'\"")
-        return None
-
-    def job_prompt(ms: str, job: str) -> str:
-        slug = ms.partition("/")[2]
-        if job == "archive":
-            return (f"Your change: {slug}. Milestone {ms} is closed — "
-                    f"archive the change (`openspec archive {slug}`, "
-                    "commit) and finish any leftover teardown; if it is "
-                    "not archivable, say why in a comment on the "
-                    "milestone's items and stop.")
-        if job == "compose":
-            return (f"Your change: {slug}; your milestone is {ms}. "
-                    "Unbatched queued items await composition — compose "
-                    "proposed batches, present the queue, then stop.")
-        # The ready job: the trigger line comes first and unchanged —
-        # "dynamic workflow", the slug, and the schema are what make
-        # /opsx:apply build the loop rather than leave the agent to
-        # improvise its shape. The tracker context rides below it.
-        ctx = "\n".join(state["context"].get(ms, []))
-        ctx_block = f"\nContext from the tracker ({ms}):\n{ctx}" if ctx else ""
-        schema = change_schema(slug)
-        if schema is None:
-            kind = ms.partition("/")[0]
-            bind = ("flywheel-intent" if kind == "intent"
-                    else "the bolt-* member the released work warrants")
-            # Scaffolding is its own beat. The trigger line only works as
-            # the first line of a prompt, and it cannot come first while
-            # the change does not exist — so this prompt ends at the
-            # scaffold, and the next reconcile pass delivers the trigger
-            # line through the nudge path once the change is on disk.
-            return (f"Your change: {slug} (milestone {ms}) does not exist "
-                    f"yet. Create it the standard way — /opsx:new {slug} "
-                    f"(or /opsx:ff {slug}), binding {bind} — commit, then "
-                    "STOP and report the change is scaffolded. Do not "
-                    "start the work and do not relabel any item: your "
-                    "loop arrives as its own prompt once the change "
-                    f"exists.{ctx_block}")
-        return (f"/opsx:apply build a dynamic workflow with the "
-                f"instructions for {slug} (schema {schema})"
-                f"{ctx_block}")
-
-    for name, (ms, job) in sorted(wanted.items()):
-        if name in alive:
-            continue
-        team = state["ready_batches"].get(ms)
-        want_host = manifest["teams"].get(team, host) if team else host
-        if want_host != host:
-            print(f"{name}: routed to {want_host} (team {team}) — not this "
-                  "host, reach it via herdr remote / ssh")
-            continue
-        if not cwd_rel:
-            print(f"{name}: wanted, but fleet.yaml has no conductors_cwd: — "
-                  "add one to start conductors from here")
-            failures += 1
-            continue
-        kind = ms.partition("/")[0]
-        profile = f"flywheel-{kind}-conductor"
-        model = manifest["top"].get("conductor_model", "opus[1m]")
-        conductor_cwd = (manifest["root"] / cwd_rel).resolve()
-        if dry_run:
-            check = (gate_readiness(conductor_cwd, GATE_CACHE)
-                     if conductor_cwd.is_dir() else None)
-            if check and not check.ok:
-                print(f"would REFUSE {name} ({profile}, {model}) in "
-                      f"{cwd_rel} [{job}] — its repo's merge gate is not "
-                      "runnable")
-                report_gate(check, GATE_REPORTED, "  ")
-            else:
-                print(f"would start {name} ({profile}, {model}) in "
-                      f"{cwd_rel} [{job}]")
-        elif not start_actor(name, profile, model, conductor_cwd,
-                             job_prompt(ms, job), env):
-            failures += 1
-
-    # 3 · nudges — a settled conductor whose milestone has a job, and
-    # dispatch on waiting needs-operator and unmilestoned items. A
-    # just-started conductor shows working, so it is never
-    # double-prompted; an in-progress-only milestone waits, not nudges.
-    if not dry_run:
-        alive = herdr_agents(env)
-    for name, (ms, job) in sorted(wanted.items()):
-        agent = alive.get(name)
+    Dispatch survives as the one standing agent — triage and relay need a
+    mind and a Discord channel — so it is still an agent in a pane, and this
+    is still a herdr prompt. Everything else the server touches is a process.
+    """
+    def nudge(text: str) -> bool:
+        agent = herdr_agents(env).get("dispatch")
         if not agent or agent.get("agent_status") not in SETTLED:
-            continue
-        if job == "ready" and not (ms in state["ready_ms"]
-                                   or ms in state["ready_batches"]):
-            continue
-        if dry_run:
-            print(f"would nudge {name}: {job} on {ms}")
-        elif not send_prompt(name, job_prompt(ms, job), env):
-            failures += 1
-
-    # 4 · stop — the symmetric rule: a settled conductor whose milestone
-    # has no job is stopped; its state lives on the tracker and in git,
-    # so a later job starts a fresh session that rehydrates from the
-    # records. Manifest rows are never stopped here.
-    manifest_names = {a.get("name") for a in manifest["actors"]}
-    for name, agent in sorted(alive.items()):
-        if not re.match(r"^(intent|bolt)-", name):
-            continue
-        if name in manifest_names or name in wanted:
-            continue
-        if agent.get("agent_status") not in SETTLED:
-            continue
-        tab = agent.get("tab_id")
-        if dry_run:
-            print(f"would stop {name}: no job on the tracker")
-        elif tab:
-            out = subprocess.run(["herdr", "tab", "close", str(tab)],
-                                 capture_output=True, text=True, env=env)
-            if out.returncode != 0:
-                print(f"stopping {name} failed: {out.stderr.strip()}")
-                failures += 1
-            else:
-                print(f"stopped {name}: no job on the tracker")
-    # 5 · dispatch's nudge, one prompt for both queues it owns: relays
-    # waiting on the operator, and open items with no milestone that
-    # want triage.
-    parts = []
-    if state["needs_operator"]:
-        nums = ", ".join(f"#{n}" for n in state["needs_operator"])
-        parts.append(f"needs-operator items await relay: {nums} — DM each "
-                     "item's assignee with the question and the link")
-    if state["no_milestone"]:
-        nums = ", ".join(f"#{n}" for n in state["no_milestone"])
-        parts.append(f"unmilestoned open items await triage: {nums} — "
-                     "route each (milestone, type, assignee)")
-    if parts:
-        agent = alive.get("dispatch")
-        if agent and agent.get("agent_status") in SETTLED:
-            if dry_run:
-                print(f"would nudge dispatch: {'; '.join(parts)}")
-            elif not send_prompt("dispatch", ". ".join(parts) + ".", env):
-                failures += 1
-        else:
-            print(f"dispatch work waiting ({'; '.join(parts)}); dispatch is "
+            print("dispatch work waiting; dispatch is "
                   + ("busy" if agent else "absent"))
-    if not wanted and not parts:
-        print("reconcile: nothing actionable on the tracker")
-    return 1 if failures else 0
+            return True
+        return send_prompt("dispatch", text, env)
+    return nudge
 
+
+def serve(manifest: dict, host: str, session: str, env: dict,
+          interval: int, once: bool, dry_run: bool) -> int:
+    config = server_config(manifest, host, interval)
+    tracker = inbox.Tracker(resolve_token(config.org), config.org, config.repo,
+                            project_title=config.project)
+    daemon = server.Server(
+        config, tracker=tracker, gate=fresh_gate, nudge=dispatch_nudge(env),
+        dry_run=dry_run)
+
+    print(f"server · {config.org}/{config.repo}  ·  host: {host}  ·  "
+          f"loops in {config.loops_cwd}"
+          + ("  ·  DRY RUN" if dry_run else f"  ·  every {interval}s"))
+
+    # A one-shot dry pass writes nothing and starts nothing, so it takes no
+    # pidfile and does not care whether a real server is running beside it.
+    if once and dry_run:
+        return daemon.pass_once()
+
+    existing = server.running_pid(config.org)
+    if existing:
+        sys.exit(f"a flywheel server for {config.org} is already running here "
+                 f"(pid {existing}) — two would start every loop twice. Its "
+                 f"log is {server.server_log(config.org)}")
+    path = server.pid_path(config.org)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"{os.getpid()}\n")
+    try:
+        daemon.install_signals()
+        return daemon.serve(interval=interval, once=once)
+    finally:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def start_server(manifest: dict, host: str, fleet: str | None) -> int:
+    """`flywheel up` starts the server, per the record's Supersedes.
+
+    Detached, because `up` converges a fleet and returns; the daemon it
+    leaves behind has to outlive the shell that ran it. Its output is its
+    log, which is the record's whole answer to operator visibility.
+    """
+    tracker = manifest["top"].get("tracker", "")
+    org = tracker.split("/", 1)[0] if "/" in tracker else manifest["root"].name
+    existing = server.running_pid(org)
+    log = server.server_log(org)
+    if existing:
+        print(f"server: already running (pid {existing}) · log {log}")
+        return 0
+    argv = [str(Path(__file__).resolve()), "server", "--host", host]
+    if fleet:
+        argv += ["--fleet", fleet]
+    try:
+        pid = server.spawn_detached(argv, log)
+    except OSError as error:
+        print(f"server: could not start — {error}")
+        return 1
+    print(f"server: started (pid {pid}) · log {log}")
+    return 0
+
+
+def server_rows(manifest: dict) -> None:
+    """What `status` says about the server: is it up, and what does the
+    tracker want of it. Reads only; a tracker it cannot reach is reported,
+    never fatal — status starts nothing and must never fail loudly."""
+    tracker = manifest["top"].get("tracker", "")
+    org = tracker.split("/", 1)[0] if "/" in tracker else manifest["root"].name
+    pid = server.running_pid(org)
+    print()
+    print("server " + (f"running (pid {pid}) · log {server.server_log(org)}"
+                       if pid else
+                       "not running here — `flywheel up` starts it"))
+    if "/" not in tracker:
+        return
+    org, repo = tracker.split("/", 1)
+    cwd_rel = manifest["top"].get("loops_cwd")
+    changes = ((manifest["root"] / cwd_rel).resolve() / "openspec" / "changes"
+               if cwd_rel else None)
+    try:
+        box = inbox.Tracker(resolve_token(org), org, repo,
+                            project_title=manifest["top"].get("project",
+                                                              "Flywheel"))
+        jobs = inbox.server_inbox(box.snapshot(with_edges=False),
+                                  changes_dir=changes)
+    except SystemExit as error:
+        print(f"  tracker not readable from here — {error}")
+        return
+    except Exception as error:  # noqa: BLE001 — a report never dies
+        print(f"  tracker not readable from here — "
+              f"{error.__class__.__name__}: {error}")
+        return
+    if not jobs:
+        print("  no milestone has a job")
+        return
+    for job in jobs:
+        print(f"  {job.milestone}  {job.kind}  ({job.why})")
 
 def main() -> int:
     args = sys.argv[1:]
@@ -1200,32 +1065,27 @@ def main() -> int:
     dry_run = "--dry-run" in args
     if dry_run:
         args.remove("--dry-run")
-    if len(args) != 1 or args[0] not in {"up", "status", "reconcile"}:
+    once = "--once" in args
+    if once:
+        args.remove("--once")
+    if len(args) != 1 or args[0] not in {"up", "status", "server"}:
         print(__doc__.strip())
         return 2
-    if args[0] != "reconcile":
-        begin_pass()
-        manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
-        session, env = session_env(manifest)
-        host = this_host(manifest, overrides.get("--host"))
-        if args[0] == "status":
-            return status(manifest, host, session, env)
-        return up(manifest, host, session, env)
-    interval = int(overrides.get("--interval") or 0)
-    while True:
-        # re-read everything each pass: the manifest, the roster and the
-        # tracker are the state; the pass is a pure function of them —
-        # including the gate check, so a grant taken between passes is
-        # seen on the next one rather than cached away
-        begin_pass()
-        manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
-        session, env = session_env(manifest)
-        host = this_host(manifest, overrides.get("--host"))
-        rc = reconcile(manifest, host, session, env, dry_run)
-        if not interval:
-            return rc
-        print(f"-- next pass in {interval}s --")
-        time.sleep(interval)
+    begin_pass()
+    manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
+    session, env = session_env(manifest)
+    host = this_host(manifest, overrides.get("--host"))
+    if args[0] == "status":
+        return status(manifest, host, session, env)
+    if args[0] == "up":
+        rc = up(manifest, host, session, env)
+        return rc or start_server(manifest, host, overrides.get("--fleet"))
+    # The server re-reads the manifest nowhere: it is read once here, and the
+    # tracker — the thing that actually moves — is re-read every pass. A
+    # manifest edit is an operator act, and restarting the daemon is how it
+    # takes effect, which keeps "the tracker is the only bus" literally true.
+    interval = int(overrides.get("--interval") or server.INTERVAL_S)
+    return serve(manifest, host, session, env, interval, once, dry_run)
 
 
 if __name__ == "__main__":

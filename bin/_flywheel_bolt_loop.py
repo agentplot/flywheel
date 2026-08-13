@@ -288,8 +288,8 @@ def plan_mode_declared(binding=None, milestone_description=None, flag=None):
 def resolve_plan_mode(declared, config):
     """Permitted only where the bound type says `plan_mode: available`.
 
-    The bolt type is the scrutiny the release approved, and no conductor —
-    now no program — downgrades it. So a declaration against bolt-default
+    The bolt type is the scrutiny the release approved, and no program
+    downgrades it. So a declaration against bolt-default
     or bolt-adversarial is refused here rather than honoured quietly.
     """
     if not declared:

@@ -10,7 +10,7 @@ A batch is a parent issue whose sub-issues are the batch, and its kind
 is what approving it authorizes: a **unit** releases construction work
 (AI-DLC's unit of work — a handoff's assertions, or fresh work on a
 live bolt); an **elaboration** authorizes design sessions on an
-intent. The conductor's batching move, in one call: creates the parent
+intent. The batching move, in one call: creates the parent
 issue (labels `<kind>` + `state:queued`, in the named milestone,
 created if missing), attaches the items as sub-issues, adds the parent
 to the org Project, and sets its Status to **Backlog**. Dates default
@@ -51,7 +51,7 @@ def main():
     ap.add_argument("--target", metavar="YYYY-MM-DD")
     ap.add_argument("--quarter", metavar="YYYY-Qn")
     ap.add_argument("--team", metavar="NAME",
-                    help="board Team (routes the conductor's host); "
+                    help="board Team (routes the milestone's host); "
                          "defaults to the field's first option")
     ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
     args = ap.parse_args()
@@ -115,7 +115,7 @@ def main():
                 sys.exit(f"flywheel-batch: no '{name}' date field — "
                          "run flywheel-setup first")
             set_item_value(token, project_id, item_id, f_id, {"date": date})
-    # Team routes the conductor's host; Quarter places the roadmap.
+    # Team routes the milestone's host; Quarter places the roadmap.
     # Both default like the dates do — automation first.
     quarter = args.quarter
     if not quarter:

@@ -530,8 +530,8 @@ class HeadlessRunner(Runner):
         from the top."""
         if spec.plan_mode:
             # Plan mode is approved "through the plan dialog" — an
-            # interactive affordance. A headless session has no pane for the
-            # conductor to drive, so a plan-mode spec sent here would block
+            # interactive affordance. A headless session has no pane for an
+            # approver to drive, so a plan-mode spec sent here would block
             # forever with nothing to approve it. Refuse loudly at launch
             # rather than at four hours.
             raise RunnerUnavailable(

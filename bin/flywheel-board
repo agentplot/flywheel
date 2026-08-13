@@ -36,7 +36,7 @@ def main():
     ap.add_argument("--target", metavar="YYYY-MM-DD")
     ap.add_argument("--quarter", metavar="YYYY-Qn")
     ap.add_argument("--team", metavar="NAME",
-                    help="board Team (routes the conductor's host); "
+                    help="board Team (routes the milestone's host); "
                          "defaults to the field's first option")
     ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
     args = ap.parse_args()

@@ -85,7 +85,7 @@ LABELS = {
 }
 
 STATUS_OPTIONS = [
-    ("Backlog", "GRAY", "batched by the conductor, awaiting approval"),
+    ("Backlog", "GRAY", "batched, awaiting approval"),
     ("Ready", "GREEN", "approved by the operator; work may start"),
 ]
 
