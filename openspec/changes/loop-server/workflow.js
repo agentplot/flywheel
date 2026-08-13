@@ -340,11 +340,17 @@ while (true) {
    already in-progress under a session it had not launched, read the empty
    ready set as done, and started a landing while the build was live. Only the
    merge record on each item is evidence that code landed. */
-/* Only the ASSERTIONS carry work that merges. A discovery queued on this
-   milestone (type:build, state:queued) is guard 2's to route and will never
-   have a merge record, so counting it here would block the landing forever. */
+/* WHAT GATES THE LANDING IS RELEASED WORK WITHOUT A MERGE RECORD, whatever
+   its type. Gating on type:assertion alone let a released type:build item -
+   #101, the eval re-cast this bolt must not land without - sit outside the
+   gate entirely, and the loop went to land with it unbuilt. Gating on every
+   item is wrong in the other direction: a state:queued discovery is guard 2's
+   to route and never merges, so it would block the landing forever. The line
+   is the state ladder, not the type: ready or in-progress means this bolt
+   owns the work and it has not landed yet. */
 const unmerged = lastSnapshot
-  ? lastSnapshot.items.filter((i) => i.labels.includes('type:assertion') && !i.merged)
+  ? lastSnapshot.items.filter((i) =>
+      (i.labels.includes('state:ready') || i.labels.includes('state:in-progress')) && !i.merged)
   : []
 let landing = 'not attempted'
 if (A.fixture) {
