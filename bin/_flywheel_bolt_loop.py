@@ -1176,14 +1176,20 @@ class BoltLoop:
             return StageOutcome("spec", "skipped",
                                 "plan-mode path: the approved plan is the spec")
         change = batch.change or batch.slug
-        name = session_name("spec-writing", change)
-        invocations = list(self.params.config.invocations)
-        order = sessions.work_order(f"{invocations[0]} {change}", self.spec_brief(batch, change))
         cwd = self.batch_worktree(batch)
         if cwd is None:
             return StageOutcome("spec", "failed",
                                 f"wt could not provide build/{batch.slug} "
                                 f"from {self.params.bolt_branch}")
+        # A resumed batch whose change already validates needs no spec
+        # session — green is green, and re-driving one costs a session per
+        # restart for work that is provably done.
+        if self.change_validates(change, cwd=cwd):
+            return StageOutcome("spec", "done",
+                                "the change already validates — nothing to spec")
+        name = session_name("spec-writing", change)
+        invocations = list(self.params.config.invocations)
+        order = sessions.work_order(f"{invocations[0]} {change}", self.spec_brief(batch, change))
         outcome = self.drive("spec", self.spec_for(
             "spec", name, cwd, order), batch.numbers, close=False)
         runner, handle = self.runner("spec"), outcome.handle

@@ -194,6 +194,20 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
                          run=shell or FakeShell(), clock=clock or FakeClock())
 
 
+class SpecShortCircuitTest(unittest.TestCase):
+
+    def test_a_change_that_already_validates_needs_no_spec_session(self):
+        # A resumed batch re-drove a full spec session per restart for a
+        # change that was already green.
+        shell = FakeShell(answers={("openspec", "validate"): Result(0)})
+        runner = ScriptedRunner([])
+        l = a_loop(FakeTracker(), shell=shell, runner=runner)
+        batch = loop.WorkBatch(slug="b1", items=(item(7, inbox.IN_PROGRESS),))
+        outcome = l.spec_stage(batch)
+        self.assertEqual(outcome.status, "done")
+        self.assertEqual(runner.launched, [], "no session may be driven")
+
+
 class DurableRepromptTest(unittest.TestCase):
 
     def test_a_predecessors_reprompt_marker_pauses_instead_of_reprompting(self):
@@ -555,7 +569,12 @@ class StageTest(unittest.TestCase):
 
     def test_the_strategy_decides_how_many_spec_commands_the_session_is_given(self):
         runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 4)
-        program = a_loop(FakeTracker(), runner=runner, strategy="new+ff")
+        # not green before the session runs, green after — else the
+        # short-circuit skips the session this test is about
+        greens = iter([Result(1), Result(0), Result(0), Result(0)])
+        shell = FakeShell({("openspec", "validate"): lambda: next(greens)})
+        program = a_loop(FakeTracker(), runner=runner, strategy="new+ff",
+                         shell=shell)
         program.spec_stage(self.batch(1))
         self.assertTrue(runner.launched[0].order.startswith("/opsx:new add-thing"))
         self.assertEqual(runner.sent[0][1], "/opsx:ff add-thing")
