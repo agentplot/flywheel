@@ -57,47 +57,68 @@ apply:
   instruction: |
     Work the READY set to empty, then stop at the queue.
 
-    THE LOOP IS NOT IMPROVISED. It is the plugin's canonical script at
-    <plugin-root>/workflows/bolt-default.js - read its header: the
-    argument shape and the whole mechanics contract are documented in
-    the file. Launch it as ONE run with the Workflow tool
-    ({scriptPath: "<plugin-root>/workflows/bolt-default.js", args}),
-    and after a correction, a ruling, or an answered pane, RESUME the
-    same run ({scriptPath, resumeFromRunId}) - finished stages replay
-    from cache. One run lineage per bolt; never a rebuilt workflow,
-    never a wave number. "/opsx:apply build a dynamic workflow with
-    the instructions for <change>" means exactly: launch that script.
+    COMPILE, THEN RUN. This instruction is the loop's source of
+    truth, and editing it is how loop behavior changes. "/opsx:apply
+    build a dynamic workflow with the instructions for <change>"
+    means: compile THIS instruction into the change's own workflow
+    script at openspec/changes/<slug>/workflow.js - the driver,
+    outcome, blocked/stalled, serialized-merge, fixture, resume, and
+    report mechanics copied VERBATIM from the contract at
+    <plugin-root>/workflows/reference-loop.js, the stages taken from
+    the text below. Stamp the script header with a hash of this
+    instruction and reuse it while the hash holds; recompile only
+    when this instruction changes. Launch it as ONE run
+    (Workflow {scriptPath}), and after a correction, a ruling, or an
+    answered pane, RESUME the same run
+    ({scriptPath, resumeFromRunId}) - finished stages replay from
+    cache. One run lineage per bolt; never a rebuilt workflow. The
+    operator supervises herdr sessions; a session that needs them - a
+    plan-mode approval, a question - can only reach them from a real
+    pane, which is why a WORK agent drives sessions and never does
+    the work itself.
 
-    Your conductor-side work around the run:
+    The stages this bolt type compiles - stripped while the loop
+    mechanics are pinned: no review steps; the merge gate runs
+    unweakened at every landing; reviews return to this instruction
+    once the mechanics are settled:
 
-    1 - QUERY, before launch: the milestone bolt/<slug>'s open items
+    1 - SPEC: per released assertion, one spec-driven change, derived
+      from the assertion record and the decisions it cites
+      (/opsx:ff <change> as the work order's first line), on a nested
+      worktree off the bolt branch. openspec validate --strict green
+      before it counts.
+    2 - BUILD: apply each change (/opsx:apply <change> first line) on
+      its worktree; re-read every neighbour the spec claims something
+      about from disk before trusting the claim.
+    3 - MERGE, serialized: each session branch to the bolt branch
+      through the gate (never --yes); archive the change on green.
+      The session's pane closes here.
+    4 - LAND: when bolt.md's merge criteria hold on the bolt branch -
+      verified by the landing agent, which refuses to land otherwise -
+      the bolt branch lands on each repo's main through the full
+      release gate, one writer at a time; comment the landing SHA on
+      each item and close it closed:done.
+
+    Conductor-side, around the run:
+
+    - QUERY, before launch: the milestone bolt/<slug>'s open items
       labelled state:ready, plus any unit of this bolt the operator
       has moved to Ready on the board - relabel those units'
       sub-issues to state:ready first. Name each item's spec-driven
-      change (one change per assertion) and build the script's args.
-    2 - RUN: launch the script. While it runs, do nothing but answer
-      what it surfaces - a blocked pane is a permission ask or plan
-      dialog: read it, answer one at a time, never by pattern.
-    3 - AFTER: the run's report names what finished and what did not.
-      Answer open panes, then resume the run. When the report is
-      clean and the bolt's merge criteria hold, resume once more with
-      args.land: true for the landing pass.
-    4 - QUEUE: when the ready set is empty, compose this bolt's
+      change (one per assertion) and build the script's args.
+    - DURING: do nothing but answer what the run surfaces - a blocked
+      pane is a permission ask or plan dialog: read it, answer one at
+      a time, never by pattern.
+    - AFTER: the report names what finished and what did not. Answer
+      open panes, resume the run to completion.
+    - QUEUE: when the ready set is empty, compose this bolt's
       state:queued items into a unit at Backlog (a discovery rides
       this bolt only if the bolt cannot land without it; otherwise it
       goes to the intent that owns its subject, or unmilestoned for
       dispatch), present the queue one line each, report the run ID,
-      and stop. When every item is closed, propose closure: teardown,
+      stop. When every item is closed, propose closure: teardown and
       openspec archive - the operator's milestone close is the
       archive signal.
-
-    This bolt type is STRIPPED while the mechanics are pinned: no
-    review steps are scheduled. The merge gate still runs unweakened
-    at every landing; reviews return to this schema once the loop
-    mechanics are settled. One-prompt work orders,
-    delivery-is-settling, and pane-close-at-merge are stated in the
-    script and in skills/_reference/herdr.md; the tracker rules are
-    the shared copy at skills/_reference/tracker.md.
 
     THE ANDON CORD - a session that finds the work has gone wrong in
     a way no further round will fix - the spec contradicts the

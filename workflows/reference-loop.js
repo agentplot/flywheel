@@ -1,11 +1,30 @@
+/*
+THE MECHANICS CONTRACT, as a worked compilation.
+
+This file is not launched by name in production - it is what a
+compiled loop looks like, and the normative source for the mechanics
+every compilation copies VERBATIM: the driver sequence, the outcome
+schema, blocked/stalled handling, serialized merge, fixture mode,
+resume-instead-of-rebuild, and the run report shape. A conductor
+compiling any bolt type's script (per its schema's apply instruction)
+takes those parts from here unchanged and swaps only the stage plan
+for the one its instruction states. The compiled script lands at
+openspec/changes/<slug>/workflow.js with the instruction's hash in
+its header; it is recompiled only when the instruction changes -
+editing the apply instruction is how loop behavior changes.
+
+This copy doubles as the isolated harness: launch it directly with
+tracker:false and fixture items to watch the mechanics run with no
+tracker, no operator, no landing, no end-to-end.
+*/
 export const meta = {
-  name: 'bolt-default-loop',
-  description: 'The canonical stripped bolt-default run: per assertion spec, build, then serialized merge-back; land held behind a flag',
+  name: 'reference-loop',
+  description: 'Mechanics contract and worked compilation of the stripped bolt-default instruction: per assertion spec, build, serialized merge-back, then landing when bolt.md merge criteria hold',
   phases: [
     { title: 'Spec', detail: 'one spec-driven change per assertion, via /opsx:ff in a herdr session' },
     { title: 'Build', detail: 'apply each change, via /opsx:apply in a herdr session' },
     { title: 'Merge', detail: 'serialized: session branch -> bolt branch through the gate, then archive' },
-    { title: 'Land', detail: 'bolt branch -> main through the full gate, only when args.land is true' },
+    { title: 'Land', detail: 'bolt branch -> main through the full gate, when bolt.md merge criteria hold; never in fixture mode' },
   ],
 }
 
@@ -34,17 +53,17 @@ args = {
   boltWorktree:"/abs/path/of/bolt/branch/worktree",
   org:         "agentplot",                  // for flywheel-token
   pluginRoot:  "/abs/path/of/plugin/root",   // bin/ + skills/_reference
-  tracker:     true,                         // false = fixture mode: no gh writes
-  land:        false,                        // true only on the real landing pass
+  tracker:     true,                         // false = fixture mode: no gh writes, no landing
   items: [ { number: 34, change: "pre-merge-gate",
              title: "Move the merge gate to [pre-merge] ...",
              record: "openspec/changes/merge-gate-remedy/assertions/gate-under-pre-merge.md" } ],
 }
 
 Isolated harness (no flywheel, no tracker): from any session in the
-built repo, launch with tracker:false, land:false, and one fixture
-item whose record is any small claim file. You watch the panes appear,
-work, and close in herdr; the run report is the result.
+built repo, launch with tracker:false and one fixture item whose
+record is any small claim file. You watch the panes appear, work, and
+close in herdr; the run report is the result. Fixture mode never
+writes the tracker and never lands.
 */
 
 const A = args
@@ -132,12 +151,18 @@ for (const r of built.filter(Boolean)) {
   merged.push({ ...r, merge })
 }
 
-/* Land: held behind the flag; the operator-visible act stays deliberate. */
+/* Land: the condition is bolt.md's merge criteria, verified by the
+   landing agent itself - it refuses to land when any criterion fails.
+   Fixture mode never lands. */
 phase('Land')
-let landing = 'held (args.land is false) - bolt branch ready'
-if (A.land && merged.every((r) => r.merge && r.merge.status === 'done')) {
+let landing = 'not attempted'
+if (!A.tracker) {
+  landing = 'fixture mode - landing never runs'
+} else if (!merged.every((r) => r.merge && r.merge.status === 'done')) {
+  landing = 'withheld - unmerged or blocked stages remain; answer panes and resume this run'
+} else {
   const land = await agent(
-    `In ${A.repoDir}: land ${A.boltBranch} on main through the full release gate (wt merge, all hooks, never --yes) - one writer to main. ${trackerRules}${A.tracker ? ' Comment the landing SHA on each item and close it closed:done.' : ''} Report the SHA.`,
+    `Landing agent. First read the Merge criteria section of openspec/changes/${A.change}/bolt.md on ${A.boltBranch} and verify each criterion holds on that branch; if any does not, land NOTHING and return status failed with the failing criterion as the detail. When all hold: in ${A.repoDir}, land ${A.boltBranch} on main through the full release gate (wt merge, all hooks, never --yes) - one writer to main. ${trackerRules} Comment the landing SHA on each item and close it closed:done. Report the SHA.`,
     { label: 'land', phase: 'Land', model: 'sonnet', schema: OUTCOME },
   )
   landing = land ? `${land.status}: ${land.detail}` : 'land agent lost'

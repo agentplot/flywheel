@@ -57,24 +57,23 @@ apply:
   instruction: |
     Work the READY set to empty, then stop at the queue.
 
-    This instruction is what the dynamic workflow is built from
-    (`/opsx:apply build a dynamic workflow with the instructions for
-    <change>`). Two rules govern the run. The workflow IS the
-    loop: one run works the ready set to empty - re-query after the merge, bounce handling, and the next
-    batch are stages inside the run, never a reason to build another
-    workflow - and a fresh run is built only when this conductor is
-    prompted again. A second rule binds every stage the workflow
-    runs: a WORK stage's agent never does the batch's work itself -
-    its job is to drive herdr: start the session the batch names,
-    deliver the work order — one prompt, the type's invocation as
-    its first line, the brief below — wait on it, return the
-    outcome, and close the session's pane (the worktree and branch
-    stay for the merge step). The
-    operator supervises herdr sessions, and a session that needs the
-    operator - a plannotator round, a lavish page, a plan-mode
-    approval - can only reach them from a real pane; an in-process
-    subagent cannot. Subagents may read and report (QUERY, ANALYSE,
-    synthesis); sessions do the work.
+    COMPILE, THEN RUN. This instruction is the loop's source of
+    truth, and editing it is how loop behavior changes. "/opsx:apply
+    build a dynamic workflow with the instructions for <change>"
+    means: compile THIS instruction into the change's own workflow
+    script at openspec/changes/<slug>/workflow.js - the driver,
+    outcome, blocked/stalled, serialized-merge, fixture, resume, and
+    report mechanics copied VERBATIM from the contract at
+    <plugin-root>/workflows/reference-loop.js (a WORK agent drives
+    one herdr session and never does the work), the stages taken from
+    the text below. Stamp the script header with a hash of this
+    instruction and reuse it while the hash holds; recompile only
+    when this instruction changes. Launch ONE run
+    (Workflow {scriptPath}); after a correction, a ruling, or an
+    answered pane, RESUME it ({scriptPath, resumeFromRunId}). One run
+    lineage per bolt; never a rebuilt workflow. The operator
+    supervises herdr sessions; a session that needs them can only
+    reach them from a real pane.
 
     The tracker is the org's, named by the `tracker:` line in the org's
     fleet.yaml; every tracker write runs as the app

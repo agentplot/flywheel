@@ -87,9 +87,8 @@ did not schedule: no review, no re-review, no bounce round exists
 unless the bolt type's own instruction names it. What this skill holds
 is the practice shared by every stage the loop does run:
 
-- **The change grain is the assertion**: one spec-driven change per
-  assertion (`/opsx:ff` each); its record binds one change id and one
-  landing ref. `openspec validate --strict` green before a spec
+- **One spec-driven change per assertion** (`/opsx:ff` each); the
+  assertion's record binds one change id and one landing ref. `openspec validate --strict` green before a spec
   counts; cite by anchor or quoted phrase, never line number; re-read
   every neighbour a spec claims something about from disk at build
   time.
