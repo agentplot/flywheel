@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""flywheel-intent-loop — run the design loop for one intent milestone.
+
+  flywheel-intent-loop --slug SLUG [--org ORG] [--repo REPO] [--project TITLE]
+      [--repo-dir DIR] [--base BRANCH] [--goal TEXT]
+      [--completion-signal {closed,label,board}] [--done-label LABEL]
+      [--done-status STATUS] [--max-cycles N] [--dry-run] [--fixture PATH]
+
+The design half of `design/loop-programs.md`: query and guards (flip-consume,
+handoff birth, compose), typed design sessions, deliverable collection, and
+`sess/*` branches merged through the gate, repeated until nothing is ready and
+the guards write nothing. One stateless process per `intent/<slug>` milestone
+— `flywheel server` starts and stops it; it holds no state between runs and
+re-reads the tracker every cycle.
+
+`--dry-run` plans every write and applies none: the cycle runs, the guard plan
+and the sessions it would dispatch are printed, and the tracker is untouched.
+`--fixture PATH` reads a `workflows/fixtures/intent-tracker.json`-shaped
+snapshot instead of the tracker, and implies `--dry-run`.
+
+**Design-session completion is the operator's, and R1 is open.** The record
+leaves the exact GitHub signal for "the operator marks a design session done"
+unanswered, so `--completion-signal` has no default: name it as `closed` (the
+items are closed), `label` (with `--done-label`), or `board` (with
+`--done-status`). Without it the loop runs everything up to and including
+supervision and stops before collecting, saying so in its report.
+
+Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _flywheel_gh import GraphqlError, resolve_token
+from _flywheel_inbox import Tracker
+from _flywheel_intent import COMPLETION_SIGNALS, Config, run
+from _flywheel_sessions import SessionError, runner_for
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--slug", required=True,
+                    help="the intent slug; the milestone is intent/<slug>")
+    ap.add_argument("--org", default="agentplot")
+    ap.add_argument("--repo", default="flywheel")
+    ap.add_argument("--project", default="Flywheel", metavar="TITLE")
+    ap.add_argument("--repo-dir", default=".", metavar="DIR",
+                    help="the repo's main checkout; worktrees are cut from it")
+    ap.add_argument("--base", default="main", metavar="BRANCH")
+    ap.add_argument("--goal", default=None, metavar="TEXT",
+                    help="one or two sentences carried into every work order")
+    ap.add_argument("--completion-signal", default=None,
+                    choices=sorted(COMPLETION_SIGNALS),
+                    help="R1: how the operator marks a design session done")
+    ap.add_argument("--done-label", default=None, metavar="LABEL")
+    ap.add_argument("--done-status", default=None, metavar="STATUS")
+    ap.add_argument("--max-cycles", type=int, default=20, metavar="N")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="plan every write, apply none")
+    ap.add_argument("--fixture", default=None, metavar="PATH",
+                    help="read this snapshot instead of the tracker; "
+                         "implies --dry-run")
+    args = ap.parse_args()
+
+    config = Config(
+        slug=args.slug,
+        org=args.org,
+        repo=args.repo,
+        project=args.project,
+        repo_dir=Path(args.repo_dir).resolve(),
+        base_branch=args.base,
+        goal=args.goal,
+        completion_signal=args.completion_signal,
+        done_label=args.done_label,
+        done_status=args.done_status,
+        apply=not (args.dry_run or args.fixture),
+        fixture=args.fixture,
+        max_cycles=args.max_cycles,
+    )
+
+    tracker = runner = None
+    if not config.fixture:
+        # The token is the app's, never ambient — `resolve_token` exits if it
+        # cannot mint one, which is the record's "a cycle that cannot mint its
+        # token STOPS THE RUN".
+        tracker = Tracker(resolve_token(config.org), config.org, config.repo,
+                          project_title=config.project)
+    if config.apply:
+        runner = runner_for("herdr")
+
+    report = run(config, tracker=tracker, runner=runner)
+    print(report.render())
+    return 0 if report.status == "ok" else 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except GraphqlError as e:
+        sys.exit(f"flywheel-intent-loop: graphql: {e}")
+    except SessionError as e:
+        sys.exit(f"flywheel-intent-loop: session: {e}")
