@@ -194,6 +194,23 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
                          run=shell or FakeShell(), clock=clock or FakeClock())
 
 
+class DurableRepromptTest(unittest.TestCase):
+
+    def test_a_predecessors_reprompt_marker_pauses_instead_of_reprompting(self):
+        # The one-re-prompt rule must survive a process restart: the marker
+        # is a tracker comment, and a successor that finds it pauses
+        # (observed live: three re-prompts across three restarts, #140).
+        marker = loop.SESSION_OPEN + " reprompt build-b1 -->"
+        tracker = FakeTracker(Snapshot(), comments={7: [{"body": marker}]})
+        l = a_loop(tracker)
+        batch = loop.WorkBatch(slug="b1", items=(item(7, inbox.IN_PROGRESS),))
+        outcome = l.reprompt_deliverables(
+            batch, loop.StageOutcome("build", "done", handle=object()),
+            ["no comment on #7"])
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn(("add_label", 7, inbox.NEEDS_OPERATOR), tracker.writes)
+
+
 class ComposeAmendTest(unittest.TestCase):
 
     def test_bolt_compose_appends_to_the_open_backlog_unit(self):

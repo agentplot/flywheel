@@ -1222,9 +1222,15 @@ class BoltLoop:
 
     def build_stage(self, batch):
         """`/opsx:apply`, or the plan-mode path where the bolt declares it."""
-        since = self._clock()
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
+        # The deliverable window opens at the batch's FIRST launch — the
+        # durable session marker — never this process's clock: a restarted
+        # loop anchoring on its own clock disqualifies every comment already
+        # made and re-prompts a finished build forever (observed live: #140).
+        since = self.launch_origin(batch.numbers, name)
+        if since is None:
+            since = self._clock()
         if self.params.plan_mode:
             outcome = self.plan_mode_build(batch, name)
         else:
@@ -1268,6 +1274,19 @@ class BoltLoop:
             self.pause(batch.numbers, f"The build settled without its deliverables "
                                       f"({told}) and its pane is gone.")
             return StageOutcome("build", "paused", f"no deliverables: {told}")
+        # ONE re-prompt across every process that will ever own this batch:
+        # the marker is a tracker comment, so a restarted loop sees its
+        # predecessor's re-prompt and pauses instead of re-prompting again.
+        marker = f"{SESSION_OPEN} reprompt build-{batch.slug} -->"
+        for comment in self.tracker.comments(batch.numbers[0]) or ():
+            body = comment.get("body", "") if isinstance(comment, dict) else str(comment)
+            if marker in body:
+                self.pause(batch.numbers, (
+                    f"The build settled without its deliverables again after an "
+                    f"earlier re-prompt ({told}). The loop paused the item "
+                    f"rather than re-prompting a second time."))
+                return StageOutcome("build", "paused", f"no deliverables: {told}")
+        self.tracker.comment(batch.numbers[0], marker)
         origin = self._clock()
         runner.send(handle, (
             f"Your batch settled without the deliverables the contract names: {told}. "
