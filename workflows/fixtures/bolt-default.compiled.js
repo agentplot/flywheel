@@ -1,8 +1,8 @@
 /*
 COMPILED FROM: schemas/bolt-default/schema.yaml apply.instruction
-INSTRUCTION SHA256: 72349a167518c7d1
-COMPILED BY: static compile pass, second round - operator rulings of
-2026-08-12 folded. No INVENTED marks remain: models, limits, landing
+INSTRUCTION SHA256: 00f9d1124fbe2105
+COMPILED BY: static compile pass, third round - review-2 verdicts
+folded: fixture trace, criteria-fix bounds, stage checkout rules. No INVENTED marks remain: models, limits, landing
 mode, and the landing actor are now the instruction's own words.
 Mechanics marked "HERDR.MD:" are delegated to
 skills/_reference/herdr.md, the maintained mechanics source.
@@ -27,6 +27,7 @@ export const meta = {
 }
 
 const A = args
+const trace = [] // every stage outcome; in fixture mode this is the verification artifact
 const T = A.fixture
   ? `FIXTURE MODE: read the tracker snapshot from ${A.fixture}; make NO tracker writes; report what you would have written.`
   : `Tracker writes run as the app: GH_TOKEN=$("${A.pluginRoot}/bin/flywheel-token" --org ${A.org}); if the token cannot mint, stop and return status failed - never ambient credentials.`
@@ -94,6 +95,7 @@ WORK_ORDER>>>
 ${order}
 <<<WORK_ORDER`,
   { label, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+  .then((o) => { trace.push({ stage: label, status: o && o.status, detail: o && o.detail }); return o })
 
 const ready = (s) => s.items.filter((i) => i.labels.includes('state:ready'))
 const unblocked = (s, i) => i.blocked_by.every((b) => !s.items.some((x) => x.number === b))
@@ -107,6 +109,7 @@ let cycle = 0
 while (true) {
   cycle++
   const s = await queryAndGuards(cycle)
+  trace.push({ stage: `cycle${cycle}:query+guards`, actions: s.guard_actions })
   lastSnapshot = s
   const work = ready(s).filter((i) => unblocked(s, i))
   if (work.length === 0 && s.guard_actions.length === 0) break // STOP: no ready work and the guards changed nothing
@@ -142,7 +145,7 @@ if (A.fixture) {
 } else if (lastSnapshot && ready(lastSnapshot).length === 0) {
   const land = await drive(
     'land', A.repoDir,
-    `Landing session. Read openspec/changes/${A.slug}/bolt.md on ${A.boltBranch}: verify every Merge criterion on that branch - if any fails, land NOTHING and report the failing criterion as status failed. Read its "Landing:" line (absent = merge).\n- Landing: merge -> land ${A.boltBranch} on main through the gate (wt merge, never --yes), one writer to main; comment the landing SHA on each item and close it closed:done.\n- Landing: pr -> push ${A.boltBranch} and open a pull request to main (gh pr create), report its URL; close nothing - items close when the PR merges.\n${T} Deliver by settling.`,
+    `Landing session. Read openspec/changes/${A.slug}/bolt.md on ${A.boltBranch}: verify every Merge criterion on that branch - if any fails, land NOTHING and report the failing criterion as status failed. Read its "Landing:" line (absent = merge).\n- Landing: merge -> land ${A.boltBranch} on main through the gate (wt merge, never --yes), one writer to main; comment the landing SHA on each item and close it closed:done.\n- Landing: pr -> push ${A.boltBranch} and open a pull request to main (gh pr create), report its URL; close nothing - items close when the PR merges.\nOn a failing criterion: create ONE fix item born state:ready on this bolt - unless an open fix item for that criterion already exists (then report and stop); a criterion failing again after its fix landed is the andon cord - stop and ask the operator, never another item.\n${T} Deliver by settling.`,
     'land', 0)
   landing = `${land ? land.status + ': ' + land.detail : 'land agent lost'}`
 }
@@ -151,6 +154,7 @@ return {
   slug: A.slug,
   cycles: cycle,
   landing,
+  trace,
   queue: lastSnapshot ? lastSnapshot.items.filter((i) => i.labels.includes('state:queued')).map((i) => `#${i.number} ${i.title}`) : [],
   next: 'blocked or stalled stages: answer the pane, then resume this run (scriptPath + resumeFromRunId)',
 }

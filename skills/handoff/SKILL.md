@@ -31,7 +31,8 @@ different bolt types. Each section carries: the bolt (`bolt/<slug>`,
 new milestone or a live bolt joined), the **bolt type** — `bolt-quick`,
 `bolt-default`, `bolt-deep`, the `bolt-*` schema member the change will
 bind, which is what sets the review steps the bolt's loop schedules —
-the **owner** read from the items' assignee, the repos,
+the **landing mode** (merge to main, or a pull request), the
+**owner** read from the items' assignee, the repos,
 the assertions by item number and record path, the sequencing to wire,
 and any ADR the bolt conductor should write directly.
 

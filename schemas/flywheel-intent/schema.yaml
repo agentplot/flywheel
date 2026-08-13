@@ -197,7 +197,10 @@ apply:
     state label, blocked_by issue numbers (GitHub's dependency edges,
     read from the API, never inferred), parent batch, record path -
     and this milestone's units and elaborations with their board
-    Status.
+    Status. When launched with a fixture snapshot instead of the live
+    tracker (an isolated run): read state from the snapshot, write
+    nothing to the tracker, and collect every would-be tracker write
+    and pane event into a trace array in the run report.
 
     GUARDS - checked EVERY cycle, in this order; each is idempotent:
 
@@ -219,7 +222,7 @@ apply:
     guards and every driver - run model sonnet, effort low. Sessions
     take their type's model at agent start (--model): planning and
     interactive fable; research opus[1m]; prototype, writeback and
-    handoff opus.
+    handoff opus; the merge stage sonnet.
 
     LIMITS, by session type, in 10-minute wait chunks: research,
     prototype and writeback sessions - after 90 minutes of waiting
@@ -245,7 +248,10 @@ apply:
       state:in-progress at start; wait; read the report; close the
       pane.
 
-      on each finished session: merge its branch through the gate.
+      on each finished session: merge its branch through the gate -
+      the merge driver runs in the repo's main checkout; a work
+      session gets a fresh sess/* worktree, a merge stage never
+      does.
       The session wrote its own records (decisions, assertions, its
       session directory) and queued its own discoveries - whoever
       finds queues; you create only handoff items and batches. You

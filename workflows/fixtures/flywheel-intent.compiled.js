@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/flywheel-intent/schema.yaml apply.instruction
-INSTRUCTION SHA256: 691d1430fe04c9fe
+INSTRUCTION SHA256: bf40d18ed7c103b1
 COMPILED BY: static compile pass for review - not yet run. Mechanics
 marked "HERDR.MD:" delegated to skills/_reference/herdr.md.
 
@@ -21,6 +21,7 @@ export const meta = {
 }
 
 const A = args
+const trace = [] // every stage outcome; in fixture mode this is the verification artifact
 const T = A.fixture
   ? `FIXTURE MODE: read the tracker snapshot from ${A.fixture}; make NO tracker writes; report what you would have written.`
   : `Tracker writes run as the app: GH_TOKEN=$("${A.pluginRoot}/bin/flywheel-token" --org ${A.org}); if the token cannot mint, stop and return status failed - never ambient credentials.`
@@ -31,6 +32,7 @@ const SESSION_MODEL = {
   planning: 'fable', interactive: 'fable',
   research: 'opus[1m]',
   prototype: 'opus', writeback: 'opus', handoff: 'opus',
+  merge: 'sonnet',
 }
 const SESSION_PROFILE = (type) =>
   type === 'interactive' ? 'flywheel-interactive-session' : 'flywheel-design-session'
@@ -85,16 +87,21 @@ Return the snapshot AFTER your guard actions.`,
 /* HERDR.MD: the driver recipe. Design sessions have no slash
    invocation; the work order's first line names the type and the
    session's skill loads from it. */
-const drive = (type, name, order, label, itemNumber) => {
+/* checkout: a work session gets a fresh sess/* worktree; a merge
+   stage runs in the repo's main checkout and never cuts one - the
+   instruction's rule, not a compile choice. */
+const drive = (type, name, order, label, itemNumber, checkout) => {
   const notify = A.fixture
     ? 'note the long wait in your outcome detail'
     : `comment the wait on issue #${itemNumber} and add needs-operator (a live wait; dispatch relays)`
   const stall = OPERATOR_ROUND_TYPES.includes(type)
     ? 'This type holds operator rounds: never return it stalled; keep waiting.'
     : `At ${STALL_CHUNKS} chunks (~4 h): return status stalled with the pane tail; pane stays open.`
+  const cwdStep = checkout
+    ? `1. Your session's cwd is ${checkout} - the existing checkout; cut NO worktree.\n2. herdr tab create --cwd "${checkout}" --label "${name}" --no-focus  (tab label IS the agent name)`
+    : `1. In ${A.repoDir}: wt switch --create sess/${name} --base main --no-cd; resolve the worktree path (wt list).\n2. herdr tab create --cwd "<worktree>" --label "${name}" --no-focus  (tab label IS the agent name)`
   return agent(`Drive one herdr session; never do its work yourself.
-1. In ${A.repoDir}: wt switch --create sess/${name} --base main --no-cd; resolve the worktree path (wt list).
-2. herdr tab create --cwd "<worktree>" --label "${name}" --no-focus  (tab label IS the agent name)
+${cwdStep}
 3. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent ${SESSION_PROFILE(type)} --model ${SESSION_MODEL[type]} --dangerously-skip-permissions
 4. Prompt "/rename ${name}" alone; poll the title until it converges.
 5. Deliver the work order between the markers as ONE prompt; verify the session goes working.
@@ -105,6 +112,7 @@ WORK_ORDER>>>
 ${order}
 <<<WORK_ORDER`,
   { label, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
+  .then((o) => { trace.push({ stage: label, status: o && o.status, detail: o && o.detail }); return o })
 }
 
 const typeOf = (i) => (i.labels.find((l) => l.startsWith('type:')) || 'type:research').slice(5)
@@ -116,6 +124,7 @@ let cycle = 0
 while (true) {
   cycle++
   const s = await queryAndGuards(cycle)
+  trace.push({ stage: `cycle${cycle}:query+guards`, actions: s.guard_actions })
   lastSnapshot = s
   const work = ready(s).filter((i) => unblocked(s, i))
   if (work.length === 0 && s.guard_actions.length === 0) break // STOP
@@ -146,15 +155,16 @@ Deliver by settling: print your report as your final message and stop. Never wai
      and discoveries; this stage creates nothing. */
   for (const r of (finished || []).filter(Boolean)) {
     if (!r.outcome || r.outcome.status !== 'done') continue // blocked/stalled surface in the report; answer and RESUME
-    await drive('research', `merge-${r.ty}`.slice(0, 32),
+    await drive('merge', `merge-${r.ty}`.slice(0, 32),
       `Merge the session branch for the ${r.ty} batch. In ${A.repoDir}: wt merge sess/<its branch> - never --yes. On green: ${A.fixture ? 'report what you would close' : `close the finished items (${r.items.map((i) => '#' + i.number).join(', ')}) closed:done with the evidence in a comment`}. On red: fix nothing; report the gate output verbatim. ${T} Deliver by settling.`,
-      `merge:${r.ty}`, r.items[0].number)
+      `merge:${r.ty}`, r.items[0].number, A.repoDir)
   }
 }
 
 return {
   slug: A.slug,
   cycles: cycle,
+  trace,
   queue: lastSnapshot ? lastSnapshot.items.filter((i) => i.labels.includes('state:queued')).map((i) => `#${i.number} ${i.title}`) : [],
   next: 'blocked or stalled stages: answer the pane, then resume this run (scriptPath + resumeFromRunId)',
 }

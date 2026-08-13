@@ -70,7 +70,11 @@ apply:
     milestone bolt/<slug>'s open items - number, title, labels,
     blocked_by issue numbers (GitHub's dependency edges, read from
     the API, never inferred), parent batch, record path - and this
-    bolt's units with their board Status.
+    bolt's units with their board Status. When launched with a
+    fixture snapshot instead of the live tracker (an isolated run):
+    read state from the snapshot, write nothing to the tracker, never
+    land, and collect every would-be tracker write and pane event
+    into a trace array in the run report.
 
     GUARDS - checked EVERY cycle, in this order; each is idempotent:
 
@@ -117,7 +121,9 @@ apply:
       MERGE, one item at a time - the bolt branch has one writer:
         session branch to the bolt branch through the gate (never
         --yes); archive the change on green; the session's pane
-        closes here.
+        closes here. A merge driver runs in the bolt branch's
+        EXISTING worktree - a work session gets a fresh worktree; a
+        merge or landing stage never does.
       then re-run the guards and re-query.
 
     LAND when every item is merged and bolt.md's merge criteria hold
@@ -128,7 +134,13 @@ apply:
     writer at a time, comments the landing SHA on each item and
     closes it closed:done; "Landing: pr" opens a pull request from
     the bolt branch instead and reports its URL, items closing when
-    the PR merges.
+    the PR merges. The landing session runs in the repo's main
+    checkout. A failing criterion births ONE fix item, born
+    state:ready on this bolt - the release that approved the merge
+    criteria covers meeting them; an open fix item for that criterion
+    blocks a duplicate, and a criterion that fails again after its
+    fix landed is the andon cord, not another item. New scope still
+    queues.
 
     A session that edits files or may need the operator always gets a
     herdr pane; pure read-and-report may run in-process. Tracker

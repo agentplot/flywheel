@@ -7,6 +7,8 @@ land in unrelated repos or warrant different bolt types.
 
 - **type**: bolt-quick | bolt-default | bolt-deep — <why this type,
   from what the assertions touch, never from their count>
+- **landing**: merge | pr — how the bolt reaches main; carried into
+  bolt.md's Merge criteria as its Landing line
 - **owner**: @<login> — whose word settles the bolt's decisions, read
   from the items' assignee
 - **repos**: <the built repos this bolt cuts branches in>
