@@ -44,6 +44,13 @@ artifacts:
          bolt reaches main - "merge" (default, direct through the
          gate) or "pr" (a pull request opened from the bolt branch).
 
+
+      EXACTLY these four sections and nothing else. bolt.md carries no
+      narrative: no escalations, no session events, no findings, no
+      status. The items' comments are the narrative; a question for
+      the operator goes on an item with needs-operator, never into
+      this record.
+
       Two rules bind every section here. State a constraint only as
       strongly as you verified it, naming the tree and the check behind
       it; where you have not verified it, say that plainly instead of
