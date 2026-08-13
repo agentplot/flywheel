@@ -155,12 +155,23 @@ reports rather than working around it.
   baseline. Nine capabilities still describe the loops in conductor
   vocabulary, 233 mentions, three of them naming agent files that no
   longer exist; that residue is #93's, and this bolt lands with it
-  standing. The eval suites' re-cast is #101's — seven construction
-  prompts still cast the retired role — with what those suites should
-  measure left open on #95. Named here rather than left implicit,
-  because a criterion that reads as met while a tracked defect stands is
-  the exact silence this bolt's own history argues against; the postpone
-  is the operator's call, taken 2026-08-13, not a conductor's reading.
+  standing. That postpone is the operator's call, taken 2026-08-13, and
+  it reaches the archived baseline only.
+- **The shipped skills carry no retired role, and this bolt does not
+  land until they don't.** `skills/construction/evals/evals.json` casts
+  a bolt conductor as the protagonist of seven cases and names one more
+  in an expectation. Evals ship inside the plugin, so a case opening
+  "you are the bolt conductor" teaches a role this bolt deletes — and it
+  falls inside the operator's own "purge prose and evals" ruling rather
+  than outside it. Released as #101 into this bolt, a landing
+  prerequisite and not a follow-up. On the landing tree,
+  `git grep -c conductor -- skills schemas agents site README.md`
+  returns nothing. `bin/` keeps exactly two deliberate literals and this
+  criterion excepts them by name: `_flywheel_server.py`'s docstring
+  quoting the decision record, and `flywheel`'s `conductors_cwd` →
+  `loops_cwd` matcher, which must name the old key to refuse it. What
+  those suites should measure once the judgment has moved into the loop
+  programs stays open on #95 — a design question, not a landing gate.
 - **The repo's own three gates green on the tree that lands**, run by the
   gate rather than by hand.
 - **No item lands closed while it still carries `needs-operator`.** An
