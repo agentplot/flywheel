@@ -139,11 +139,28 @@ reports rather than working around it.
   `site/` and `openspec/specs/` all read `bolt-adversarial`. The
   `schemas/bolt-deep/` directory is renamed, not copied, and the shipped
   manifests still validate.
-- **Retirement leaves nothing dangling.** Where conductor profiles, fleet
-  rows, the trigger phrase or the launch-prompt machinery are removed,
-  nothing tracked still references them — the same search discipline as
-  the rename. A reference found later is a new item, not a silent
-  widening of an accepted one.
+- **Retirement leaves nothing dangling on the live machinery**, which is
+  where this criterion binds: `agents/`, `bin/`, `skills/`, `schemas/`,
+  `site/` and `README.md` carry no reference to a conductor profile, a
+  fleet row, the trigger phrase or the launch-prompt machinery, save two
+  deliberate literals — `bin/_flywheel_server.py`'s docstring quoting the
+  decision record, and `bin/flywheel`'s `conductors_cwd` → `loops_cwd`
+  rename matcher, which must name the old key to refuse it.
+- **The archived spec baseline is deliberately NOT rewritten by this
+  bolt, and this criterion does not ask it to be.** The operator scoped
+  the purge in the `build-server` pane (recorded on #74): purge prose and
+  evals; of `openspec/specs/`, retire only `flywheel-conductor-profiles`
+  — deleted here, because it SHALL-required the two profile files this
+  bolt removes and would otherwise leave the tree contradicting its own
+  baseline. Nine capabilities still describe the loops in conductor
+  vocabulary, 233 mentions, three of them naming agent files that no
+  longer exist; that residue is #93's, and this bolt lands with it
+  standing. The eval suites' re-cast is #101's — seven construction
+  prompts still cast the retired role — with what those suites should
+  measure left open on #95. Named here rather than left implicit,
+  because a criterion that reads as met while a tracked defect stands is
+  the exact silence this bolt's own history argues against; the postpone
+  is the operator's call, taken 2026-08-13, not a conductor's reading.
 - **The repo's own three gates green on the tree that lands**, run by the
   gate rather than by hand.
 - **No item lands closed while it still carries `needs-operator`.** An
