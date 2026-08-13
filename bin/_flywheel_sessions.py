@@ -334,7 +334,10 @@ class HerdrRunner(Runner):
         )
         self._await_ready(spec.name)
         self._ensure_named(spec.name)
-        self._deliver(spec.name, spec.order)
+        if not self._deliver(spec.name, spec.order):
+            raise SessionError(
+                f"{spec.name}: the work order never submitted — the pane is "
+                f"left open for inspection")
         return handle
 
     def wait(self, handle, timeout=WAIT_CHUNK_S):
@@ -437,6 +440,11 @@ class HerdrRunner(Runner):
             if self._named(name):
                 return True
             self._herdr("agent", "send-keys", name, "enter")
+        # The rename never took. Whatever is stranded in the composer must
+        # not prefix the next prompt — a dirty composer concatenates two
+        # slash commands into one garbage line — so clear it and carry on:
+        # the agent stays addressable by its start name either way.
+        self._herdr("agent", "send-keys", name, "esc")
         return False
 
     def _deliver(self, name, order):
@@ -446,6 +454,10 @@ class HerdrRunner(Runner):
         without submitting — the pane shows `[Pasted text …]` and the agent
         stays settled. One Enter submits a stuck composer.
         """
+        # A clean composer first: esc clears anything stranded — an
+        # unsubmitted rename, ghost text — that would otherwise prefix
+        # this order. Harmless on an empty composer.
+        self._herdr("agent", "send-keys", name, "esc")
         sent = self._herdr("agent", "prompt", name, order)
         if sent.returncode != 0:
             raise SessionError(

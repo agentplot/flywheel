@@ -169,7 +169,53 @@ class IdempotentLaunchTest(unittest.TestCase):
         runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
         runner.launch(spec())
         verbs = [v for v in herdr.verbs() if v != "agent list"]
-        self.assertEqual(verbs[:3], ["tab create", "agent start", "agent prompt"])
+        self.assertEqual(verbs[:4], ["tab create", "agent start",
+                                     "agent send-keys", "agent prompt"])
+
+    def test_delivery_clears_the_composer_before_typing_the_order(self):
+        # A stranded prompt concatenates with the next one — the garbage
+        # line `/rename scaffold-x/opsx:new x` observed on first boot. One
+        # esc before the order guarantees a clean composer.
+        herdr = FakeHerdr()
+        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
+        runner.launch(spec())
+        keys = [a for a in herdr.calls if a[1:3] == ["agent", "send-keys"]]
+        prompt_at = next(i for i, a in enumerate(herdr.calls)
+                         if a[1:3] == ["agent", "prompt"])
+        esc_at = next(i for i, a in enumerate(herdr.calls)
+                      if a[1:3] == ["agent", "send-keys"] and a[4] == "esc")
+        self.assertLess(esc_at, prompt_at)
+
+    def test_a_failed_rename_clears_its_stranded_text(self):
+        class StubbornTitle(FakeHerdr):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                out = super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+                if argv[1:3] == ["agent", "start"]:
+                    self.roster[argv[3]]["terminal_title_stripped"] = "1"
+                return out
+        herdr = StubbornTitle()
+        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+                                      submit_attempts=2)
+        runner.launch(spec())
+        escs = [i for i, a in enumerate(herdr.calls)
+                if a[1:3] == ["agent", "send-keys"] and a[4] == "esc"]
+        prompts = [i for i, a in enumerate(herdr.calls)
+                   if a[1:3] == ["agent", "prompt"] and not a[4].startswith("/rename")]
+        self.assertTrue(escs and prompts and min(escs) < min(prompts),
+                        "the stranded rename must be cleared before the order")
+
+    def test_an_order_that_never_submits_fails_the_launch(self):
+        class DeafComposer(FakeHerdr):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                out = super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+                if argv[1:3] == ["agent", "prompt"]:
+                    self.roster[argv[3]]["agent_status"] = "idle"
+                return out
+        herdr = DeafComposer()
+        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+                                      submit_attempts=2)
+        with self.assertRaises(sessions.SessionError):
+            runner.launch(spec())
 
     def test_the_name_is_set_at_launch_so_there_is_no_rename_to_race(self):
         herdr = FakeHerdr()
