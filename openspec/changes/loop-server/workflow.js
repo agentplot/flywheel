@@ -182,7 +182,9 @@ ${claims}
 <<<CLAIMS`,
   { label: `plan:${label}`, phase: 'Cycle', schema: PLANR, model: 'sonnet', effort: 'medium' })
 
-const readClose = (name, label) => agent(`The herdr session "${name}" has settled and is finished. Read its pane (herdr agent read "${name}" --source recent-unwrapped --lines 200) and extract its report - composer ghost text is not input. Then close its tab (herdr tab close <tab-id>): a settled pane left open makes the roster lie. Leave the worktree and branch alone - the merge step lands them. Return the outcome with the report condensed to its facts.`,
+const readClose = (name, label) => agent(`The herdr session "${name}" has settled and is finished. Read its pane (herdr agent read "${name}" --source recent-unwrapped --lines 200) and extract its report - composer ghost text is not input. Then close its tab (herdr tab close <tab-id>): a settled pane left open makes the roster lie. Leave the worktree and branch alone - the merge step lands them.
+
+THE STATUS YOU RETURN IS THE SESSION'S OUTCOME, NEVER YOURS. You will almost always succeed at reading and closing a pane; that is not what status means. If the session reports that its work FAILED - a merge that did not land, a gate that came back red, a build it could not finish - return status failed and put its verbatim reason in detail. Return done ONLY when the session itself reports the work succeeded. A failed stage read as done is how the loop comes to believe a branch merged that did not, and it will land on that belief.`,
   { label: `read:${label}`, phase: 'Cycle', schema: OUTCOME, ...DRIVER_OPTS })
 
 const notify = (label, itemNumbers, name) => agent(`${T} On EACH of issues ${itemNumbers.map((n) => '#' + n).join(', ')}: comment that session ${name} has been working ~90 minutes without settling, and add the needs-operator label. This is a live wait - dispatch relays it. Make no other change.`,
