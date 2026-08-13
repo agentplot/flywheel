@@ -152,15 +152,46 @@ reports rather than working around it.
 main at a time, and each item closes `closed:done` with the landing SHA in
 its closing comment.
 
-**One residual, measured, that the loop will hit before it does anything
-else.** The `bolt-quick` apply instruction directs the compile step to
-take its mechanics verbatim from `<plugin-root>/workflows/reference-loop.js`.
-**That file does not exist** — neither in this repo at fc190e9
-(`git ls-files` finds no `reference-loop`) nor in the installed plugin
-(`~/.claude/plugins/cache/flywheel/flywheel/0.9.9/workflows/` holds only
-`fixtures/`). Both were listed on 2026-08-13. What the compile step should
-do in its absence is the operator's to say; it is a question for the item
-it blocks, not a gap to improvise a substitute for. It is recorded here
-because it is the first thing the loop meets, and because a missing
-contract silently reconstructed from memory is the exact failure this
-bolt exists to design out.
+**The binding this bolt carries cannot be compiled and run as it stands,
+and that is the parallel test's first result.** Two faults, independent
+of each other, both measured on `main` at `7d7726c` on 2026-08-13. They
+are stated here because the next session to open this record must not
+spend an hour rediscovering them, and must not quietly route around them
+either.
+
+**One — the contract the compile step copies from was deliberately
+deleted.** `d9a2d3b` ("fold the compile-review rulings … reference-loop
+deleted", Refs #69) removed `workflows/reference-loop.js` and, in the
+same commit, rewrote **only** `schemas/bolt-default/schema.yaml` to
+inline the mechanics that file had held — the waiting model, the guard
+order, MODELS and LIMITS, the landing-mode contract.
+`schemas/bolt-quick/schema.yaml:66` and `schemas/bolt-deep/schema.yaml:67`
+were left citing it verbatim. The file survives only in the 0.9.1–0.9.3
+plugin caches; it is absent from this repo and from the installed 0.9.9.
+`bolt-quick`'s own instruction text carries none of those mechanics, so
+there is no source to compile from — and reconstructing a deleted
+contract from memory is precisely the failure this bolt exists to design
+out.
+
+**Two — `bolt-quick` has no plan-mode path in it.**
+`schemas/bolt-quick/schema.yaml` never mentions `--permission-mode plan`;
+its WORK step reads "an item's spec agent and its build agent stay two
+agents", prescribing a spec-driven change per item. The milestone
+declares the opposite — no spec-driven changes, the approved plan as the
+spec surrogate. Plan mode is stated in `skills/construction/SKILL.md` and
+`skills/_reference/tracker.md`, never in the schema the release bound. So
+the bound schema and the released instruction disagree about the shape of
+every item's work, and this is a substantive gap rather than a stale
+pointer: a compiled `bolt-quick` loop would build the wrong shape
+correctly. It also raises a question no current driver can answer — plan
+approval is a dialog, and **who approves a plan-mode session's plan inside
+an automated driver** is unstated everywhere.
+
+**Escalated, not improvised.** Both faults, with three priced options —
+conduct by hand, repair `bolt-quick` first, or rebind to `bolt-default` —
+are on #77 as `needs-operator` (comment `5280445082`), relayed through
+dispatch. Each option spends something only the operator prices: the
+parallel test this milestone was set up to run, the effort of repairing
+machinery this bolt supersedes, or the scrutiny chosen at release. The
+loop holds all six items until that word arrives; nothing here is
+ungated, because the compile gates the whole run.
