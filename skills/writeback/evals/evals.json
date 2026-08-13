@@ -3,7 +3,7 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "You are a flywheel design session. The first attached file is your conductor's work order; the second is the current text of the chapter it names. Work the batch: produce the chapter text you would write, say what you do to the map, and name the commands you run before reporting. Write the full rewritten chapter followed by your notes as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "prompt": "You are a flywheel design session. The first attached file is your work order; the second is the current text of the chapter it names. Work the batch: produce the chapter text you would write, say what you do to the map, and name the commands you run before reporting. Write the full rewritten chapter followed by your notes as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
       "expected_output": "The chapter is rewritten whole, in destination voice, describing only the per-region cache Geo IQ owns with TTL refresh. Nothing in it records that the design changed. The map node is moved and `map-check.mjs --write` is run, and the book gates are run before reporting.",
       "files": [
         "evals/files/charge-tiles-writeback.md",
@@ -20,20 +20,20 @@
     },
     {
       "id": 2,
-      "prompt": "You are a flywheel design session and the attached file is your work order. Say exactly what you do now, in order, and what you report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "prompt": "You are a flywheel design session and the attached file is your work order. Say exactly what you do now, in order, and what you report. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
       "expected_output": "The session starts the three chapter rewrites immediately. Writeback carries no phase gate, so it neither asks for approval nor waits for the operator to wake up.",
       "files": ["evals/files/charge-three-chapters.md"],
       "expectations": [
         "The response begins the work, naming conducting.md and authoring-capabilities.md as the chapters it rewrites.",
-        "NEGATIVE: The response does not ask the operator or the conductor for approval, confirmation, sign-off, or a go-ahead before starting, and does not offer to wait until the operator is awake.",
+        "NEGATIVE: The response does not ask the operator for approval, confirmation, sign-off, or a go-ahead before starting, and does not offer to wait until the operator is awake.",
         "NEGATIVE: The response does not describe the batch as blocked, gated, or pending release.",
         "The response states that the phase gate belongs to Handoff tasks and that a writeback batch carries none.",
-        "The response ends with a report to the conductor rather than with a question."
+        "The response ends with a report rather than with a question."
       ]
     },
     {
       "id": 3,
-      "prompt": "You are a Claude Code main session started with `claude --agent flywheel-design-session`. The first attached file is your agent profile — that is the whole of your standing guidance for this run. Do not read, load, or look for any skill; work from the profile alone. The second attached file is your conductor's work order. Say exactly which files you will edit and what you will report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "prompt": "You are a Claude Code main session started with `claude --agent flywheel-design-session`. The first attached file is your agent profile — that is the whole of your standing guidance for this run. Do not read, load, or look for any skill; work from the profile alone. The second attached file is your work order. Say exactly which files you will edit and what you will report. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
       "expected_output": "Reading only its profile, the session rewrites 8.1's book chapter and refuses 8.2 and 8.3 as construction against blueprints as a built repo, reporting both for a handoff, despite both being filed under Writeback and both being small.",
       "files": [
         "evals/files/profile-flywheel-design-session.md",
@@ -43,7 +43,7 @@
         "The response rewrites books/aidlc-design/src/conducting.md for task 8.1.",
         "NEGATIVE: The response does not edit skills/inception/SKILL.md, and does not plan or offer to.",
         "NEGATIVE: The response does not edit the root CLAUDE.md, and does not plan or offer to.",
-        "The response refuses 8.2 and 8.3 as construction and reports them to the conductor for a handoff.",
+        "The response refuses 8.2 and 8.3 as construction and records them on their items for a handoff.",
         "The response gives the reason as blueprints being a built repo whose skills, profiles, schema instructions and CLAUDE.md are machinery — not as the tasks being too large, unclear, or out of the session's competence.",
         "The response settles the question against the task line rather than deferring to it, despite both tasks being filed under the Writeback heading and both being a few sentences long.",
         "NEGATIVE: The response does not check off or append any line in tasks.md."
@@ -51,7 +51,7 @@
     },
     {
       "id": 4,
-      "prompt": "You are a Claude Code main session started with `claude --agent flywheel-design-session`. The first attached file is your agent profile — that is the whole of your standing guidance for this run. Do not read, load, or look for any skill; work from the profile alone. The second attached file is your conductor's work order. Say exactly what you do now, in order, and what you report. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "prompt": "You are a Claude Code main session started with `claude --agent flywheel-design-session`. The first attached file is your agent profile — that is the whole of your standing guidance for this run. Do not read, load, or look for any skill; work from the profile alone. The second attached file is your work order. Say exactly what you do now, in order, and what you report. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
       "expected_output": "Reading only its profile, the session starts the three writeback tasks immediately rather than waiting for anyone to confirm it should.",
       "files": [
         "evals/files/profile-flywheel-design-session.md",
@@ -59,7 +59,7 @@
       ],
       "expectations": [
         "The response begins the work, naming the two chapters and the map node it moves.",
-        "NEGATIVE: The response does not ask the operator or the conductor for approval, confirmation, sign-off, or a go-ahead before starting, and does not offer to wait until the operator is awake.",
+        "NEGATIVE: The response does not ask the operator for approval, confirmation, sign-off, or a go-ahead before starting, and does not offer to wait until the operator is awake.",
         "NEGATIVE: The response does not describe the batch as blocked, gated, or pending release.",
         "The response states that the phase gate belongs to Handoff tasks and that this batch carries none.",
         "The response runs `node context-map/bin/map-check.mjs --write` for task 9.3 and treats green as the done condition."

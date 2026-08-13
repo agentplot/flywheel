@@ -1,6 +1,6 @@
 # Annotations returned from a plannotator round — intent `widget-loop`
 
-Three margin notes came back on the round the conductor ran over its own
+Three margin notes came back on the round the loop ran over its own
 canonical artifacts.
 
 ## On `intent.md`, §Scope

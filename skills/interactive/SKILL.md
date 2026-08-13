@@ -20,8 +20,8 @@ One page per batch, not one per decision: annotations close decisions
 faster when the trade-offs sit beside each other.
 
 Each decision on the page states the decision and its consequences —
-the consequences are what get queued as items when your conductor folds
-them. The page is a real committed file in your
+the consequences are what you queue as items once the annotations come
+back. The page is a real committed file in your
 `sessions/<date>-<slug>/` directory, and it stays there.
 
 ## Opening it
@@ -39,7 +39,7 @@ to you and nowhere else.
 The steering source for this type is the user-level `lavish` skill
 (`~/.claude/skills/lavish/SKILL.md`). If that skill is absent, report
 the shortfall and stop — do not half-build the page or substitute a
-document; re-charging the batch is your conductor's call.
+document; re-charging the batch is the operator's call.
 
 ## On the tracker
 
@@ -47,8 +47,8 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: item numbers of the coupled decisions the page carries, `type:interactive`, flipped `state:in-progress` by your conductor.
-- **You leave**: one comment per item — what the operator chose, with a pointer to the page in your session directory. The conductor closes items on your evidence.
+- **You receive**: item numbers of the coupled decisions the page carries, `type:interactive`, flipped `state:in-progress` by the intent loop.
+- **You leave**: one comment per item — what the operator chose, with a pointer to the page in your session directory. The loop closes items on your evidence.
 - New work the round surfaces is a queued item on the milestone.
 
 ## What you report

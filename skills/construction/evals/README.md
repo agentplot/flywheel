@@ -11,22 +11,6 @@ the baseline run at the snapshot. A no-skill run may be kept as a floor; it
 is not the only baseline. Any expectation that passes in both
 configurations is rewritten.
 
-**Eval 7 tests the bolt conductor profile body, not this skill**, and the
-withheld arm cannot be made fully real. `skill-creator`'s runner requires
-`--skill-path`, has no flag for withholding a skill, and has no concept of
-an agent profile at all, so it will load this skill on every run. The
-closest executable substitute is used in two parts: the profile under test
-is attached as a fixture (`files/bolt-conductor-profile.md`, a verbatim
-copy of `agents/flywheel-bolt-conductor.md`), and the prompt names
-it as the executor's only steering document while carrying none of the
-skill's guidance itself. The first expectation is that the run did not read
-or quote `SKILL.md`, which is checkable from the transcript; a run where
-that fails measures the skill and does not count toward the profile's
-coverage.
-
-The fixture is a copy, so it can drift: re-copy the profile into `files/`
-whenever the profile body changes.
-
 **Evals 8, 9 and 10 have adversarial prompts on purpose.** Eval 8 asks for
 the next review round, eval 9 states a per-proposal three-read process as
 the process to follow, and eval 10 hands over a line number. A run that

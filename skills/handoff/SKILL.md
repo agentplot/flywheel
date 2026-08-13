@@ -14,7 +14,7 @@ anything moves.
 
 ## Where handoff items come from
 
-The conductor births one at the queue whenever settled assertions are
+The intent loop births one at the queue whenever settled assertions are
 **unbolted** — still on the intent's milestone, because bolting IS the
 milestone move to `bolt/<slug>`. Assertions settle in waves, so
 handoffs recur: each wave gets its own item, and an intent that settles
@@ -51,9 +51,11 @@ Execute each approved section on the tracker (invocations in the
 plugin's `skills/_reference/herdr.md`): ensure the milestone, move each
 assertion item onto it (`gh issue edit <n> --milestone "bolt/<slug>"`),
 relabel them `state:ready`, wire the sequencing, and comment the plan
-on the unit. If the bolt conductor is running, prompt it; if
-not, report that — the fleet layer starts `bolt-<slug>`, and it
-scaffolds its change from the milestone and your plan.
+on the unit. Nobody is prompted and nothing is announced — the tracker
+is the only bus, and a ready item on `bolt/<slug>` IS the signal: the
+server's next pass starts the bolt loop for that milestone, and its
+scaffold guard writes the change from what the milestone and its items
+say.
 
 ## The receipt is custody, not completion
 

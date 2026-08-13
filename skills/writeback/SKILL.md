@@ -42,7 +42,7 @@ node context-map/bin/map-check.mjs    # schema and refs
 ```
 
 A writeback that has not passed these is not finished, and reporting it
-as finished puts the failure on your conductor's merge.
+as finished carries the failure onto main with the loop's merge.
 
 ## A writeback target is a chapter or the map
 
@@ -56,8 +56,8 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: writeback items on the intent's milestone (`type:writeback`), flipped `state:in-progress` by your conductor.
-- **You leave**: the chapters and map committed on your branch, gates green, and one comment per item saying which chapters moved. The conductor merges and closes.
+- **You receive**: writeback items on the intent's milestone (`type:writeback`), flipped `state:in-progress` by the intent loop.
+- **You leave**: the chapters and map committed on your branch, gates green, and one comment per item saying which chapters moved. The loop merges and closes.
 - A contradiction the books reveal is a queued item on the milestone, never silently written around.
 
 ## What you report

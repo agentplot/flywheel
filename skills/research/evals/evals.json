@@ -3,7 +3,7 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "You are a flywheel design session and the attached file is your work order and where the investigation got to. Close the batch out: say exactly what you write, where each file lands, which commands you run, and what you report to your conductor. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "prompt": "You are a flywheel design session and the attached file is your work order and where the investigation got to. Close the batch out: say exactly what you write, where each file lands, which commands you run, and what your report says. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
       "expected_output": "The answer — one gate fails, and mainWorktree() picks .bare — is delivered in the session report with its evidence. The two-line fix is written down and routed to a handoff, a one-proposal bolt, rather than applied. No prototypes/ note is written, because nothing was built.",
       "files": ["evals/files/charge-mermaid-gate.md"],
       "expectations": [

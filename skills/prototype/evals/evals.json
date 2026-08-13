@@ -3,14 +3,14 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "You are a flywheel design session and the attached file is your work order and where the run got to. Close the batch out: say exactly what you write, where each file lands, which commands you run, and what you report to your conductor. `plannotator` resolves on PATH. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
-      "expected_output": "The negative measurement is written up as the finding, in the four-part prototypes/<slug>.md shape, and delivered to the conductor. The spike worktree and branch are discarded. No review round is opened on the finding note, even though the session wrote it — the conductor charges a review-type session if the operator should annotate it.",
+      "prompt": "You are a flywheel design session and the attached file is your work order and where the run got to. Close the batch out: say exactly what you write, where each file lands, which commands you run, and what your report says. `plannotator` resolves on PATH. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
+      "expected_output": "The negative measurement is written up as the finding, in the four-part prototypes/<slug>.md shape, and delivered in the report and as the item's comment. The spike worktree and branch are discarded. No review round is opened on the finding note, even though the session wrote it — a review-type session is the operator's to charge if they should annotate it.",
       "files": ["evals/files/charge-tile-prefetch.md"],
       "expectations": [
         "The response writes a prototype finding note in the four-part shape — Question, Where, Findings, Feeds — naming `spike/tile-prefetch` in the spike repo under Where.",
         "The response records the result as a finding that prefetch does not hold p99 under 400 ms, rather than as an inconclusive or failed run.",
         "NEGATIVE: The response does not run, plan, or propose `plannotator annotate` or any other review round on the finding note or on any file in its session directory.",
-        "The response routes task 3.5 by delivering the finding to the conductor and saying the conductor charges a review-type session if the operator should annotate what was proved.",
+        "The response routes task 3.5 by delivering the finding in its report and on the item, and saying a review-type session is the operator's to charge if they should annotate what was proved.",
         "NEGATIVE: The response does not merge, publish, or preserve the spike-repo branch or its code — it says the worktree and branch are discarded.",
         "NEGATIVE: The response does not check off or append any line in tasks.md."
       ]

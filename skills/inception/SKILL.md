@@ -13,8 +13,10 @@ prose — `intent.md`, `decisions/`, `questions/`, `assertions/`,
 dependencies, the queue, the narrative in comments. Nothing is recorded
 in both places; a file keeps only terminal facts.
 
-Three roles load this skill: **dispatch**, the **intent conductor**, and
-**design sessions** under either session profile.
+Two roles load this skill: **dispatch** and **design sessions** under
+either session profile. The **intent loop** — `bin/flywheel-intent-loop`,
+one process per milestone — is a program rather than a reader; what it
+does is written down here so the actors around it can count on it.
 
 ## The tracker
 
@@ -47,14 +49,15 @@ or by a work order, queue a question rather than inventing structure.
   moving the batch to **Ready** on the board — one move per batch,
   never per item. Batches group by **thread**, not by type: a
   prototype, the questions it answers, and the writeback of its findings
-  are one approval; the conductor partitions the types into sessions at
+  are one approval; the loop partitions the types into sessions at
   work time.
 - **Milestones** are the change-sized containers, exactly two forms:
   `intent/<slug>` and `bolt/<slug>`. Everything an intent owns —
   questions, assertions, prototypes, writebacks — sits on its one
   milestone, distinguished by `type:*`. Dependencies are the items'
   native blocked-by relations, declared best-effort by whoever files an
-  item and confirmed by the conductor at batching time.
+  item; the loop computes readiness from the field and never reasons
+  about it.
 
 **Routing is creating the item where it belongs.** A finding for another
 change is queued on that change's milestone, and the open item is the
@@ -62,13 +65,14 @@ obligation — nothing needs a second ledger to avoid being lost.
 
 ## Running agents
 
-The loop runs on herdr; names are the addressing scheme. Check
-`test "${HERDR_ENV:-}" = 1` before starting anything — if it fails you
-cannot address standing agents; say so and stop rather than reaching for
-the `Agent` tool, whose subagents are invisible to the operator. The one
-exception: inside a conductor's own `/opsx:apply` loop run, the sessions
-the loop launches are permitted, each isolated in its own worktree, with
-the run ID reported.
+Supervised sessions run on herdr; names are the addressing scheme. The
+loop launches, waits on, collects and closes them through the session
+runner (`bin/_flywheel_sessions.py`), which reuses any agent already
+running under the name — so a restarted loop process never puts two
+sessions on the same work. Check `test "${HERDR_ENV:-}" = 1` before
+starting anything yourself — if it fails you cannot address standing
+agents; say so and stop rather than reaching for the `Agent` tool, whose
+subagents are invisible to the operator.
 
 The herdr and worktrunk invocations — starting an agent, the
 rename-then-confirm protocol, cutting worktrees, merging through the
@@ -77,12 +81,12 @@ copy. Read it before doing any of them.
 
 ## What lives where
 
-- **The intent conductor** writes the change's artifacts and the books
-  and the context map. Its merge is what admits a session's file writes
-  to main.
-- **A design session** writes its own `sessions/<date>-<slug>/`
-  directory, the decision records its work order charged it to close,
-  and the books and map for writeback batches — inside its own worktree.
+- **A design session** writes the change's records: its own
+  `sessions/<date>-<slug>/` directory, the decision, question and
+  assertion records its work order charged it to close, and the books and
+  map for writeback batches — all inside its own worktree.
+- **The intent loop** writes no records. Its merge of a session's branch
+  is what admits that session's file writes to main.
 - **Anyone** writes the tracker: items, comments, queued discoveries.
 - Construction — every other file edit, in any repo, the loop's own
   machinery included — reaches a repo through a released bolt.
@@ -91,7 +95,7 @@ copy. Read it before doing any of them.
 
 A work order is the change id, the session type, the item numbers, and
 one or two plain sentences of goal. Worktree, session directory, and
-model are launch mechanics the conductor sets, not work order content.
+model are launch mechanics the loop sets, not work order content.
 
 - **Batch generously, partition by judgment.** Type is the hard
   boundary — a session loads one type skill. Within a type: related
@@ -107,19 +111,20 @@ model are launch mechanics the conductor sets, not work order content.
   batch are queued items, filed in a minute. Escalation is for being
   blocked, not for noticing things.
 - **A report is comment-sized**: what happened, evidence as pointers,
-  what it asks the conductor to decide. A report that is genuinely a
-  document is a file in the session directory the comment points at.
+  what it asks the operator to decide. A report that is genuinely a
+  document is a file in the session directory the comment points at. It
+  goes on the item and into the pane; there is nobody to prompt.
 - The six design types and their skills: `flywheel:planning`,
   `flywheel:interactive`, `flywheel:prototype`, `flywheel:research`,
-  `flywheel:writeback`, `flywheel:handoff`. The conductor picks the type
-  at work-order time. Interactive runs under
+  `flywheel:writeback`, `flywheel:handoff`. An item's `type:*` label
+  picks the type and the loop batches by it. Interactive runs under
   `flywheel-interactive-session`; the other five under
   `flywheel-design-session`.
 
 ## Which channel carries which question
 
-The outer loop is high-touch: the intent conductor and its sessions
-reach the operator directly, and dispatch relays nothing for them.
+The outer loop is high-touch: design sessions reach the operator
+directly, and dispatch relays nothing for them.
 
 | the answer is | channel | blocking? |
 |---|---|---|
@@ -148,16 +153,16 @@ copy.
 ## Dispatch
 
 The standing singleton, and a pure GitHub-and-relay actor: no repo
-checkout, no file writes — conductors scaffold their own changes from
-what dispatch puts on the tracker. Five routes for a raw idea — say
-which you chose:
+checkout, no file writes — everything dispatch produces lands on the
+tracker, and the records are written from it there. Five routes for a
+raw idea — say which you chose:
 
 1. **New intent** — dedupe against the open `intent/*` milestones, then
    create the milestone and its originating item, assigned to the
    developer whose word settles it.
 2. **Assertion on an existing intent** — an idea that arrives
-   work-shaped becomes a queued item on that intent's milestone; the
-   conductor writes the assertion record from it.
+   work-shaped becomes a queued item on that intent's milestone; a design
+   session writes the assertion record from it.
 3. **Item on a running bolt** — construction-scoped work a live bolt
    covers: queue it on the bolt's milestone.
 4. **Quick bolt** — small, fully defined work gets a `bolt/<slug>`
@@ -168,11 +173,11 @@ which you chose:
    say so.
 5. **Dropped** — say so; record nothing.
 
-Conductors are started by the fleet layer, never by dispatch.
+Loops are started by `flywheel server`, never by dispatch.
 
 **The operator's word is applied directly**, by whoever holds it:
-edit the record or item it names, comment the change, and the conductor
-sees it on its next query. No relay ceremony exists for the operator's
+edit the record or item it names, comment the change, and the loop sees
+it on its next cycle. No relay ceremony exists for the operator's
 own word.
 
 Dispatch is also the inner loop's bridge to a possibly-absent operator.
@@ -183,39 +188,50 @@ the comment as the fallback — relays the answer back as a comment, and
 whoever applies the word removes the label. An escalation is one line
 of question, options if any, and a pointer to evidence.
 
-## Intent conductor
+## The intent loop
 
-Work the ready set to empty, then stop at the queue — the schema's
-apply instruction holds the loop, launched as
-`/opsx:apply build a dynamic workflow with the instructions for <change>`.
+`bin/flywheel-intent-loop` — one stateless process per `intent/<slug>`
+milestone, started and stopped by `flywheel server`. It works the ready
+set to empty, then stops at the queue. It reads state and enforces
+contracts and does nothing else: every judgment it might have wanted
+belongs to a session or to the operator.
 
-- **Ready items get sessions**, batched, in parallel where batches
-  are disjoint. Flip items `state:in-progress` as sessions start.
-- **Fold**: merge each finished session branch through the merge gate
-  (`wt merge --no-remove -C <worktree>`) — books, mermaid and map are
-  exactly what a documentation session should pass — then promote:
-  decision records into `decisions/`, findings into `prototypes/`,
-  comments and closures onto the items. Teardown is yours; a session is
-  not done until its worktree and branch are gone.
-- **At the queue**, two moves, then wait. First, birth the handoff when
+- **Ready items get sessions**, batched one type per batch — prototypes
+  alone — and run in parallel where batches are disjoint. Items flip
+  `state:in-progress` as their session launches, and a batch runs only
+  once every `blocked_by` of every item in it is closed.
+- **Completion is the operator's.** A session settling is not
+  completion — the operator may iterate a plannotator or lavish round as
+  often as they like — so the loop waits for the operator's mark on the
+  tracker and reacts to that: it collects the deliverables (session
+  directory, drafts, item comments), merges the session branch through
+  the merge gate (`wt merge --no-remove -C <worktree>`) — books, mermaid
+  and map are exactly what a documentation session should pass — closes
+  the batch's items with the session's report, and closes its pane.
+- **At the queue**, two guards, then wait. First, birth the handoff when
   it is due: an assertion is **settled and unbolted** when its item is
   open on `intent/<slug>` (bolting IS the milestone move to
   `bolt/<slug>`), has no parent batch, and has no open blockers — when
-  any exist, queue one `type:handoff` item naming exactly that set, or
-  extend the open unstarted one. Second, compose the queue into
-  proposed batches (`flywheel-batch`) — elaborations of design work,
-  units of settled assertions — grouped by thread, and present it one
-  line per batch and unbatched item. Moving a batch to Ready is the
-  approval; the handoff session inside a released unit plans the bolt and moves
-  its assertions to `bolt/<slug>`; the fleet layer starts `bolt-<slug>`,
-  which scaffolds its own change — you never write a bolt change's
-  artifacts.
-- **Close honestly**: milestone empty and writebacks green → report
-  that and stop. The operator closes the milestone on GitHub — that is
-  the archive signal; the fleet layer then charges a fresh conductor
-  session to `openspec archive <id>` and commit. The fleet layer also
-  stops a settled conductor whose milestone has no job; a later job
-  rehydrates a fresh session from the records.
+  any exist, one `type:handoff` item names exactly that set, born or
+  amended to match. Second, compose the orphan queued items into a
+  proposed batch (`flywheel-batch`) at Status **Backlog** — composing is
+  not releasing — and report one line per batch and unbatched item.
+  Moving a batch to Ready is the approval; the handoff session inside a
+  released unit plans the bolt and moves its assertions to
+  `bolt/<slug>`; the server then starts that milestone's bolt loop,
+  which scaffolds its own change — an intent loop never writes a bolt
+  change's artifacts.
+- **Stop honestly**: nothing ready and the guards wrote nothing → the
+  run stops with its report, and a second cycle against an unchanged
+  tracker writes nothing. The operator closes the milestone on GitHub —
+  that is the archive signal, and the server runs `openspec archive` and
+  commits it. A milestone with no job has no process; a later job starts
+  a fresh one that re-reads the tracker and the records.
+- **The andon cord** is a session's, not the loop's: a session that
+  finds the work wrong in a way no fixing will help writes the stop as a
+  structured marker in its item comment and settles. The loop
+  recognises the marker as code, pauses the batch — nothing merged,
+  nothing closed — and sets `needs-operator`.
 
 ## Design session
 

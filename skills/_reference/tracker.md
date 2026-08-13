@@ -48,7 +48,7 @@ queue a question — never invent tracker structure.**
    milestones and survive the custody move.
 3. **Batches group by thread, not by type** — a prototype, the
    questions it answers, and the writeback of its findings are one
-   approval. The conductor partitions a batch's sub-issues into typed sessions at
+   approval. The loop partitions a batch's sub-issues into typed sessions at
    work time: type is the hard boundary, relatedness decides within a
    type, prototypes ride alone.
 4. **`type:*` is the session type that works the item.** A question
@@ -61,12 +61,12 @@ queue a question — never invent tracker structure.**
    and each move has an owner: anyone queues; only the operator's word
    makes ready — the flip to Ready on the board for a batch, or
    born-ready at triage when the work IS the operator's word; the
-   conductor flips `in-progress` as a session starts; whoever holds
+   loop flips `in-progress` as a session starts; whoever holds
    the evidence closes, always with one `closed:*` reason.
 6. **The handoff birth condition is computable.** An assertion is
    settled and unbolted when its item is open on `intent/<slug>`, has
    no parent batch, and has no open blockers. Whenever such assertions
-   exist at the queue, the conductor births one `type:handoff` item
+   exist at the queue, the intent loop births one `type:handoff` item
    naming exactly that set, or extends the open unstarted one — and
    while that handoff's unit still sits at Backlog, newcomers join it:
    the item's set amended, the assertions attached as sub-issues. The
@@ -81,19 +81,19 @@ queue a question — never invent tracker structure.**
    goes on the board gets Start and Target of that day, a new
    milestone is due the day it is created, Team defaults to the
    field's first option (the org's default flywheel host — Team is
-   what routes a conductor's host through fleet.yaml's `teams:` map),
-   and Quarter defaults to the current quarter (the tools do all of
-   this). An agent that judges differently overrides with a stated
-   reason; nothing ever waits for a field to be assigned. There is no
-   Iteration field: the flywheel is continuous delivery, not sprint
-   cadence.
-9. **The lifecycle ends at the milestone, not the conductor.** When a
-   milestone's items are all closed, its conductor reports and stops;
-   the operator closes the milestone on GitHub — the archive signal —
-   and the fleet layer charges a fresh session to `openspec archive`
-   the change. Conductors are stopped whenever their milestone has no
-   job and rehydrate from the records when one appears; no session is
-   ever the memory.
+   what routes a milestone's loop to a host through fleet.yaml's
+   `teams:` map), and Quarter defaults to the current quarter (the
+   tools do all of this). An agent that judges differently overrides
+   with a stated reason; nothing ever waits for a field to be assigned.
+   There is no Iteration field: the flywheel is continuous delivery,
+   not sprint cadence.
+9. **The lifecycle ends at the milestone, not the process.** When a
+   milestone's items are all closed, its loop proposes closure and
+   stops; the operator closes the milestone on GitHub — the archive
+   signal — and the server's next pass runs a one-shot session to
+   `openspec archive` the change. A loop process stops whenever its
+   milestone has no job, and a fresh one starts when a job appears and
+   re-reads the tracker and the records; no process is ever the memory.
 10. Sub-issues and dependency relations take the **database id**, not
     the issue number — invocations and gotchas in `herdr.md`.
 
@@ -120,10 +120,9 @@ through GitHub issues, and each consumer has an exact filter:
 
 **These filters are the whole coordination model.** A discovery is an
 issue; an escalation is a label; a completion is item state. Anything
-not expressible in the filters is a design smell — and that includes
-the conductor's old direct-edit privileges: a CLAUDE.md fix, an ADR, a
-machinery tweak are GitHub issues like all work. Nothing edits without
-one.
+not expressible in the filters is a design smell — and nothing edits
+without an item either: a CLAUDE.md fix, an ADR, a machinery tweak are
+GitHub issues like all work.
 
 They are implemented once, as pure functions over a snapshot, in the
 plugin's `bin/_flywheel_inbox.py`; the loops import them rather than
@@ -180,7 +179,7 @@ gates it:
 
 The elaboration batches the *deciding*; the assertion joins no
 elaboration. #101 closes → #102 is settled and unbolted (invariant 6)
-→ the conductor births the handoff item and its unit:
+→ the intent loop births the handoff item and its unit:
 
     #104  Plan the bolt for the forgot-password assertion  type:handoff · queued
     #105  [unit] Handoff: forgot-password to construction  sub-issues: #104, #102
@@ -192,7 +191,7 @@ then makes the custody move:
 
     #102  milestone intent/auth-hardening → bolt/forgot-password · state:ready
 
-The fleet layer starts `bolt-forgot-password`; construction accrues on
+The server starts the bolt loop; construction accrues on
 #102 as comments; it closes `closed:done` with the landing SHA. #105's
 checklist keeps tracking it across the move (invariant 2), and
 `intent/auth-hardening` is free to close when design and writebacks
@@ -209,21 +208,25 @@ Small, fully defined, no intent behind it. Dispatch creates:
          on the board at Status Ready — the lone item carries the approval
 
 There is no assertion record file — with no intent, the item body IS
-the claim. The reconciler sees a `bolt/*` milestone with a ready item
-and no conductor, starts `bolt-rename-gateway-env`, and the conductor
-scaffolds the change binding the member the work warrants
-(`bolt-quick` here — no review step).
+the claim. The server sees a `bolt/*` milestone with a ready item and
+no loop process on it, starts one for `bolt/rename-gateway-env`, and
+the loop's scaffold guard writes the change binding the member the work
+warrants (`bolt-quick` here — no review step).
 
 **`bolt-no-spec` is deliberately not a schema: plan mode replaces the
 spec step, inside a quick bolt only.** For work too small to warrant a
-spec-driven change in the built repo, the conductor's work order says
-so, and the build session is started in plan mode
-(`--permission-mode plan`): every edit is blocked mechanically until
-the plan — checked against the item's claim — is approved by the
-conductor through the plan dialog. The no-spec call rides the bolt
-type: it exists only where the operator already chose `bolt-quick` —
-on `bolt-default` and `bolt-adversarial` every item is specced through
-a spec-driven change, because the bolt type is the scrutiny the release
-approved and no conductor downgrades it. Everything else is unchanged:
+spec-driven change in the built repo, the bolt declares the plan-mode
+path — the phrase the release writes into the milestone description, or
+`plan_mode:` in the change's binding — and the build session is started
+in plan mode (`--permission-mode plan`): every edit is blocked
+mechanically until the plan is approved. Approval is a judgment, so it
+is the OPERATOR's: they read the plan against the item's claim and
+answer the plan dialog themselves, and the loop waits. The plan-mode
+call rides the bolt type: it exists only where the
+operator already chose `bolt-quick` — on `bolt-default` and
+`bolt-adversarial` every item is specced through a spec-driven change,
+because the bolt type is the scrutiny the release approved, and a
+declaration against those types is refused rather than honoured
+quietly. Everything else is unchanged:
 the item's comments carry the stages, the merge gate runs unweakened,
 the landing SHA closes the item `closed:done`.

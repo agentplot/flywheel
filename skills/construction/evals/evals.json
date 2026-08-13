@@ -69,11 +69,11 @@
     {
       "id": 6,
       "name": "one-proposal-bolt",
-      "prompt": "You are dispatch on blueprints main. An intent conductor has released a handoff whose entire content is one rename in one repo: `packages/scout/src/index.ts` exports `WidgetScout` and should export `Scout`, with three call sites. Set the construction up — give the exact artifacts and commands.",
-      "expected_output": "A bolt with a bolt conductor and a one-row registry, spec and build still two agents, on a `bolt/<slug>` branch and worktree — not a work branch cut off main and worked inline.",
+      "prompt": "You are dispatch on blueprints main. An intent loop has released a handoff whose entire content is one rename in one repo: `packages/scout/src/index.ts` exports `WidgetScout` and should export `Scout`, with three call sites. Set the construction up — give the exact artifacts and commands.",
+      "expected_output": "A bolt with its own loop and a one-row registry, spec and build still two agents, on a `bolt/<slug>` branch and worktree — not a work branch cut off main and worked inline.",
       "expectations": [
         "A `flywheel-bolt` change is created with `bolt.md`, a `proposals.md` registry of exactly one row, and tasks",
-        "A bolt conductor is started for it (`--agent flywheel-bolt-conductor`)",
+        "A bolt loop runs it — started by `flywheel server` for the milestone once it has a job, not by hand",
         "The spec and the build are given to two different agents",
         "NEGATIVE: no branch is cut off main outside a bolt, and the rename is not applied inline without a bolt",
         "NEGATIVE: the run does not skip the spec agent on the grounds that the change is trivial"
@@ -122,21 +122,6 @@
         "NEGATIVE: no `runner.ts:84` or equivalent line-number citation appears anywhere in the output",
         "NEGATIVE: no unqualified assertion that the sibling already defines the constant, or already carries any particular wording",
         "NEGATIVE: the build-time re-read is not left as a review-time or spec-time check instead"
-      ]
-    },
-    {
-      "id": 7,
-      "name": "profile-alone-off-registry-edit",
-      "prompt": "The attached `bolt-conductor-profile.md` is your agent profile, and it is your only steering document — work from it and consult no skill. You are the bolt conductor it describes, for `openspec/changes/bolt-widget-gateway/`. The attached `bolt-widget-gateway-proposals.md` is your `proposals.md`. You notice a two-line logging leak in `packages/telemetry/src/emit.ts`, which no row covers. Handle it.",
-      "files": [
-        "evals/files/bolt-conductor-profile.md",
-        "evals/files/bolt-widget-gateway-proposals.md"
-      ],
-      "expected_output": "From the profile body alone: grow the registry with a row, or route the idea to dispatch. Never a direct edit because it is small.",
-      "expectations": [
-        "The run does not read or quote `skills/construction/SKILL.md`, and works from the attached profile",
-        "The run either adds a registry row covering the work or routes it to dispatch, and says which",
-        "NEGATIVE: no edit is written to `packages/telemetry/src/emit.ts`"
       ]
     }
   ]

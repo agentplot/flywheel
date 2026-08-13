@@ -3,8 +3,8 @@
 - Change: `openspec/changes/flywheel/`
 - Session type: **writeback**
 - Session directory: `sessions/2026-08-16-conducting-chapters/`
-- Your conductor: herdr agent `intent-flywheel` — it charged you and then
-  moved on to batch 9. It is not watching this pane.
+- Charged by: the intent loop for `intent/flywheel` — it launched this
+  session and moved on. It is a program; it is not watching this pane.
 
 ## Task lines this batch works
 

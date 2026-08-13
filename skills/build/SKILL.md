@@ -35,8 +35,8 @@ unverified, never rounded up to done.
 
 ## You build; you do not merge
 
-Your branch is merged back to the bolt branch by your conductor,
-through the gate, after your report. You never merge your own branch or
+Your branch is merged back to the bolt branch by the loop, through the
+gate, once you settle. You never merge your own branch or
 write the bolt branch or main directly. Book chapters and the context
 map are the design loop's — a change that would edit them is a design
 finding, queued, and the andon cord if the batch depends on it.
@@ -48,7 +48,7 @@ The object-graph rules are the shared copy at
 beside it. Your contract:
 
 - **You receive**: specced assertion items (`type:assertion`), reviewed per the bolt type, on a nested construction worktree.
-- **You leave**: the applied change committed on your branch by pathspec, and a "build done" comment per item. The conductor merges through the gate and closes; you never land or close.
+- **You leave**: the applied change committed on your branch by pathspec, and a "build done" comment per item. The loop merges through the gate and closes; you never land or close.
 - A finding beyond your spec is a queued item, never an in-place fix.
 
 ## What you report

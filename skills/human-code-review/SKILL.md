@@ -28,8 +28,8 @@ The result comes back to you.
 
 ## What comes back, and where it goes
 
-Fold the annotations into your report, sorted the way the conductor
-will route them: a correction to apply, a defect that holds the item,
+Fold the annotations into your report, sorted by where each one goes:
+a correction to apply, a defect that holds the item,
 an approval, a design-level objection queued for the intent. Raw
 annotations are never relayed to another actor. You never apply the
 corrections yourself — the round makes you a reviewer, and a reviewer

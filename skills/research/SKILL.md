@@ -53,6 +53,6 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: items whose bodies ask factual questions, `type:research`, flipped `state:in-progress` by your conductor.
+- **You receive**: items whose bodies ask factual questions, `type:research`, flipped `state:in-progress` by the intent loop.
 - **You leave**: the answer as a comment on each item, evidence as pointers. A small fix inside the batch's ready scope is work, not a finding; discoveries beyond it are queued items.
-- The conductor closes items on your evidence; you never close your own.
+- The loop closes items on your evidence; you never close your own.

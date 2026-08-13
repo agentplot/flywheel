@@ -3,8 +3,9 @@
 - Change: `openspec/changes/flywheel/`
 - Session type: **writeback**
 - Session directory: `sessions/2026-08-18-catalog-writeback/`
-- Your conductor: herdr agent `intent-flywheel` — it charged you and then
-  moved on. It is not watching this pane and has said nothing since.
+- Charged by: the intent loop for `intent/flywheel` — it launched this
+  session and moved on. It is a program; it is not watching this pane and
+  cannot answer.
 
 ## Task lines this batch works
 

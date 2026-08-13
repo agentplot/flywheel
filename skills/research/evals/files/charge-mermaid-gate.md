@@ -3,7 +3,7 @@
 - Change: `openspec/changes/flywheel/`
 - Session type: **research**
 - Session directory: `sessions/2026-08-14-mermaid-gate/`
-- Your conductor: herdr agent `intent-flywheel`, running in pane 3
+- Charged by: the intent loop for `intent/flywheel`
 
 ## Task lines this batch works
 

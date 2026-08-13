@@ -2,7 +2,7 @@
 
 - Change: `openspec/changes/geo-iq-boundaries/`
 - Session directory: `sessions/2026-08-12-cache-options/`
-- Your conductor: herdr agent `intent-geo-iq-boundaries`, running in pane 2
+- Charged by: the intent loop for `intent/geo-iq-boundaries`
 
 The surface is built and the operator has annotated it. All three decisions
 closed:

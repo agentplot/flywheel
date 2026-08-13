@@ -66,16 +66,17 @@ reports no hooks.
 ## Starting an agent, and naming it before you send its work order
 
 **The name IS the classification.** The roster must read at a glance:
-conductors are `intent-<slug>` and `bolt-<slug>`, dispatch is
-`dispatch`, and every session starts with its session type — the FULL
-type name, exactly as the `type:*` label spells it: `research-<topic>`,
+dispatch is `dispatch`, and every session starts with its session type
+— the FULL type name, exactly as the `type:*` label spells it: `research-<topic>`,
 `planning-<topic>`, `interactive-<topic>`, `prototype-<topic>`,
 `writeback-<topic>`, `handoff-<topic>`, `proposal-writing-<topic>`,
 `proposal-review-<topic>`, `spec-writing-<topic>`, `build-<topic>`,
 `test-<topic>`, `code-review-<topic>`, `human-code-review-<topic>`.
 Never a shorthand: `review-<topic>` cannot say which review type it is,
-and one bolt runs several. Type names never collide with
-`intent`/`bolt`/`dispatch`, so the prefix alone says what a row is.
+and one bolt runs several. A loop's own mechanical sessions are named
+for the stage that launched them — `scaffold-`, `route-`, `verify-`,
+`merge-`, `land-` — and no type name collides with those or with
+`dispatch`, so the prefix alone says what a row is.
 herdr caps names at 32 characters — the long type prefixes leave the
 topic little room, so keep topics to a word or two. **The tab label is the agent name,
 the same string** — a tab labeled one thing holding an agent named
@@ -99,8 +100,8 @@ for planning, interactive and proposal-review; `opus[1m]` for research,
 spec-writing, build, test, code-review and human-code-review; opus for
 prototype, writeback, handoff and proposal-writing — and a work order or
 invocation may override it; pass whichever applies as `--model <name>`.
-The standing actors — dispatch and both conductor kinds — run
-`opus[1m]`, set on their fleet rows.
+Dispatch, the one standing agent, runs `opus[1m]`, set on its fleet
+row; a loop's sessions take the model its stage names.
 
 The pane must be at its interactive shell prompt before `agent start`.
 
@@ -124,9 +125,7 @@ Re-send it if not; never assume it did.
 
 **A work order is one prompt, invocation first.** When the type has a
 canonical invocation — `/opsx:ff <slug>` for spec-writing,
-`/opsx:apply <change>` for a build session applying a specced change,
-the `/opsx:apply build a dynamic workflow …` trigger for a conductor's
-loop —
+`/opsx:apply <change>` for a build session applying a specced change —
 it is the work order's FIRST line, and the brief rides below it in the
 same prompt. A slash command buried mid-body never loads the skill (this
 is how a spec agent came to run without `/opsx:apply` loaded), and a
@@ -255,8 +254,8 @@ while `--yes` on `wt config approvals add` **fails** non-interactively and
 persists nothing, so it is not a route to the grant either.
 
 An agent that hits `Cannot prompt for approval in non-interactive
-environment` **stops and reports to its conductor**, and the merge waits on
-the operator's grant. Running the repo's check scripts by hand on the
+environment` **stops, says so on its item, and settles**, and the merge waits
+on the operator's grant. Running the repo's check scripts by hand on the
 landing tree and reporting them green is not a substitute gate: that is
 verification by assertion, precisely the asserted-green `wt merge` exists to
 eliminate, however honest the hands. Treat the stoppage as a work stoppage
@@ -278,12 +277,11 @@ herdr agent list                  # confirm the agents are gone
 
 **Delivery is settling, never waiting.** A charged session delivers by
 commenting its items, printing its report as its final message, and
-settling — the driver that charged it is parked on exactly that settle
-and reads the pane. A session never waits for its conductor to settle,
-and never parks a background wait to prompt a report upward later: a
-driver waiting on the session's settle plus a session waiting on the
-conductor's settle is a deadlock. Prompting the conductor with a report
-is only for sessions no driver charged.
+settling — the loop that launched it is parked on exactly that settle
+and reads the pane. There is nobody to prompt: no session, loop or
+server ever messages another, so a session that parks a background wait
+to hand its report upward later delivers nothing and holds its stage
+open. The comment and the settle are the whole delivery.
 
 **A settled session's pane closes at the merge step.** When a session's outcome
 is returned and its items are commented, close its tab
@@ -320,15 +318,14 @@ start it in the launch directory, and skip the merge and teardown too.
 **The permission mode is the launcher's to set** — append it after the
 `--`. Fleet agents run unattended: `--dangerously-skip-permissions` for
 every ordinary session (the fleet layer passes it for the actors it
-starts). The one exception is a no-spec build session, started with
+starts). The one exception is a plan-mode build session, started with
 `--permission-mode plan` instead: plan mode blocks every edit until
-the plan is approved. The conductor is the approver — read the plan
-from the pane, check it against the item's claim, and drive the plan
-dialog with `herdr agent send-keys <name> <key>` (arrows + enter;
-pick the accept-edits option on approval, or reject and prompt the
-feedback). Parked on `herdr agent wait` afterwards, a `blocked`
-settle is a permission ask for the launcher to read and answer the
-same way.
+the plan is approved. **The OPERATOR is the approver** — checking a plan
+against the item's claim is judgment, and judgment never lives in the
+loop. They read the plan from the pane and answer the plan dialog
+themselves, approving or returning it with the mismatch named, and the
+loop waits. A `blocked` settle afterwards is a permission ask the
+operator answers in the same pane.
 
 The work order is four things: the change id, the session type, the item
 numbers of its batch, and one or two plain sentences of goal. Worktree,
@@ -438,6 +435,7 @@ wt switch --create build/<proposal-slug> --base bolt/<slug> --no-cd
 ```
 
 Spec, apply and testing agents start in those worktrees under their own
-names, by the sequence above. A spec agent's artifacts are landed by the
-conductor, by pathspec, and only once that agent is idle — "finished" is a
-property of the agent, not of the spec.
+names, by the sequence above. Each commits its own artifacts by pathspec
+and neither merges nor pushes; the loop merges the branch back through
+the gate only once that agent has settled — "finished" is a property of
+the agent, not of the spec.

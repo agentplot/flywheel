@@ -25,10 +25,10 @@ question has become untracked construction.
 
 ## What comes back is the note
 
-One `prototypes/<slug>.md` finding note per prototype, written in your
-`sessions/<date>-<slug>/` directory in the form the schema's prototypes
-instruction asks for: **Question**, **Where**, **Findings**, **Feeds**.
-Your conductor promotes it into the change's `prototypes/`; the finding
+One `prototypes/<slug>.md` finding note per prototype, written from your
+worktree into the change's `prototypes/` in the form the schema's
+prototypes instruction asks for: **Question**, **Where**, **Findings**,
+**Feeds**. The loop's merge of your session branch admits it; the finding
 also closes the commissioning item as its final comment.
 
 **Negative results are findings.** A prototype showing the approach does
@@ -42,7 +42,7 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: usually one item per prototype (prototypes ride alone), `type:prototype`, flipped `state:in-progress` by your conductor.
+- **You receive**: usually one item per prototype (prototypes ride alone), `type:prototype`, flipped `state:in-progress` by the intent loop.
 - **You leave**: the finding as a comment on the item and `prototypes/<slug>.md` in the change; the spike code stays in the spike repo and dies there.
 - A finding that opens new work is a queued item, never an in-place expansion of your charge.
 

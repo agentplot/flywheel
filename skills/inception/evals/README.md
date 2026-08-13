@@ -4,7 +4,7 @@
 and are referenced from each eval's `files` list.
 
 **The baseline is the previous version of this skill**, not an unloaded
-skill. The current text is what shipped all three conductor failures, so an
+skill. The current text is what shipped all three driver failures, so an
 expectation that passes against it is measuring nothing this rewrite adds.
 Snapshot the prior version before editing —
 `git show <ref>:skills/inception/SKILL.md` — and point the
@@ -12,33 +12,22 @@ baseline run at the snapshot, per `skill-creator`'s improve mode. A
 no-skill run may be kept as a floor; it is not the only baseline. Any
 expectation that passes in both configurations is rewritten.
 
-**Evals 10 and 11 test the conductor profile body, not this skill.** The
-profile-alone condition is the one all three failures were committed under,
-and an eval that loads the skill alongside the profile cannot tell a
-profile that works from a profile that is redundant.
-
 **The withheld arm cannot be made fully real, and that is recorded rather
-than papered over.** `skill-creator`'s runner requires `--skill-path`, has
-no flag for withholding a skill, and has no concept of an agent profile at
-all — so it will load this skill on every run, including these two. The
-closest executable substitute is used instead, in two parts: the profile
-under test is attached as a fixture
-(`files/intent-conductor-profile.md`, a verbatim copy of
-`agents/flywheel-intent-conductor.md`), and the prompt names it as
-the executor's only steering document while carrying none of the skill's
-guidance itself. The first expectation of each eval is that the run did not
-read or quote `SKILL.md`, which is checkable from the transcript. A run
-where that expectation fails measures the skill and does not count toward
-the profile's coverage.
+than papered over.** `skill-creator`'s runner requires `--skill-path` and
+has no flag for withholding a skill, so it loads this skill on every run.
+Where an eval means to measure a steering document other than this skill,
+that document is attached as a fixture and the prompt names it as the
+executor's only guidance, and the first expectation is that the run did not
+read or quote `SKILL.md` — checkable from the transcript. A run where that
+expectation fails measures the skill and does not count.
 
-The fixture is a copy, so it can drift: re-copy the profile into
-`files/` whenever the profile body changes.
+A fixture that copies a shipped file can drift: re-copy it whenever the
+original changes.
 
-**Evals 12 and 13 test the state-claim rule, and their prompts hand the
-executor the wrong move.** Eval 12's fixture carries a gate measurement
-inside a settled record, which a run without the rule reports as current;
-eval 13's prompt supplies a line number, which a run without the rule
-copies into the task line. Both are written so the baseline can fail them:
+**The state-claim evals, hand the executor the wrong
+move.** One fixture carries a gate measurement inside a settled record,
+which a run without the rule reports as current; another prompt supplies a
+line number, which a run without the rule copies into the task line. Both are written so the baseline can fail them:
 a prompt that merely asks for a task line would pass in either
 configuration.
 

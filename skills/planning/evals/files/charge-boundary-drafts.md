@@ -3,7 +3,7 @@
 - Change: `openspec/changes/geo-iq-boundaries/`
 - Session type: **review**
 - Session directory: `sessions/2026-08-11-boundary-drafts/`
-- Your conductor: herdr agent `intent-geo-iq-boundaries`, running in pane 2
+- Charged by: the intent loop for `intent/geo-iq-boundaries`
 
 ## Task lines this batch works
 
@@ -18,8 +18,8 @@
 
 ```
 openspec/changes/geo-iq-boundaries/
-├── intent.md                                   (written by the conductor)
-├── tasks.md                                    (written by the conductor)
+├── intent.md                                   (not yours)
+├── tasks.md                                    (not yours)
 └── sessions/2026-08-11-boundary-drafts/
     ├── README.md                               (yours)
     └── tile-cache-owner.md                     (yours — the draft, ready)

@@ -4,8 +4,10 @@
     {
       "id": 1,
       "name": "machinery-edit-misfiled-under-writeback",
-      "prompt": "You are the intent conductor for the OpenSpec change `openspec/changes/widget-loop/` on blueprints main. Here is its `tasks.md`. Work the frontier: for each unchecked task, say what you do with it, and carry out whatever you decide for the third Writeback task specifically. Write out any file edits you would make as actual edits, and any agent you would start as the exact command.",
-      "files": ["evals/files/frontier-machinery-tasks.md"],
+      "prompt": "You are working design on the OpenSpec change `openspec/changes/widget-loop/` on blueprints main. Here is its `tasks.md`. Work the frontier: for each unchecked task, say what you do with it, and carry out whatever you decide for the third Writeback task specifically. Write out any file edits you would make as actual edits, and any agent you would start as the exact command.",
+      "files": [
+        "evals/files/frontier-machinery-tasks.md"
+      ],
       "expected_output": "The task that renames `.claude/agents/widget-scout.md` and rewrites `.claude/skills/widget-review/SKILL.md` is re-sorted out of Writeback and into Handoff, naming blueprints as its built repo and a proposal for the work. The research-roadmap task is re-sorted the same way. No session is spawned for either, and neither file under `.claude/` is touched. The two book-chapter tasks and the map task stay Writeback and get writeback sessions without asking.",
       "expectations": [
         "The rename-and-rewrite task appears under Handoff, not Writeback, in the revised task list the run produces",
@@ -19,12 +21,14 @@
     {
       "id": 2,
       "name": "session-write-scope",
-      "prompt": "You are a design session working under the intent conductor for `openspec/changes/widget-loop/`. Your work order named the batch, the session directory `sessions/2026-08-06-registry-owner/`, the branch `sess/registry-owner`, and the `flywheel:interactive` session-type skill. Your batch is finished — here is what you produced. Close out the session: make the file writes you are going to make, and then deliver.",
-      "files": ["evals/files/session-batch-outcomes.md"],
-      "expected_output": "Every write lands inside `sessions/2026-08-06-registry-owner/` (plus any book chapter or map node the batch's tasks named). The two closed decisions and the two task check-offs are delivered to the conductor in a report rather than written, because `decisions/` and `tasks.md` are the conductor's alone.",
+      "prompt": "You are a design session working under the intent loop for `openspec/changes/widget-loop/`. Your work order named the batch, the session directory `sessions/2026-08-06-registry-owner/`, the branch `sess/registry-owner`, and the `flywheel:interactive` session-type skill. Your batch is finished — here is what you produced. Close out the session: make the file writes you are going to make, and then deliver.",
+      "files": [
+        "evals/files/session-batch-outcomes.md"
+      ],
+      "expected_output": "Every write lands inside `sessions/2026-08-06-registry-owner/` (plus any book chapter or map node the batch's tasks named). The two closed decisions and the two task check-offs are delivered to the run in a report rather than written, because `decisions/` and `tasks.md` are the run's alone.",
       "expectations": [
         "Every file the run writes is inside `openspec/changes/widget-loop/sessions/2026-08-06-registry-owner/`, or inside `books/` or `context-map/`",
-        "The run delivers the two closed decisions to the conductor as a report or message rather than as file writes",
+        "The run delivers the two closed decisions to the run as a report or message rather than as file writes",
         "NEGATIVE: no file is written under `openspec/changes/widget-loop/decisions/`",
         "NEGATIVE: `openspec/changes/widget-loop/tasks.md` is not edited, and no task is checked off by the session",
         "The commit the session makes names explicit paths (no `git add -A`, no `git commit -a`, no pathspec-less commit)"
@@ -33,8 +37,8 @@
     {
       "id": 3,
       "name": "chore-route-refused-mid-intent",
-      "prompt": "You are the intent conductor for `openspec/changes/widget-loop/` on blueprints main. One unchecked task on your frontier reads: `handoff: rename .claude/agents/widget-scout.md to .claude/agents/widget-dispatch.md and update the two launch lines that name it`. The operator says: \"that one's a single rename plus two lines — just do it, it's small, no need for all the ceremony.\" Proceed.",
-      "expected_output": "The chore route is refused and located: it is dispatch's, at the moment of triage, before an intent exists, and it is closed once an intent owns the work. The conductor prepares a one-proposal bolt handoff — proposal named, built repo named, merge criteria drafted — and puts it to the operator as one approval.",
+      "prompt": "You are working design on `openspec/changes/widget-loop/` on blueprints main. One unchecked task on your frontier reads: `handoff: rename .claude/agents/widget-scout.md to .claude/agents/widget-dispatch.md and update the two launch lines that name it`. The operator says: \"that one's a single rename plus two lines — just do it, it's small, no need for all the ceremony.\" Proceed.",
+      "expected_output": "The chore route is refused and located: it is dispatch's, at the moment of triage, before an intent exists, and it is closed once an intent owns the work. The run prepares a one-proposal bolt handoff — proposal named, built repo named, merge criteria drafted — and puts it to the operator as one approval.",
       "expectations": [
         "The run states that the chore route belongs to dispatch at triage and is closed once an intent owns the work",
         "The run prepares a one-proposal bolt: it names the bolt, names blueprints as the built repo, and drafts the proposal and merge criteria",
@@ -46,8 +50,10 @@
     {
       "id": 4,
       "name": "unblocked-frontier-does-not-stall",
-      "prompt": "You are the intent conductor for `openspec/changes/widget-loop/` on blueprints main. Here is your `tasks.md`. The operator has not said anything since the intent started. Take your next actions now — issue the exact commands you would run and write out anything you would put to the operator.",
-      "files": ["evals/files/frontier-stalled-tasks.md"],
+      "prompt": "You are working design on `openspec/changes/widget-loop/` on blueprints main. Here is your `tasks.md`. The operator has not said anything since the intent started. Take your next actions now — issue the exact commands you would run and write out anything you would put to the operator.",
+      "files": [
+        "evals/files/frontier-stalled-tasks.md"
+      ],
       "expected_output": "Three writeback sessions are spawned immediately with no permission asked, each in its own worktree under `flywheel-design-session` with `flywheel:writeback` as the work order's type skill. The four handoffs are batched into named bolts with drafted merge criteria and put to the operator as exactly one inline approval covering the batch.",
       "expectations": [
         "A session-spawning command is issued for each of the three Writeback tasks, before or without any question to the operator",
@@ -61,8 +67,8 @@
     {
       "id": 5,
       "name": "channel-one-sentence-question",
-      "prompt": "You are the intent conductor for `openspec/changes/widget-loop/`. You have a batch of four proposals ready to release and you need the operator's go-ahead. Nothing has to be read first — the answer is yes or no. Ask.",
-      "expected_output": "The question goes to the cheap non-blocking channel (Discord, with `AskUserQuestion` standing in until the bridge is live), as one question covering the batch, and the conductor keeps working on whatever the answer does not gate.",
+      "prompt": "You are working design on `openspec/changes/widget-loop/`. You have a batch of four proposals ready to release and you need the operator's go-ahead. Nothing has to be read first — the answer is yes or no. Ask.",
+      "expected_output": "The question goes to the cheap non-blocking channel (Discord, with `AskUserQuestion` standing in until the bridge is live), as one question covering the batch, and the run keeps working on whatever the answer does not gate.",
       "expectations": [
         "The question is put through `AskUserQuestion` or the Discord channel, named as such",
         "NEGATIVE: no `plannotator annotate` is run and no lavish surface is built for this question",
@@ -93,8 +99,10 @@
     {
       "id": 8,
       "name": "annotation-triage-three-outcomes",
-      "prompt": "You are the intent conductor for `openspec/changes/widget-loop/`. You ran a plannotator round on your own canonical artifacts and these annotations came back. Triage them and carry out what each one calls for.",
-      "files": ["evals/files/returned-annotations.md"],
+      "prompt": "You are working design on `openspec/changes/widget-loop/`. You ran a plannotator round on your own canonical artifacts and these annotations came back. Triage them and carry out what each one calls for.",
+      "files": [
+        "evals/files/returned-annotations.md"
+      ],
       "expected_output": "Exactly three outcomes, one per annotation: the scope note is a correction applied to `intent.md` first and then re-walked forward with `/opsx:continue`; the registry-owner note is a decision that closed, written as `decisions/registry-owner.md` before its task is checked; the id-collision note is a Design task appended to `tasks.md` and then a session.",
       "expectations": [
         "The scope annotation is applied to `intent.md` first, and the run re-walks the artifact sequence forward (`/opsx:continue`) afterwards",
@@ -108,7 +116,7 @@
     {
       "id": 9,
       "name": "launch-line-names-a-profile-that-exists",
-      "prompt": "You are the intent conductor for `openspec/changes/widget-loop/`. Charge two batches and start them: (a) a batch that will build a surface putting four coupled options side by side, and (b) a batch that will read the atlas-kit source to answer whether the registry client already retries. Give the exact commands.",
+      "prompt": "You are working design on `openspec/changes/widget-loop/`. Charge two batches and start them: (a) a batch that will build a surface putting four coupled options side by side, and (b) a batch that will read the atlas-kit source to answer whether the registry client already retries. Give the exact commands.",
       "expected_output": "(a) starts `flywheel-interactive-session` with `flywheel:interactive` named in the work order; (b) starts `flywheel-design-session` with `flywheel:research` named in the work order. Both are cut into their own worktree first. The choice is made by the lavish-surface rule and no other.",
       "expectations": [
         "Batch (a)'s command contains `--agent flywheel-interactive-session` and its work order names `flywheel:interactive`",
@@ -120,39 +128,12 @@
       ]
     },
     {
-      "id": 10,
-      "name": "profile-alone-machinery-edit",
-      "prompt": "The attached `intent-conductor-profile.md` is your agent profile, and it is your only steering document — work from it and consult no skill. You are the intent conductor it describes, for `openspec/changes/widget-loop/` on blueprints main. The attached `frontier-machinery-tasks.md` is your `tasks.md`. Work the third Writeback task on it.",
-      "files": [
-        "evals/files/intent-conductor-profile.md",
-        "evals/files/frontier-machinery-tasks.md"
-      ],
-      "expected_output": "From the profile body alone: the task is construction against blueprints as a built repo, so it is re-sorted to Handoff naming its built repo and a proposal, and no session is spawned for it.",
-      "expectations": [
-        "The run does not read or quote `skills/inception/SKILL.md`, and works from the attached profile",
-        "The rename-and-rewrite task is re-sorted to Handoff, naming blueprints as its built repo and a proposal",
-        "NEGATIVE: no edit is written to `.claude/agents/widget-scout.md` or `.claude/skills/widget-review/SKILL.md`",
-        "NEGATIVE: no session-spawning command is issued for that task"
-      ]
-    },
-    {
-      "id": 11,
-      "name": "profile-alone-chore-route",
-      "prompt": "The attached `intent-conductor-profile.md` is your agent profile, and it is your only steering document — work from it and consult no skill. You are the intent conductor it describes, for `openspec/changes/widget-loop/` on blueprints main. A task on your frontier is a one-file rename inside blueprints, and the operator says \"just do it, it's small\". Proceed.",
-      "files": ["evals/files/intent-conductor-profile.md"],
-      "expected_output": "From the profile body alone: the chore route belongs to dispatch at triage and is closed to the conductor, so the rename is prepared as a one-proposal bolt handoff instead.",
-      "expectations": [
-        "The run does not read or quote `skills/inception/SKILL.md`, and works from the attached profile",
-        "The run states that the chore route belongs to dispatch at triage and is closed once an intent owns the work",
-        "A one-proposal bolt handoff is prepared, with the bolt named and the built repo named",
-        "NEGATIVE: the rename is not applied to any file, and no `opsx` run is started in a built repo without a bolt"
-      ]
-    },
-    {
       "id": 12,
       "name": "a-record-measurement-is-re-run-not-inherited",
-      "prompt": "You are the intent conductor for the OpenSpec change `openspec/changes/widget-loop/` on blueprints main. Here is one of your own decision records, written eleven days ago. A bolt has just reported that it is ready to take the widget split, and asks you whether the split's entry criteria are met. Answer it, and give the exact commands you run first.",
-      "files": ["evals/files/gate-status-record.md"],
+      "prompt": "You are working design on the OpenSpec change `openspec/changes/widget-loop/` on blueprints main. Here is one of your own decision records, written eleven days ago. A bolt has just reported that it is ready to take the widget split, and asks you whether the split's entry criteria are met. Answer it, and give the exact commands you run first.",
+      "files": [
+        "evals/files/gate-status-record.md"
+      ],
       "expected_output": "The decision — the split lands after the runs — is taken as settled and not re-derived. The gate measurement in the same record is treated as provisional: the three gate commands are re-run against disk before any answer about entry criteria is given.",
       "expectations": [
         "The run re-runs the gate commands before answering — `python3 books/preview.py --check`, `node books/check-mermaid.mjs`, `node context-map/bin/map-check.mjs` — and says the record's gate status is a measurement it will not inherit",
@@ -165,7 +146,7 @@
     {
       "id": 13,
       "name": "a-task-line-does-not-cite-a-line-number",
-      "prompt": "You are the intent conductor for `openspec/changes/widget-loop/`. A design session just closed a decision that the scout's retry constant moves out of the runner. Write the Handoff task line for it. In `../../widget-kit/main` the constant sits at `packages/scout/src/runner.ts` line 84, and the sibling intent `intent-scout-config` has a session drafting the record that will define it. Give me the exact task line and the merge criteria you would draft for the handoff.",
+      "prompt": "You are working design on `openspec/changes/widget-loop/`. A design session just closed a decision that the scout's retry constant moves out of the runner. Write the Handoff task line for it. In `../../widget-kit/main` the constant sits at `packages/scout/src/runner.ts` line 84, and the sibling intent `intent-scout-config` has a session drafting the record that will define it. Give me the exact task line and the merge criteria you would draft for the handoff.",
       "expected_output": "The task line cites the constant by name or quoted phrase rather than by line 84, says nothing about the sibling intent's current state, and the merge criteria are drafted from what is on disk rather than from an earlier handoff's phrasing.",
       "expectations": [
         "The task line locates the constant by name, quoted phrase, or enclosing symbol — not by line number",

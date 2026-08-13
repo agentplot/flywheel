@@ -3,7 +3,7 @@
 - Change: `openspec/changes/geo-iq-boundaries/`
 - Session type: **interactive design**
 - Session directory: `sessions/2026-08-12-cache-options/`
-- Your conductor: herdr agent `intent-geo-iq-boundaries`, running in pane 2
+- Charged by: the intent loop for `intent/geo-iq-boundaries`
 
 ## Task lines this batch works
 
