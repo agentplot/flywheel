@@ -53,6 +53,11 @@ holds exactly one — and it is what makes "the items at `stage:built`" a
 question with an answer rather than a set that also contains everything
 further along.
 
+The rule belongs to the vocabulary rather than to this loop:
+`flywheel-stage-labels` states it over the whole `stage:*` set and names the
+single writer both loops call. This capability's four boundary writes SHALL
+go through that writer, so the bolt loop implements no sweep of its own.
+
 #### Scenario: An item advances from built to verified
 
 - **WHEN** verify comes back clean on an item carrying `stage:built`
@@ -262,6 +267,49 @@ not ready, and the ready set stays exactly what it is today.
 - **WHEN** the bolt loop computes its ready set on a milestone holding
   `closed:merged` items
 - **THEN** none of them is in it, and no closed item is ever worked
+
+### Requirement: The landing keeps a tracker surface when every assertion is merge-closed
+
+The landing stage's item set SHALL be every **unlanded** item on the
+milestone — open or `closed:merged` — and not the open ones alone.
+
+That set is not "what the landing session is told to work": the work order
+names the bolt, not items. It is the loop's own tracker surface for the
+stage, and four things ride on it — the launch marker the stall budget is
+recovered from across a restart, the stall notify, the failure pause that
+writes `needs-operator`, and the andon marker the landing session may raise
+and the loop reads back. On the handoff path the unit parent sits on the
+intent milestone, so once the merge boundary has closed every assertion an
+open-items-only set is **empty** and all four write nowhere. The landing is
+the last boundary, with no session downstream to catch what it drops.
+
+For the same reason, dispatch's relay filter SHALL read `closed:merged`
+items as well as open ones. A `needs-operator` that nobody relays is the
+same silence as one never written. The filter stays bounded because the
+landing's upgrade to `closed:done` drops the item from it for good, and the
+triage half of that filter SHALL stay open-issues-only — a closed item is
+not untriaged work.
+
+#### Scenario: The landing fails twice on an all-merge-closed milestone
+
+- **WHEN** every assertion on the bolt is `closed:merged` and the landing's
+  merge criteria fail on the second attempt
+- **THEN** `needs-operator` is written on the milestone's unlanded items and
+  the batch pauses, exactly as it would with those items still open
+
+#### Scenario: A landing session raises the andon
+
+- **WHEN** the landing session writes the andon marker on an item that is
+  `closed:merged`
+- **THEN** the loop reads that marker, pauses, and sets `needs-operator` —
+  rather than reporting a plain failure with nothing written
+
+#### Scenario: The escalation reaches the operator
+
+- **WHEN** a `closed:merged` item carries `needs-operator`
+- **THEN** dispatch's relay includes it
+- **AND** once the landing upgrades that item to `closed:done`, the relay no
+  longer includes it
 
 ### Requirement: Re-derivation repairs the merge-close as well as the label
 

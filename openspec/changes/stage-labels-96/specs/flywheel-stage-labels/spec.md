@@ -74,6 +74,49 @@ the loop that owns it.
   label:state:in-progress`
 - **THEN** every item at any bolt-loop stage appears in it
 
+### Requirement: An item carries exactly one `stage:*` label, and one writer enforces it for both loops
+
+Writing any `stage:*` label SHALL remove every other `stage:*` label from
+that item, so an item's stage names its **leading edge**. This SHALL hold
+for every name in the set, whichever loop writes it: the bolt loop's four,
+the intent loop's two, and the operator's `stage:done` when a session writes
+it on the operator's word.
+
+The rule SHALL have exactly one implementation, living beside the vocabulary
+itself, and both loops SHALL write through it. A sweep implemented inside
+one loop would be a rule about that loop rather than about the set — and the
+loop without it accumulates labels, which makes "the leading edge of this
+item" unanswerable and leaves any reader of the stage set reading the
+earliest label instead of the latest.
+
+The write SHALL be idempotent and SHALL report whether it wrote: an item
+already at the target stage is left alone and nothing is recorded, which is
+what keeps a second cycle over an unchanged tracker writing nothing.
+
+A label surface that answers "does this item carry X" from a cached snapshot
+SHALL NOT report a label removed earlier in the same cycle, or the sweep
+would re-remove what it has already taken off.
+
+Nothing in this rule SHALL touch a `closed:*` label. `stage:merged` and
+`closed:merged` are written at the same boundary and are not the same act.
+
+#### Scenario: A design item reaches the end of its session
+
+- **WHEN** the intent loop has written `stage:in-session`, the operator has
+  flipped `stage:done`, and the loop then collects the item
+- **THEN** the item carries `stage:collected` and no other `stage:*` label,
+  and a reader asking for its leading edge is answered `stage:collected`
+
+#### Scenario: A stage is written twice
+
+- **WHEN** a loop writes the stage an item already carries
+- **THEN** no label is added or removed and the cycle records no write
+
+#### Scenario: The closure labels are untouched by a stage write
+
+- **WHEN** any stage write runs on an item carrying a `closed:*` label
+- **THEN** that `closed:*` label is unchanged
+
 ### Requirement: The closure vocabulary carries `closed:merged`, and `closed:done` stays the landing's
 
 The `closed:*` set SHALL be exactly `closed:done`, `closed:declined`,

@@ -106,6 +106,15 @@ readable from its labels. Rejected — the history is the item's comments and
 its timeline, which GitHub keeps for labels too; four labels on every merged
 item buys a worse view of the same fact.
 
+The rule has **one writer, beside the vocabulary**, and both loops call it.
+Placing the sweep inside the bolt loop would state a rule about that loop
+rather than about the set, and the other loop then accumulates: a design
+item ends carrying `in-session`, `done` and `collected` at once, and a
+reader asking for its leading edge is answered with its earliest stage. The
+supporting constraint is that a label surface answering from a cycle's
+cached snapshot must not report a label the same cycle removed, or the
+shared sweep re-removes what it has already taken off.
+
 ### The re-derivation is a guard, not a stage
 
 It runs in `guards`, before anything is worked, and records its writes in
@@ -221,6 +230,19 @@ its milestone carries those items, the landing runs over them, and the
 server counts them as a job. The set that must not change is anything
 reading `state:ready` — a closed item is not ready, and the ready set is
 what the cycle works.
+
+Two of those sites are **escalation surfaces**, not bookkeeping, and they
+are the ones worth naming separately because losing them is silent. The
+landing drives its launch marker, its stall notify, its failure pause and
+its andon read against the milestone's item set; on the handoff path the
+unit parent lives on the intent milestone, so an open-items-only set is
+empty exactly when every assertion has merged, and a landing that fails
+twice writes `needs-operator` nowhere. And dispatch's relay is what carries
+a `needs-operator` to the operator at all — a label nobody relays is the
+same silence as one never written. Both therefore read unlanded items, open
+or merge-closed, and both stay bounded because the landing's upgrade to
+`closed:done` drops the item for good. The triage half of dispatch's filter
+stays open-only: a closed item is not untriaged work.
 
 The alternative — leaving the item open at merge and closing only at the
 landing — is the option the operator declined, and it is the one that would

@@ -278,3 +278,34 @@ since sections 1–8 were written.
 - [x] 10.7 Commit by pathspec — `git add -- <your paths>`, then
       `git commit -- <your paths>`. Never `-a`, never `add -A`. Do not merge
       and do not push; the loop merges.
+
+## 11. The two rules the vocabulary owns, and the escalation surfaces
+
+These requirements state behaviour that already stands on this branch; each
+task is the on-disk witness for one of them. Confirm by reading, and fix
+only what the reading contradicts.
+
+- [x] 11.1 `bin/_flywheel_inbox.py` — `set_stage(tracker, number, stage)`
+      sweeps every other `stage:*` off before writing, returns whether it
+      wrote, and touches no `closed:*` label. It is the one implementation
+      of the rule and it sits beside the vocabulary.
+- [x] 11.2 Both loops write through it: `BoltLoop.set_stage` delegates to
+      `inbox.set_stage` and holds no sweep of its own; the intent loop's two
+      writes — `stage:in-session` at dispatch, `stage:collected` at collect —
+      call it too.
+- [x] 11.3 The intent loop's `Writer` tracks removals beside additions, so
+      `has_label` cannot report a label the same cycle removed and the
+      shared sweep cannot re-remove it.
+- [x] 11.4 `land_stage`'s item set is every unlanded item on the milestone —
+      `i.is_open or i.merge_closed` — and the numbers taken from it drive the
+      launch marker, the stall notify, the failure pause and the andon read.
+- [x] 11.5 `dispatch_inbox`'s relay half reads unlanded items, open or
+      `closed:merged`; its triage half stays open-issues-only.
+- [x] 11.6 `tests/test_bolt_loop.py`, `tests/test_inbox.py` and
+      `tests/test_intent_loop.py` pin all five: the shared sweep's label
+      order, a no-op move writing nothing, a collected design item holding
+      exactly one stage label, the landing pausing and reading an andon on an
+      all-merge-closed milestone, and the relay carrying a merge-closed
+      escalation while dropping a landed one.
+- [x] 11.7 The three repo gates, the Python tests, and `openspec validate
+      stage-labels-96 --strict` — all green on the tree that lands.
