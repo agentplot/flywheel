@@ -183,88 +183,71 @@ apply:
   requires:
     - intent
   instruction: |
-    Work the READY set to empty, then stop at the queue.
+    Loop for the intent <slug>. State lives on the tracker; you hold
+    none. Compile this instruction into the change's own
+    openspec/changes/<slug>/workflow.js and launch it as ONE run
+    (Workflow {scriptPath}); after answering a pane or folding a
+    correction, resume the same run ({scriptPath, resumeFromRunId}).
+    Editing this instruction is how the loop changes; recompile when
+    it does (instruction hash in the script header).
 
-    This instruction is what the dynamic workflow is built from
-    (`/opsx:apply build a dynamic workflow with the instructions for
-    <change>`). Two rules govern the run. The workflow IS the
-    loop: one run works the ready set to empty - re-query after the merge, bounce handling, and the next
-    batch are stages inside the run, never a reason to build another
-    workflow - and a fresh run is built only when this conductor is
-    prompted again. A second rule binds every stage the workflow
-    runs: a WORK stage's agent never does the batch's work itself -
-    its job is to drive herdr: start the session the batch names,
-    deliver the work order — one prompt, the type's invocation as
-    its first line, the brief below — wait on it, return the
-    outcome, and close the session's pane (the worktree and branch
-    stay for the merge step). The
-    operator supervises herdr sessions, and a session that needs the
-    operator - a plannotator round, a lavish page, a plan-mode
-    approval - can only reach them from a real pane; an in-process
-    subagent cannot. Subagents may read and report (QUERY, ANALYSE,
-    synthesis); sessions do the work.
+    INPUT, each cycle, read fresh from the tracker (fields as in
+    <plugin-root>/workflows/fixtures/intent-tracker.json): the
+    milestone intent/<slug>'s open items - number, title, type label,
+    state label, blocked_by issue numbers (GitHub's dependency edges,
+    read from the API, never inferred), parent batch, record path -
+    and this milestone's units and elaborations with their board
+    Status.
 
-    The tracker is the org's, named by the `tracker:` line in the org's
-    fleet.yaml; every tracker write runs as the app
-    (`GH_TOKEN=$(<plugin-root>/bin/flywheel-token --org <org>)` — the
-    plugin's bin/ is not on PATH; your loaded loop skill states the
-    root). The invocations are in the
-    flywheel plugin's `skills/_reference/herdr.md`.
+    GUARDS - checked EVERY cycle, in this order; each is idempotent:
 
-    1 · QUERY — the milestone `intent/<slug>`'s open items labelled
-      `state:ready`, and its batches (units and elaborations) whose
-      Project Status the operator has moved to Ready on the board:
-      relabel those batches' sub-issues to
-      `state:ready` first, then take the whole ready set. The
-      tracker is the only source of work.
+    0. No change dir at openspec/changes/<slug>: scaffold it
+       (/opsx:new <slug>, bind flywheel-intent), commit, continue.
+    1. A batch at Ready with state:queued sub-issues: relabel them
+       state:ready. The flip is spent; the labels carry the release.
+    2. HANDOFF BIRTH: any assertion item open on this milestone with
+       no parent batch and no open blocker -> ensure ONE open
+       type:handoff item names exactly that set (create it, or extend
+       the open unstarted one).
+    3. COMPOSE: any state:queued item with no parent batch -> group
+       the orphans into proposed batches (flywheel-batch) at Backlog,
+       by thread. Composing is not releasing; batches wait for the
+       operator.
 
-    2 · ANALYSE — partition the ready set into session batches. Type is
-      the hard boundary: a session loads one type skill, so items of
-      different types never share a session. Within a type the call is
-      judgment, not a formula: related topics share a session, unrelated
-      ones split even at the same type, and prototypes ride alone by
-      default — each is its own experiment and worktree. Each batch names
-      its session type and model (the type's default unless overridden).
-      Dependencies are the items' blocked-by relations and order the
-      batches. This step reads and writes nothing.
+    WORK - while any item is state:ready:
 
-    3 · WORK — one session per batch, parallel where batches are
-      disjoint, dependency order where they are not. A session that edits
-      files runs isolated in its own worktree; a session that only reads
-      and reports gets none. Flip each item to `state:in-progress` when
-      its session starts. Batch generously; split for the reasons above,
-      never to make sessions smaller.
+      batch the ready items by their type label - one session type
+      per batch, prototypes always alone. A batch runs only when
+      every blocked_by of every item in it is closed - computed from
+      the field, not reasoned.
 
-    4 · MERGE — merge each finished session branch through the gate,
-      promote what it delivered (decision records, assertion records,
-      writebacks), comment each item with the outcome, and close finished
-      items `closed:done`. New work a session surfaced is queued as new
-      items - never worked directly from here. Then re-query.
+      for each unblocked batch, in parallel: one session in a herdr
+      pane (a session that edits files or may need the operator
+      always gets a pane; pure read-and-report may run in-process).
+      The work order is ONE prompt: the type's invocation first line,
+      the item numbers and goal below. Flip its items
+      state:in-progress at start; wait; read the report; close the
+      pane.
 
-    When the ready set is empty, two moves at the queue, then stop:
+      on each finished session: merge its branch through the gate.
+      The session wrote its own records (decisions, assertions, its
+      session directory) and queued its own discoveries - whoever
+      finds queues; you create only handoff items and batches. You
+      merge, and you close finished items closed:done on the
+      evidence.
 
-    - BIRTH THE HANDOFF when it is due. An assertion is settled and
-      unbolted when its item is open on `intent/<slug>` (bolting IS the
-      milestone move to `bolt/<slug>`, so the milestone field is the
-      test), it has no parent batch, and every item blocking it is
-      closed. When any exist, queue one `type:handoff` item naming
-      exactly that set - or extend the open unstarted handoff item with
-      the newcomers. The handoff session it charges plans the bolt:
-      bolt type, owner, sequencing, the milestone move.
-    - COMPOSE the queue into proposed batches (`flywheel-batch`) -
-      elaborations of design work, units of settled assertions - grouped
-      by thread: a prototype, the questions it answers, and the
-      writeback of its findings are one approval even though they are
-      three types; the type partition happens at session time, not here.
+      then re-run the guards and re-query.
 
-    Present the queue to the operator - one line per batch and unbatched
-    item - and stop. An empty ready set with a full queue is the correct
-    resting state, not a stall.
+    STOP when no item is state:ready and the guards changed nothing:
+    report the queue - one line per batch and unbatched item - and
+    the run ID. An empty ready set with a full queue is the correct
+    resting state.
 
-    Report the run ID when the loop ends.
+    Tracker writes run as the app (GH_TOKEN via
+    <plugin-root>/bin/flywheel-token; if the token cannot mint, stop
+    - never ambient credentials). Invocations:
+    skills/_reference/herdr.md.
 
-    THE ANDON CORD — a session that finds the work has gone wrong in a
-    way no further round will fix - the batch builds on a claim just
-    disproved, two released items contradict each other - stops, holds
-    the batch, and asks the operator. Stopping on a defect is expected
-    behaviour.
+    THE ANDON CORD - a session that finds the work has gone wrong in
+    a way no further round will fix stops, holds its batch, and asks
+    the operator. Stopping on a defect is expected behaviour.

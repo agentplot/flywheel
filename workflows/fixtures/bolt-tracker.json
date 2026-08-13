@@ -1,0 +1,34 @@
+{
+  "_": "Mock of the QUERY result a bolt loop reads each cycle. These field names are the contract the apply instruction and compiled workflow.js code against. Feed this to a compiled loop (tracker:false) for an isolated run against a fake tracker.",
+  "milestone": "bolt/sandbox-loop",
+  "items": [
+    {
+      "number": 101,
+      "title": "scratch/sandbox-note.md states the fixture claim",
+      "labels": ["type:assertion", "state:ready"],
+      "blocked_by": [],
+      "parent_batch": null,
+      "record": "openspec/changes/sandbox-loop/assertions/sandbox-note.md",
+      "change": "sandbox-note"
+    },
+    {
+      "number": 102,
+      "title": "scratch/sandbox-index.md lists sandbox-note.md",
+      "labels": ["type:assertion", "state:ready"],
+      "blocked_by": [101],
+      "parent_batch": null,
+      "record": "openspec/changes/sandbox-loop/assertions/sandbox-index.md",
+      "change": "sandbox-index"
+    },
+    {
+      "number": 103,
+      "title": "A discovery queued mid-bolt that the bolt does not need to land",
+      "labels": ["state:queued"],
+      "blocked_by": [],
+      "parent_batch": null,
+      "record": null,
+      "change": null
+    }
+  ],
+  "batches": []
+}
