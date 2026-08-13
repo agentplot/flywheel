@@ -24,12 +24,12 @@ expectation fails measures the skill and does not count.
 A fixture that copies a shipped file can drift: re-copy it whenever the
 original changes.
 
-**The state-claim evals, hand the executor the wrong
-move.** One fixture carries a gate measurement inside a settled record,
-which a run without the rule reports as current; another prompt supplies a
-line number, which a run without the rule copies into the task line. Both are written so the baseline can fail them:
-a prompt that merely asks for a task line would pass in either
-configuration.
+**The state-claim evals hand the executor the wrong move.** One fixture
+carries a gate measurement inside a settled record, which a run without
+the rule reports as current; another prompt supplies a line number, which
+a run without the rule copies into the task line. Both are written so the
+baseline can fail them: a prompt that merely asks for a task line would
+pass in either configuration.
 
 **Not yet run.** The eval executions — `skill-creator` over the skill,
 including its description pass, and every eval in both configurations —
