@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/flywheel-intent/schema.yaml apply.instruction
-INSTRUCTION SHA256: 800469f9efab62b4
+INSTRUCTION SHA256: 120527113e9d5105
 COMPILED BY: static compile pass for review - not yet run. Mechanics
 marked "HERDR.MD:" delegated to skills/_reference/herdr.md.
 
@@ -78,7 +78,7 @@ const queryAndGuards = (cycle) => agent(`Read the intent tracker state and apply
 
 Milestone: intent/${A.slug}. Fields per item: number, title, labels (type:* and state:*), blocked_by (GitHub's dependency edges, read from the API, never inferred), parent_batch, record path. Batches carry kind (unit | elaboration), board Status, sub_issues.
 
-GUARDS, in order, each idempotent - record every action in guard_actions (empty if none):
+GUARDS, in order, each idempotent - guard_actions records ONLY the writes you make; a check that changed nothing records NOTHING (an empty array is the normal, correct result):
 0. If openspec/changes/${A.slug} does not exist in ${A.repoDir}: scaffold it (/opsx:new ${A.slug}, bind flywheel-intent), commit, continue.
 1. Any batch at board Status Ready with state:queued sub-issues: relabel those sub-issues state:ready. The flip is spent; the labels carry the release.
 2. HANDOFF BIRTH: any type:assertion item open on this milestone with no parent_batch and no open blocked_by -> ensure ONE open type:handoff item names exactly that set (create it, or extend the open unstarted one).

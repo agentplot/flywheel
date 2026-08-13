@@ -214,7 +214,9 @@ apply:
     driver is idempotent: an agent already running under its name is
     driven, never duplicated.
 
-    GUARDS - checked EVERY cycle, in this order; each is idempotent:
+    GUARDS - checked EVERY cycle, in this order; each is idempotent.
+    A guard records only the WRITES it makes - a check that changed
+    nothing records nothing, or the loop never quiets:
 
     0. No change dir at openspec/changes/<slug>: scaffold it
        (/opsx:new <slug>, bind flywheel-intent), commit, continue.
@@ -237,8 +239,9 @@ apply:
     handoff opus; the merge stage sonnet.
 
     LIMITS, by session type, in 10-minute wait chunks: research,
-    prototype and writeback sessions - after 90 minutes of waiting
-    the driver comments the wait on the batch's first item and adds
+    prototype and writeback sessions - after 90 minutes of real
+    waiting (a chunk counts only when its wait ran the full 10
+    minutes) the driver comments the wait on the batch's first item and adds
     needs-operator (a live wait; dispatch relays), then KEEPS
     waiting; after 4 hours it returns stalled and leaves the pane
     open. Planning, interactive and handoff sessions hold operator

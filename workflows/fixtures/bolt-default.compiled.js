@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/bolt-default/schema.yaml apply.instruction
-INSTRUCTION SHA256: 72a7716e532caee0
+INSTRUCTION SHA256: 00b79d73304d5145
 COMPILED BY: static compile pass, third round - review-2 verdicts
 folded: fixture trace, criteria-fix bounds, stage checkout rules. No INVENTED marks remain: models, limits, landing
 mode, and the landing actor are now the instruction's own words.
@@ -75,7 +75,7 @@ const queryAndGuards = (cycle) => agent(`Read the bolt tracker state and apply t
 
 Milestone: bolt/${A.slug}. Fields per item: number, title, labels, blocked_by (GitHub's dependency edges, read from the API, never inferred), parent_batch, record path, change name.
 
-GUARDS, in order, each idempotent - record every action you take in guard_actions (empty array if none):
+GUARDS, in order, each idempotent - guard_actions records ONLY the writes you make; a check that changed nothing records NOTHING (an empty array is the normal, correct result):
 0. If openspec/changes/${A.slug} does not exist in ${A.boltWorktree}: scaffold it (/opsx:new ${A.slug}, bind bolt-default), commit, continue.
 1. Any unit at board Status Ready with state:queued sub-issues: relabel those sub-issues state:ready.
 2. Any state:queued item with no parent_batch: keep it on this bolt ONLY if the bolt cannot land without it; otherwise move it to the intent that owns its subject, or leave it unmilestoned for dispatch. Compose what remains into a unit at Backlog.
@@ -92,7 +92,7 @@ const drive = (name, cwd, order, label, itemNumber) => agent(`Drive one herdr se
 2. herdr agent start "${name}" --kind claude --pane <pane-id> -- --agent flywheel-construction-session --model ${SESSION_MODEL} --dangerously-skip-permissions
 3. Prompt "/rename ${name}" alone; poll the title until it converges.
 4. Deliver the work order between the markers as ONE prompt; verify the session goes working (one enter if a pasted block sits at the composer).
-5. herdr agent wait "${name}" - re-invoke on the 10-minute command cap, counting chunks. At ${NOTIFY_CHUNKS} chunks (~90 min): ${A.fixture ? 'note the long wait in your outcome detail' : `comment the wait on issue #${itemNumber} and add the needs-operator label - a live wait; dispatch relays`} - then KEEP waiting. At ${STALL_CHUNKS} chunks (~4 h): return status stalled with the pane tail; leave the pane open.
+5. herdr agent wait "${name}" - re-invoke on the 10-minute command cap. A chunk counts ONLY when its wait ran the full 10 minutes - a wait that returns quickly is not a chunk. At ${NOTIFY_CHUNKS} chunks (~90 min): ${A.fixture ? 'note the long wait in your outcome detail' : `comment the wait on issue #${itemNumber} and add the needs-operator label - a live wait; dispatch relays`} - then KEEP waiting. At ${STALL_CHUNKS} chunks (~4 h): return status stalled with the pane tail; leave the pane open.
 6. On settle done/idle: read the pane; composer ghost text is not input. On settle blocked: return status blocked with what the pane asks; leave the pane open.
 7. herdr tab close <tab-id>; return the outcome.
 WORK_ORDER>>>
