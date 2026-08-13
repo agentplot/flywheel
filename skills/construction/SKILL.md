@@ -79,9 +79,14 @@ A released assertion carries `type:assertion`, and it is the one
 tracked object for its whole construction: the stages below create no
 items of their own — the dynamic workflow decides those moves, and the
 item's comments record them. Each item's progress is its comment
-history — spec landed, review verdict, build done, merge SHA — and its
-label stays `state:in-progress` from first spec work until it closes
-`closed:done` with the landing SHA in the closing comment. Only
+history — spec landed, review verdict, build done, merge SHA — plus the
+one `stage:*` label naming its leading edge. Its
+label stays `state:in-progress` from first spec work until the
+merge-back, where the loop closes it `closed:merged` with the merge SHA
+so the unit parent's native bar advances there; the landing then
+upgrades that reason to `closed:done` with the landing SHA in the
+closing comment. A closed item carries exactly one `closed:*` reason at
+every moment. Only
 discoveries become new items: findings, readiness gaps, design-level
 faults queued to the source intent.
 

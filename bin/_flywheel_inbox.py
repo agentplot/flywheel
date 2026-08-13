@@ -87,9 +87,18 @@ def stage_of(labels, among=STAGE_LABELS):
 
 
 CLOSED_DONE = "closed:done"
+#: Merged to the bolt branch, awaiting the landing. A construction
+#: sub-issue closes here so the unit parent's native bar — which counts
+#: CLOSED sub-issues — advances at merge rather than at the landing, and
+#: the landing upgrades the reason to `closed:done` with the SHA. Invariant
+#: 5 stands verbatim: exactly one `closed:*` reason, at every moment.
+CLOSED_MERGED = "closed:merged"
 CLOSED_DECLINED = "closed:declined"
 CLOSED_SUPERSEDED = "closed:superseded"
 CLOSED_PARKED = "closed:parked"
+
+CLOSED_REASONS = (CLOSED_DONE, CLOSED_MERGED, CLOSED_DECLINED,
+                  CLOSED_SUPERSEDED, CLOSED_PARKED)
 
 STATUS_BACKLOG = "Backlog"
 STATUS_READY = "Ready"
@@ -144,6 +153,15 @@ class Item:
     @property
     def is_assertion(self):
         return TYPE_ASSERTION in self.labels
+
+    @property
+    def merge_closed(self):
+        """Closed at merge-back and still in flight until the bolt lands.
+
+        Not `is_open`, and not finished either — the landing still owes it
+        an upgrade to `closed:done` and the landing SHA.
+        """
+        return not self.is_open and CLOSED_MERGED in self.labels
 
     @classmethod
     def from_fixture(cls, raw, milestone=None):
@@ -340,9 +358,19 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
     }
 
     for item in snapshot.items:
-        if not item.is_open or item.milestone_state != "open":
+        if item.milestone_state != "open":
             continue
         if milestone_slug(item.milestone) is None:
+            continue
+        if item.merge_closed:
+            # Closed at merge-back and NOT finished: its bolt still has to
+            # land, and the landing is what upgrades the reason and comments
+            # the SHA. Without this a loop killed between the last merge and
+            # the landing is never restarted, because every other test here
+            # reads open items.
+            add(item.milestone, "run", f"#{item.number} merged, awaiting the landing")
+            continue
+        if not item.is_open:
             continue
         if item.ready or item.in_progress:
             add(item.milestone, "run", f"#{item.number} {item.state or ''}".strip())
@@ -751,6 +779,28 @@ class Tracker:
             if "pull_request" not in raw
         ]
 
+    def merge_closed_issues(self):
+        """Closed issues carrying `closed:merged` — work still in flight.
+
+        Closing an item at merge-back takes it out of `open_issues()`, and
+        every filter downstream reads that. But a merge-closed item is not
+        finished: its bolt has not landed, the landing still has to upgrade
+        its reason and comment the SHA, and the server still has to start a
+        loop for its milestone. So the snapshot carries them beside the open
+        ones, and the filters that must not see them — every one built on
+        `is_open`, the ready set above all — are unaffected.
+        """
+        pages = self._gh(
+            self.token, "api",
+            f"/repos/{self.org}/{self.repo}/issues"
+            f"?state=closed&labels={CLOSED_MERGED}&per_page=100",
+            "--paginate", "--slurp",
+        )
+        return [
+            raw for page in pages for raw in page
+            if "pull_request" not in raw
+        ]
+
     def closed_milestones(self):
         pages = self._gh(
             self.token, "api",
@@ -822,8 +872,11 @@ class Tracker:
         and parentage edges, and those are per-issue calls. The server's pass
         wants none of that: it over-approximates on purpose and calls this
         with `with_edges=False`.
+
+        Open issues **plus** the `closed:merged` ones, which are closed and
+        still in flight — see `merge_closed_issues`.
         """
-        raws = self.open_issues()
+        raws = self.open_issues() + self.merge_closed_issues()
         if milestone:
             raws = [r for r in raws
                     if (r.get("milestone") or {}).get("title") == milestone]

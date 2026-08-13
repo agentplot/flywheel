@@ -84,8 +84,19 @@ queue a question — never invent tracker structure.**
    writes `stage:done`, which is the one signal that loop's completion
    filter consumes. No `stage:*` write touches a `closed:*` label:
    `stage:merged` (on the bolt branch) and `closed:done` (landed on
-   main) are two different facts, and the landing stays the sole
-   writer of the second, with the SHA in its closing comment.
+   main) are two different facts, written at the same boundary but not
+   the same act.
+   **A construction assertion closes at the merge-back, with
+   `closed:merged`**, because GitHub's native sub-issue bar counts
+   closed sub-issues and `#98` puts the check-off at merge; the
+   landing then **upgrades** that reason to `closed:done` with the
+   landing SHA in its closing comment, on an item that is already
+   closed. The one-reason rule above holds at every moment — never
+   both, never neither — which is why the check-off is a new reason
+   rather than a close with none. A `closed:merged` item is still in
+   flight: its bolt has not landed, the loop's picture of its
+   milestone carries it, and the server counts its milestone as a job
+   until the landing.
 6. **The handoff birth condition is computable.** An assertion is
    settled and unbolted when its item is open on `intent/<slug>`, has
    no parent batch, and has no open blockers. Whenever such assertions
@@ -114,7 +125,10 @@ queue a question — never invent tracker structure.**
    milestone's items are all closed, its loop proposes closure and
    stops; the operator closes the milestone on GitHub — the archive
    signal — and the server's next pass runs a one-shot session to
-   `openspec archive` the change. A loop process stops whenever its
+   `openspec archive` the change. A bolt milestone is **not** finished
+   while any of its items sits at `closed:merged`: those items are
+   closed and still in flight, and the landing is what finishes them.
+   A loop process stops whenever its
    milestone has no job, and a fresh one starts when a job appears and
    re-reads the tracker and the records; no process is ever the memory.
 10. Sub-issues and dependency relations take the **database id**, not
@@ -127,7 +141,8 @@ through GitHub issues, and each consumer has an exact filter:
 
 - **server** — milestones with a job: any open `intent/*` or `bolt/*`
   milestone holding an open item labelled `state:ready` or
-  `state:in-progress`, or a batch at board Status **Ready**; plus closed
+  `state:in-progress`, or a `closed:merged` item still awaiting its
+  landing, or a batch at board Status **Ready**; plus closed
   milestones whose change still sits in `openspec/changes/` (archive).
 - **bolt loop for `bolt/<slug>`** — open items on that milestone
   labelled `state:ready`, plus that bolt's units at board Status Ready
@@ -215,7 +230,10 @@ then makes the custody move:
     #102  milestone intent/auth-hardening → bolt/forgot-password · state:ready
 
 The server starts the bolt loop; construction accrues on
-#102 as comments; it closes `closed:done` with the landing SHA. #105's
+#102 as comments and as its one `stage:*` label. When its branch reaches
+the bolt branch the loop closes it `closed:merged` with the merge SHA —
+which is what checks it off on #105's bar — and the landing upgrades that
+to `closed:done` with the landing SHA. #105's
 checklist keeps tracking it across the move (invariant 2), and
 `intent/auth-hardening` is free to close when design and writebacks
 are done.
@@ -263,5 +281,6 @@ quietly. The same rule runs the other way for `bolt-direct`'s missing
 verify stage: it is that type's alone, and a bolt on another type
 cannot declare its way out of verify. Everything else is unchanged:
 the item's comments and its one `stage:*` label carry the stages, the
-merge gate runs unweakened,
-the landing SHA closes the item `closed:done`.
+merge gate runs unweakened, the merge-back closes the item
+`closed:merged` with the merge SHA, and the landing upgrades it to
+`closed:done` with the landing SHA.

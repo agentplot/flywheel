@@ -88,6 +88,12 @@ LABELS = {
                              "intent loop collects on this"),
     "stage:collected": ("f9d0c4", "its deliverables are gathered"),
     "closed:done": ("2da44e", "finished; evidence on the item"),
+    # A construction sub-issue closes at merge-back so the unit parent's
+    # native bar advances there, and the landing upgrades the reason to
+    # closed:done with the SHA. Invariant 5 stands verbatim: exactly one
+    # closed:* reason on a closed item, at every moment.
+    "closed:merged": ("1a7f37", "merged to the bolt branch; awaiting the "
+                                "landing"),
     "closed:declined": ("b60205", "not doing it; reason on the item"),
     "closed:superseded": ("d93f0b", "overtaken by another item"),
     "closed:parked": ("c5def5", "waiting on an external event; reopenable"),

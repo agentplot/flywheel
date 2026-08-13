@@ -50,6 +50,8 @@ class FakeTracker:
         self._milestones = list(milestones)
         self.labels = {}
         self.writes = []
+        self.closed = set()
+        self.reasons = []
 
     # reads
     def snapshot(self, milestone=None, with_edges=True):
@@ -86,8 +88,19 @@ class FakeTracker:
     def clear_milestone(self, number):
         self.writes.append(("clear_milestone", number, ""))
 
-    def close(self, number, comment=None):
+    def close(self, number, comment=None, reason=inbox.CLOSED_DONE):
+        self.labels.setdefault(number, set()).add(reason)
+        self.closed.add(number)
         self.writes.append(("close", number, comment or ""))
+        self.reasons.append((number, reason))
+
+    def reclose(self, number, comment=None, was=None, now=inbox.CLOSED_DONE):
+        self.labels.setdefault(number, set()).add(now)
+        if was and was != now:
+            self.labels[number].discard(was)
+        self.closed.add(number)
+        self.writes.append(("reclose", number, comment or ""))
+        self.reasons.append((number, now))
 
     def create_item(self, title, body, labels=(), milestone=None):
         self.writes.append(("create_item", 0, title))
@@ -747,29 +760,34 @@ class LandingTest(unittest.TestCase):
         program.merge_criteria = lambda: criteria
         return program, tracker
 
-    def test_every_item_closes_with_the_landing_sha(self):
+    def test_every_item_ends_at_closed_done_with_the_landing_sha(self):
         program, tracker = self.program("Landing: merge", ancestor=0)
         outcome = program.land_stage(self.snapshot())
         self.assertEqual(outcome.status, "done")
-        closed = [w for w in tracker.writes if w[0] == "close"]
-        self.assertEqual([w[1] for w in closed], [1, 2])
-        self.assertIn("abc1234", closed[0][2])
+        upgraded = [w for w in tracker.writes if w[0] == "reclose"]
+        self.assertEqual([w[1] for w in upgraded], [1, 2])
+        self.assertIn("abc1234", upgraded[0][2])
+        self.assertEqual(tracker.reasons, [(1, inbox.CLOSED_DONE),
+                                           (2, inbox.CLOSED_DONE)])
 
-    def test_a_pull_request_landing_closes_nothing(self):
+    def test_a_pull_request_landing_upgrades_nothing(self):
         program, tracker = self.program("Landing: pr", ancestor=1)
         outcome = program.land_stage(self.snapshot())
         self.assertEqual(outcome.status, "done")
-        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
+        self.assertEqual([w for w in tracker.writes
+                          if w[0] in ("close", "reclose")], [],
+                         "the items stay at closed:merged until the PR merges")
 
     def test_the_default_landing_mode_is_merge(self):
         program, _ = self.program("Acceptance suites green on the bolt branch.")
         self.assertEqual(program.landing_mode(), "merge")
 
-    def test_a_branch_that_did_not_land_closes_nothing_and_reports_the_failure(self):
+    def test_a_branch_that_did_not_land_upgrades_nothing_and_reports_the_failure(self):
         program, tracker = self.program("Landing: merge", ancestor=1)
         outcome = program.land_stage(self.snapshot())
         self.assertEqual(outcome.status, "failed")
-        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
+        self.assertEqual([w for w in tracker.writes
+                          if w[0] in ("close", "reclose")], [])
 
     def test_an_andon_raised_by_the_landing_session_pauses_the_bolt(self):
         tracker = FakeTracker(self.snapshot(), comments={
@@ -792,7 +810,7 @@ class LandingTest(unittest.TestCase):
         program._merged = 1
         self.assertTrue(program.landing_wanted("auto", box, open_items))
 
-    def test_a_milestone_with_no_open_items_has_nothing_to_land(self):
+    def test_a_milestone_with_nothing_unlanded_has_nothing_to_land(self):
         program = a_loop(FakeTracker())
         self.assertFalse(program.landing_wanted(
             "force", inbox.BoltInbox(milestone="bolt/x"), []))
@@ -802,6 +820,178 @@ class LandingTest(unittest.TestCase):
         program.land_stage(self.snapshot())
         outcome = program.land_stage(self.snapshot())
         self.assertEqual(outcome.status, "paused")
+
+
+class MergeCloseTest(unittest.TestCase):
+    """#98 via the ruling on #118 — the sub-issue checks off at merge-back.
+
+    The unit parent's bar is GitHub's own and counts CLOSED sub-issues, so
+    the check-off is a close. `closed:merged` rather than a reasonless close
+    is what keeps tracker.md invariant 5 verbatim.
+    """
+
+    def shell(self, ancestor=0, commits="3\n"):
+        return FakeShell({("git", "rev-list"): Result(0, commits),
+                          ("git", "merge-base"): Result(ancestor),
+                          ("git", "rev-parse"): Result(0, "abc1234\n")})
+
+    def a_batch(self, *items):
+        return loop.WorkBatch(slug="add-thing", items=tuple(items))
+
+    def test_the_merge_boundary_closes_assertions_with_closed_merged(self):
+        tracker = FakeTracker()
+        program = a_loop(tracker, shell=self.shell())
+        program.close_merged(self.a_batch(
+            item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
+            item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)))
+        self.assertEqual(tracker.reasons, [(1, inbox.CLOSED_MERGED),
+                                           (2, inbox.CLOSED_MERGED)])
+        self.assertTrue(all("abc1234" in w[2] for w in tracker.writes
+                            if w[0] == "close"))
+
+    def test_a_discovery_item_on_the_bolt_is_untouched_by_the_merge(self):
+        # A discovery closes on its own evidence, as it does today.
+        tracker = FakeTracker()
+        program = a_loop(tracker, shell=self.shell())
+        program.close_merged(self.a_batch(
+            item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
+            item(5, inbox.IN_PROGRESS, title="a discovery")))
+        self.assertEqual([n for n, _ in tracker.reasons], [1])
+
+    def test_the_merge_session_is_told_the_loop_does_the_closing(self):
+        runner = ScriptedRunner()
+        shell = FakeShell({("git", "merge-base"): Result(1)})
+        a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(
+            loop.WorkBatch(slug="add-thing", items=(item(1, inbox.READY),)))
+        order = runner.launched[0].order
+        self.assertIn("The LOOP closes each assertion `closed:merged`", order)
+        self.assertNotIn("do not close them", order)
+
+    def test_a_full_cycle_merges_and_closes_in_one_go(self):
+        snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.READY,
+                                        change="add-thing")],
+                            milestone="bolt/x")
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
+                                reports=["No findings."] * 12)
+        a_loop(tracker, runner=runner, shell=self.shell()).cycle(1)
+        self.assertIn(inbox.STAGE_MERGED, tracker.labels[1])
+        self.assertIn(inbox.CLOSED_MERGED, tracker.labels[1])
+
+    # -- the landing's upgrade ---------------------------------------------
+
+    def merged_snapshot(self):
+        return Snapshot(items=[
+            Item(number=1, milestone="bolt/x", title="one", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+            Item(number=2, milestone="bolt/x", title="two", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+        ], milestone="bolt/x")
+
+    def landing(self, snapshot, ancestor=0):
+        tracker = FakeTracker(snapshot)
+        program = a_loop(tracker, shell=self.shell(ancestor=ancestor))
+        program.merge_criteria = lambda: "Landing: merge"
+        return program, tracker
+
+    def test_the_landing_upgrades_merged_to_done_with_the_sha(self):
+        snapshot = self.merged_snapshot()
+        program, tracker = self.landing(snapshot)
+        outcome = program.land_stage(snapshot)
+        self.assertEqual(outcome.status, "done")
+        for n in (1, 2):
+            self.assertIn(inbox.CLOSED_DONE, tracker.labels[n])
+            self.assertNotIn(inbox.CLOSED_MERGED, tracker.labels[n],
+                             "never both reasons, never neither")
+        self.assertTrue(all("abc1234" in w[2] for w in tracker.writes
+                            if w[0] == "reclose"))
+
+    def test_the_landing_is_not_blocked_by_an_already_closed_item(self):
+        snapshot = self.merged_snapshot()
+        program, tracker = self.landing(snapshot)
+        self.assertEqual(program.land_stage(snapshot).status, "done")
+        self.assertEqual(len([w for w in tracker.writes if w[0] == "reclose"]), 2)
+
+    def test_an_item_that_never_merged_back_still_ends_at_closed_done(self):
+        # The landing's job is the end state, not a transition it witnessed.
+        snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+                                        inbox.IN_PROGRESS)],
+                            milestone="bolt/x")
+        program, tracker = self.landing(snapshot)
+        program.land_stage(snapshot)
+        self.assertIn(inbox.CLOSED_DONE, tracker.labels[1])
+
+    def test_a_bolt_whose_every_item_is_merge_closed_still_lands(self):
+        # Without this the last batch merges, the milestone looks empty,
+        # and the bolt never lands at all.
+        snapshot = self.merged_snapshot()
+        program = a_loop(FakeTracker(snapshot), shell=self.shell())
+        box = inbox.bolt_inbox(snapshot, "x")
+        self.assertEqual(box.ready, (), "a closed item is never ready")
+        unlanded = [i for i in snapshot.items if i.is_open or i.merge_closed]
+        self.assertEqual(len(unlanded), 2)
+        program._merged = 1
+        self.assertTrue(program.landing_wanted("auto", box, unlanded))
+        self.assertFalse(program.landing_wanted("auto", box, []))
+
+    # -- re-derivation over the merged edge ---------------------------------
+
+    def reconcile(self, snapshot, ancestor=0, seed=None):
+        tracker = FakeTracker(snapshot)
+        for number, labels in (seed or {}).items():
+            tracker.labels[number] = set(labels)
+        actions = []
+        a_loop(tracker, shell=self.shell(ancestor=ancestor)).guard_stages(
+            snapshot, actions)
+        return tracker, actions
+
+    def test_a_process_that_died_after_the_label_has_its_close_repaired(self):
+        snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+                                        inbox.IN_PROGRESS, inbox.STAGE_MERGED,
+                                        change="add-thing")],
+                            milestone="bolt/x")
+        tracker, actions = self.reconcile(
+            snapshot, seed={1: {inbox.IN_PROGRESS, inbox.STAGE_MERGED}})
+        self.assertEqual(tracker.reasons, [(1, inbox.CLOSED_MERGED)])
+        self.assertTrue(any("closed:merged" in a for a in actions), actions)
+
+    def test_a_process_that_died_after_the_close_has_its_label_repaired(self):
+        snapshot = Snapshot(items=[
+            Item(number=1, milestone="bolt/x", title="one", state="closed",
+                 change="add-thing",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))],
+            milestone="bolt/x")
+        tracker, actions = self.reconcile(
+            snapshot, seed={1: {inbox.CLOSED_MERGED}})
+        self.assertIn(("add_label", 1, inbox.STAGE_MERGED), tracker.writes)
+        self.assertEqual(tracker.reasons, [], "already closed; not closed again")
+
+    def test_a_landed_item_is_never_walked_back(self):
+        snapshot = Snapshot(items=[
+            Item(number=1, milestone="bolt/x", title="one", state="closed",
+                 change="add-thing",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_DONE,
+                                   inbox.STAGE_MERGED}))],
+            milestone="bolt/x")
+        tracker, actions = self.reconcile(snapshot)
+        self.assertEqual(tracker.writes, [], "the landing is downstream of merge")
+        self.assertEqual(actions, [])
+
+    def test_the_dry_cycle_holds_with_merged_closed_items_on_the_milestone(self):
+        snapshot = Snapshot(items=[
+            Item(number=1, milestone="bolt/x", title="one", state="closed",
+                 change="add-thing",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED,
+                                   inbox.STAGE_MERGED}))],
+            milestone="bolt/x")
+        tracker = FakeTracker(snapshot)
+        tracker.labels[1] = {inbox.CLOSED_MERGED, inbox.STAGE_MERGED}
+        program = a_loop(tracker, shell=self.shell())
+        first, _ = program.guards(snapshot)
+        self.assertEqual(first, [])
+        again, _ = program.guards(snapshot)
+        self.assertEqual(again, [])
+        self.assertEqual(tracker.writes, [])
 
 
 # ---------------------------------------------------------------------------

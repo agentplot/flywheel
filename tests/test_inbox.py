@@ -83,6 +83,13 @@ class VocabularyTest(unittest.TestCase):
     def test_every_stage_constant_is_defined_in_flywheel_setups_labels(self):
         self.assertEqual(self.setup_labels(), set(inbox.STAGE_LABELS))
 
+    def test_every_closed_constant_is_defined_in_flywheel_setups_labels(self):
+        source = (BIN / "flywheel-setup").read_text()
+        defined = set(re.findall(r'^\s*"(closed:[a-z-]+)":', source, re.MULTILINE))
+        self.assertEqual(defined, set(inbox.CLOSED_REASONS))
+        self.assertIn("closed:merged", defined,
+                      "the loop cannot write a label the repo does not define")
+
     def test_the_construction_stages_are_in_the_order_the_cycle_runs_them(self):
         self.assertEqual(inbox.CONSTRUCTION_STAGES,
                          ("stage:planned", "stage:built", "stage:verified",
@@ -133,6 +140,42 @@ class ServerInboxTest(unittest.TestCase):
                                        milestone="bolt/a")])
         self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
                          [("bolt/a", "run")])
+
+    def test_a_merge_closed_item_keeps_its_milestone_in_the_job_list(self):
+        # Closing at merge takes an item out of every filter that reads open
+        # issues — including this one. Without the merge-closed branch, a
+        # loop killed between the last merge and the landing is never
+        # restarted, and the bolt never lands.
+        snap = Snapshot(items=[
+            Item(number=1, milestone="bolt/a", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))])
+        self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
+                         [("bolt/a", "run")])
+
+    def test_a_landed_item_gives_its_milestone_no_job(self):
+        snap = Snapshot(items=[
+            Item(number=1, milestone="bolt/a", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_DONE}))])
+        self.assertEqual([j for j in inbox.server_inbox(snap) if j.kind == "run"],
+                         [])
+
+    def test_a_merge_closed_item_is_never_in_the_bolt_loops_ready_set(self):
+        # The set that must not change: a closed item is not ready, and the
+        # ready set is what the cycle works.
+        snap = Snapshot(items=[
+            Item(number=1, milestone="bolt/a", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED,
+                                   inbox.READY}))])
+        self.assertEqual(inbox.bolt_inbox(snap, "a").ready, ())
+
+    def test_a_merge_closed_item_is_in_flight_and_not_finished(self):
+        merged = Item(number=1, state="closed",
+                      labels=frozenset({inbox.CLOSED_MERGED}))
+        landed = Item(number=2, state="closed",
+                      labels=frozenset({inbox.CLOSED_DONE}))
+        self.assertTrue(merged.merge_closed)
+        self.assertFalse(merged.is_open)
+        self.assertFalse(landed.merge_closed)
 
     def test_a_queued_batch_parent_is_not_composable_work(self):
         # A unit or elaboration parent is a container, never compose's work;

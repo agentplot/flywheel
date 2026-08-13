@@ -372,11 +372,33 @@ class BoltTracker(inbox.Tracker):
     def clear_milestone(self, number):
         self._api(f"/issues/{number}", "PATCH", {"milestone": None})
 
-    def close(self, number, comment=None):
-        """Close with a reason, always: one `closed:*` label and the evidence."""
+    def close(self, number, comment=None, reason=inbox.CLOSED_DONE):
+        """Close with a reason, always: one `closed:*` label and the evidence.
+
+        `reason` defaults to `closed:done` so every existing caller keeps
+        its behaviour; the merge boundary passes `closed:merged`.
+        """
         if comment:
             self.comment(number, comment)
-        self.add_label(number, "closed:done")
+        self.add_label(number, reason)
+        self._api(f"/issues/{number}", "PATCH", {"state": "closed"})
+
+    def reclose(self, number, comment=None, was=None, now=inbox.CLOSED_DONE):
+        """Swap one `closed:*` reason for another on an already-closed item.
+
+        The landing's upgrade. It must not depend on the item being open —
+        it was closed at merge-back — and it must never leave the item
+        carrying both reasons or neither, so the new label goes on before
+        the old one comes off. The `state: closed` PATCH is repeated because
+        an item that reached the landing without ever merging back (a bolt
+        landed by another path, an item closed by hand) still has to end
+        closed with the SHA on it.
+        """
+        if comment:
+            self.comment(number, comment)
+        self.add_label(number, now)
+        if was and was != now:
+            self.remove_label(number, was)
         self._api(f"/issues/{number}", "PATCH", {"state": "closed"})
 
     def create_item(self, title, body, labels=(), milestone=None):
@@ -399,7 +421,7 @@ class ReadOnlyTracker:
     """
 
     WRITES = ("add_label", "remove_label", "comment", "set_milestone",
-              "clear_milestone", "close", "create_item")
+              "clear_milestone", "close", "reclose", "create_item")
 
     def __init__(self, tracker):
         self._tracker = tracker
@@ -494,14 +516,27 @@ class FixtureTracker:
             raw["milestone"] = None
         self._record("clear_milestone", number, "")
 
-    def close(self, number, comment=None):
+    def close(self, number, comment=None, reason=inbox.CLOSED_DONE):
         raw = self._item(number)
         if comment and raw is not None:
             raw.setdefault("comments", []).append({"body": comment})
         if raw is not None:
             raw["state"] = "closed"
-            raw.setdefault("labels", []).append("closed:done")
+            if reason not in raw.setdefault("labels", []):
+                raw["labels"].append(reason)
         self._record("close", number, comment or "")
+
+    def reclose(self, number, comment=None, was=None, now=inbox.CLOSED_DONE):
+        raw = self._item(number)
+        if comment and raw is not None:
+            raw.setdefault("comments", []).append({"body": comment})
+        if raw is not None:
+            raw["state"] = "closed"
+            if now not in raw.setdefault("labels", []):
+                raw["labels"].append(now)
+            if was and was != now and was in raw["labels"]:
+                raw["labels"].remove(was)
+        self._record("reclose", number, comment or "")
 
     def create_item(self, title, body, labels=(), milestone=None):
         number = max([i["number"] for i in self.raw.get("items", ())] or [100]) + 1
@@ -942,14 +977,19 @@ class BoltLoop:
         item whose branch genuinely does not exist is correctly read as not
         built rather than as a name this guard got wrong.
 
-        Scoped to the milestone's open `state:in-progress` items, which is
-        exactly the set a bolt-loop stage label may sit on: `stage:*`
-        refines `state:in-progress` and never replaces a `state:*` label, so
-        an item still queued or merely released has no stage to reconcile
-        and must not acquire one here.
+        Scoped to the milestone's open `state:in-progress` items — exactly
+        the set a bolt-loop stage label may sit on, since `stage:*` refines
+        `state:in-progress` and never replaces a `state:*` label, so an item
+        still queued or merely released has no stage to reconcile and must
+        not acquire one here — **and** its `closed:merged` items. The two
+        scopes answer the two halves of the merged edge: the item whose
+        close did not happen is in the first, and the item whose label did
+        not is in the second. An item at `closed:done` is in neither: the
+        landing is downstream of the merge, and re-derivation never
+        reverses it.
         """
         items = [i for i in snapshot.on(self.params.milestone)
-                 if i.is_open and i.in_progress
+                 if ((i.is_open and i.in_progress) or i.merge_closed)
                  and not ({inbox.UNIT, inbox.ELABORATION} & i.labels)]
         if not items:
             return
@@ -963,17 +1003,30 @@ class BoltLoop:
                 continue                # the tree witnesses nothing; write nothing
             for item in batch.items:
                 current = inbox.stage_of(item.labels, inbox.CONSTRUCTION_STAGES)
-                if current == target:
+                if current != target:
+                    if target == inbox.STAGE_BUILT and current == inbox.STAGE_VERIFIED:
+                        pass            # verified has no witness; never walked back
+                    elif self.dry_run:
+                        actions.append(f"would reconcile #{item.number} "
+                                       f"{current or 'no stage'} -> {target}")
+                    elif self.set_stage([item.number], target):
+                        actions.append(f"#{item.number} {current or 'no stage'} "
+                                       f"-> {target} (re-derived from {branch})")
+                if target != inbox.STAGE_MERGED:
                     continue
-                if target == inbox.STAGE_BUILT and current == inbox.STAGE_VERIFIED:
-                    continue            # verified has no witness; never walked back
+                # The merged edge is ONE fact with TWO writes, so a process
+                # killed between them leaves an item half-merged in the
+                # tracker's eyes. Repair the close as well as the label.
+                if not item.is_assertion:
+                    continue
+                if item.merge_closed or not item.is_open:
+                    continue            # already closed; `closed:done` never walked back
                 if self.dry_run:
-                    actions.append(f"would reconcile #{item.number} "
-                                   f"{current or 'no stage'} -> {target}")
+                    actions.append(f"would close #{item.number} {inbox.CLOSED_MERGED}")
                     continue
-                if self.set_stage([item.number], target):
-                    actions.append(f"#{item.number} {current or 'no stage'} "
-                                   f"-> {target} (re-derived from {branch})")
+                self.close_merged(WorkBatch(slug=batch.slug, items=(item,)))
+                actions.append(f"#{item.number} closed {inbox.CLOSED_MERGED} "
+                               f"(re-derived from {branch})")
 
     def guard_scaffold(self, actions):
         """0 — scaffold-if-missing.
@@ -1450,8 +1503,12 @@ class BoltLoop:
              f"\"Cannot prompt for approval in non-interactive environment\", stop and "
              f"report it rather than working around it.\n\n"
              + (f"On green: openspec archive {change}, and commit.\n\n" if change else "")
-             + f"On red: fix NOTHING and report the gate output verbatim. Comment the "
-               f"merge SHA on each item; do not close them — they close at the landing. "
+             + f"On red: fix NOTHING and report the gate output verbatim. Write "
+               f"nothing on the tracker either way — no comment, no label, no "
+               f"close. The LOOP closes each assertion `closed:merged` with the "
+               f"merge SHA once git confirms the ancestry, and the landing "
+               f"upgrades that to `closed:done`; closing is bookkeeping, and the "
+               f"loop and the session must not race for it. "
                f"Deliver by settling."))
         outcome = self.drive("merge", self.spec_for(
             "merge", name, self.params.bolt_worktree, order), batch.numbers)
@@ -1463,6 +1520,39 @@ class BoltLoop:
                                 f"after the merge session settled")
         return StageOutcome("merge", "done", f"{branch} merged", report=outcome.report)
 
+    def close_merged(self, batch, sha=None):
+        """Close the batch's assertion items `closed:merged`, with the SHA.
+
+        The unit parent's progress bar is GitHub's own and counts CLOSED
+        sub-issues, so the check-off happens here rather than at the
+        landing. `closed:merged` — not a close with no reason — is what
+        keeps tracker.md invariant 5 verbatim: exactly one `closed:*`
+        reason on a closed item, at every moment. The landing upgrades it.
+
+        **Only `type:assertion` items.** A discovery queued on the bolt
+        closes on its own evidence, as it does today, and a batch merging
+        past it must not sweep it up.
+
+        Closing is the LOOP's, made against git's ancestry answer — the
+        merge session comments and closes nothing, for the reason the
+        landing already gives: closing is bookkeeping, not judgment.
+        """
+        sha = sha or self.head_sha(self.params.bolt_branch)
+        closed = []
+        for item in batch.items:
+            if not item.is_assertion:
+                continue
+            if self.tracker.has_label(item.number, inbox.CLOSED_MERGED):
+                continue
+            self.tracker.close(
+                item.number,
+                f"Merged to {self.params.bolt_branch} as {sha}. Awaiting the "
+                f"landing, which upgrades this to `closed:done` with the "
+                f"landing SHA.",
+                reason=inbox.CLOSED_MERGED)
+            closed.append(item.number)
+        return closed
+
     def land_stage(self, snapshot):
         """Landing per bolt.md: the criteria, then the mode, then closure.
 
@@ -1470,11 +1560,21 @@ class BoltLoop:
         the one born-ready fix item when one fails; the loop confirms the
         landing itself with git and does the bookkeeping — the SHA on each
         item and the close — because closing is bookkeeping, not judgment.
+
+        Its item set is the milestone's open items **and** its
+        `closed:merged` ones. The latter are closed and still in flight: the
+        merge boundary closed them so the unit parent's bar would advance
+        there, and this stage still owes each of them the upgrade to
+        `closed:done` and the landing SHA. Reading open items alone would
+        land a bolt and upgrade nothing.
         """
         self._landing_attempts += 1
         mode = self.landing_mode()
-        items = [i for i in snapshot.on(self.params.milestone) if i.is_open]
-        numbers = [i.number for i in items]
+        on_milestone = snapshot.on(self.params.milestone)
+        items = [i for i in on_milestone if i.is_open or i.merge_closed]
+        # The session is prompted about the items a human would still call
+        # open; a merge-closed item needs no verification, only its upgrade.
+        numbers = [i.number for i in items if i.is_open]
         name = session_name("land", self.params.slug)
         order = sessions.work_order(
             f"Land bolt/{self.params.slug} per its bolt.md.",
@@ -1518,8 +1618,19 @@ class BoltLoop:
         for item in items:
             if not item.is_assertion:
                 continue
-            self.tracker.close(item.number, f"Landed on {self.params.main_branch} "
-                                            f"as {sha}.")
+            if inbox.CLOSED_DONE in item.labels and not item.is_open:
+                continue                      # already landed; never re-closed
+            # Upgrade, not close: the item is already closed at
+            # `closed:merged`, and it must end carrying exactly one reason —
+            # never both, never neither. An item that arrives without
+            # `closed:merged` (a bolt landed by a path that never merged it
+            # back, an item closed by hand) still ends at `closed:done`.
+            self.tracker.reclose(
+                item.number,
+                f"Landed on {self.params.main_branch} as {sha}.",
+                was=inbox.CLOSED_MERGED if inbox.CLOSED_MERGED in item.labels
+                    else None,
+                now=inbox.CLOSED_DONE)
         return StageOutcome("land", "done", f"landed as {sha}", report=outcome.report)
 
     # -- the cycle ---------------------------------------------------------
@@ -1596,6 +1707,7 @@ class BoltLoop:
             if merge.ok:
                 # merge_stage returns done only on ancestry git confirmed.
                 self.set_stage(batch.numbers, inbox.STAGE_MERGED)
+                self.close_merged(batch)
                 merged += 1
                 self._merged += 1
         result.outcomes = tuple(outcomes)
@@ -1637,21 +1749,31 @@ class BoltLoop:
                 break
         snapshot = self.tracker.snapshot(self.params.milestone)
         box = inbox.bolt_inbox(snapshot, self.params.slug)
-        open_items = [i for i in snapshot.on(self.params.milestone) if i.is_open]
+        on_milestone = snapshot.on(self.params.milestone)
+        open_items = [i for i in on_milestone if i.is_open]
         report.queue = [f"#{i.number} {i.title}" for i in open_items if i.queued]
-        if not self.landing_wanted(land, box, open_items):
+        unlanded = open_items + [i for i in on_milestone if i.merge_closed]
+        if not self.landing_wanted(land, box, unlanded):
             return report
         outcome = self.land_stage(snapshot)
         report.landing = f"{outcome.status}: {outcome.detail}"
         return report
 
-    def landing_wanted(self, land, box, open_items):
+    def landing_wanted(self, land, box, unlanded):
+        """Whether this run should reach for a landing.
+
+        `unlanded` is the milestone's open items PLUS its `closed:merged`
+        ones. Counting only open items was right while nothing closed
+        before the landing; now the last batch of a bolt merge-closes its
+        items, and a test that read open items alone would see an empty
+        milestone and never land the bolt at all.
+        """
         if not land or self.dry_run:
             return False
         if box.ready:
             return False                       # there is still released work
-        if not open_items:
-            return False                       # nothing to close, nothing to land
+        if not unlanded:
+            return False                       # nothing to upgrade, nothing to land
         return land == "force" or self._merged > 0
 
     def describe(self, result):
