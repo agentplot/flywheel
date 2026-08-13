@@ -214,6 +214,22 @@ apply:
        by thread. Composing is not releasing; batches wait for the
        operator.
 
+    MODELS - explicit in every call the compiled script makes;
+    nothing inherits silently. The workflow's own agents - query+
+    guards and every driver - run model sonnet, effort low. Sessions
+    take their type's model at agent start (--model): planning and
+    interactive fable; research opus[1m]; prototype, writeback and
+    handoff opus.
+
+    LIMITS, by session type, in 10-minute wait chunks: research,
+    prototype and writeback sessions - after 90 minutes of waiting
+    the driver comments the wait on the batch's first item and adds
+    needs-operator (a live wait; dispatch relays), then KEEPS
+    waiting; after 4 hours it returns stalled and leaves the pane
+    open. Planning, interactive and handoff sessions hold operator
+    rounds by design: the driver notifies at 90 minutes the same way
+    but never returns them stalled.
+
     WORK - while any item is state:ready:
 
       batch the ready items by their type label - one session type
