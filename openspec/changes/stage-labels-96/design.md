@@ -63,7 +63,7 @@ description) go in `flywheel-setup`'s `LABELS`, and the constants the loops
 compare against go in `_flywheel_inbox`.
 
 *Alternative considered:* a `stage:` enum owned by the bolt loop, since it
-writes four of the six. Rejected — the intent loop writes two of them and
+writes four of the seven. Rejected — the intent loop writes two of them and
 the operator writes one, so an owner that is one loop would have the other
 importing from it, and the tracker's vocabulary would stop having a single
 place to read.

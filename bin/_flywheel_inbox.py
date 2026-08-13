@@ -594,12 +594,24 @@ def collect_plan(snapshot, slug):
     `flywheel-design-session-completion` requires the opposite in so many
     words: the loop "consumes the flip on its next pass", and an item
     flipped "on a later pass" is collected then. This names that set.
+
+    **A paused item is not in it.** `needs-operator` marks a live wait —
+    the andon the session raised, or a stall, or a question — and the same
+    spec says a stalled or andon-raising session is untouched: "its pane is
+    left open and nothing is merged or closed". `land` honours that by
+    returning, but returning is not a halt: the run's next cycle reaches
+    this filter first, and without the exclusion it would collect and close
+    a flipped sibling out from under the very batch `land` had just paused,
+    with a comment claiming the session had ended while its pane is open.
+    The exclusion belongs here rather than at the call site because this is
+    the function that says what "collectable" means.
     """
     milestone = f"{INTENT_PREFIX}{slug}"
     return tuple(
         i for i in snapshot.on(milestone)
         if i.is_open and i.in_progress
         and STAGE_DONE in i.labels and STAGE_COLLECTED not in i.labels
+        and NEEDS_OPERATOR not in i.labels
     )
 
 

@@ -174,6 +174,26 @@ class LoopConfig:
                 f"{self.name}: unknown strategy {self.strategy!r} — "
                 f"one of {', '.join(sorted(STRATEGIES))}")
 
+    def validate(self):
+        """Raise on a stage set the cycle cannot run. Returns self.
+
+        `strategy` has raised on an unknown value since the type config
+        existed; `stages` did not, so a typo — `stages: [spec, buld,
+        merge, land]` — silently produced a type that skips the build
+        stage and writes no `stage:built`, which is the same downgrade a
+        declaration is refused for. An unknown stage name is a mistake,
+        never a request, so it is named rather than dropped.
+        """
+        unknown = [s for s in self.stages if s not in DEFAULT_STAGES]
+        if unknown:
+            raise LoopError(
+                f"{self.name}: unknown stage(s) {', '.join(map(repr, unknown))} "
+                f"in its declared set — one of {', '.join(DEFAULT_STAGES)}. "
+                f"A stage the cycle does not run is a stage silently skipped.")
+        if not self.stages:
+            raise LoopError(f"{self.name}: declares an empty stage set")
+        return self
+
 
 def parse_loop_block(text):
     """The `loop:` block out of a `schema.yaml`, by hand.

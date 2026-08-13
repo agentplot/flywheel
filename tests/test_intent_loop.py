@@ -372,6 +372,65 @@ class ResumeCollectTest(unittest.TestCase):
         self.assertNotIn("-stage:done", [w.detail for w in writer.writes])
 
 
+class PausedBatchTest(unittest.TestCase):
+    """A pause must survive the next cycle.
+
+    `land` returns on a stall or an andon and closes nothing — but
+    returning is not a halt. These drive `run` across cycles, which is the
+    pass the earlier tests never reached: they called `land` directly, so
+    the next cycle's `resume_collect` was never exercised.
+    """
+
+    def paused(self):
+        # #1 flipped by the operator; #3 raised the andon, so the batch is
+        # paused and every item on it carries needs-operator.
+        return Snapshot(items=[
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done",
+                 inbox.NEEDS_OPERATOR),
+            item(3, "type:research", inbox.IN_PROGRESS, inbox.NEEDS_OPERATOR),
+        ])
+
+    def test_a_flipped_sibling_of_a_paused_batch_is_not_collectable(self):
+        self.assertEqual(inbox.collect_plan(self.paused(), "x"), ())
+        self.assertEqual(inbox.intent_inbox(self.paused(), "x").to_collect, ())
+
+    def test_a_run_over_a_paused_batch_closes_nothing(self):
+        snap = self.paused()
+        tracker = FakeTracker(snapshot=snap)
+        report = intent.run(config(slug="x", apply=True), tracker=tracker,
+                            runner=ScriptedRunner(), clock=Clock())
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [],
+                         "the pane is open and the batch is paused")
+        self.assertEqual([c for c in tracker.calls
+                          if c[0] == "add_label" and c[2] == "stage:collected"],
+                         [])
+        self.assertEqual(report.status, "ok")
+
+    def test_an_andon_stops_the_collect_even_with_no_needs_operator(self):
+        # The stronger signal, in case the label write did not land.
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:done")])
+        tracker = FakeTracker(snapshot=snap, comments={
+            1: [{"body": inbox.format_andon("the spec contradicts its decision")}]})
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer,
+                                      config(apply=True), snap,
+                                      intent.Report(slug="x"))
+        self.assertFalse(wrote)
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+
+    def test_an_unpaused_flip_is_still_collected(self):
+        # The exclusion must not swallow the case it was added for.
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:done")])
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        self.assertTrue(intent.resume_collect(
+            inbox.intent_inbox(snap, "x"), writer, config(apply=True), snap,
+            intent.Report(slug="x")))
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+
+
 class ParentageTest(unittest.TestCase):
     """The live API carries no parent; the guards key on one."""
 

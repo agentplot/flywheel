@@ -272,6 +272,22 @@ class TypeConfigTest(unittest.TestCase):
         with self.assertRaises(loop.LoopError):
             loop.resolve_plan_mode(True, loop.load_type("bolt-direct", ROOT))
 
+    def test_an_unknown_stage_name_is_named_rather_than_silently_skipped(self):
+        # `strategy` has raised on an unknown value since this config
+        # existed; `stages` did not, so `[spec, buld, merge, land]` was a
+        # type that silently skips build — the same downgrade a per-bolt
+        # declaration is refused for.
+        with self.assertRaises(loop.LoopError) as raised:
+            loop.LoopConfig(name="t", stages=("spec", "buld")).validate()
+        self.assertIn("buld", str(raised.exception))
+        with self.assertRaises(loop.LoopError):
+            loop.LoopConfig(name="t", stages=()).validate()
+
+    def test_every_shipped_type_validates(self):
+        for name in ("bolt-quick", "bolt-default", "bolt-adversarial",
+                     "bolt-direct"):
+            self.assertIs(loop.load_type(name, ROOT).validate().name and True, True)
+
     def test_a_per_bolt_stage_declaration_is_refused_not_ignored(self):
         # Symmetric with resolve_plan_mode: the bolt type is the scrutiny
         # the release approved, so skipping verify is bolt-direct's property

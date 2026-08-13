@@ -959,7 +959,14 @@ def resume_collect(inbox, writer, config, snapshot, report):
     # with a `continue`, so an item whose write the next snapshot has not
     # caught up with yet must not be collected and closed twice.
     numbers = [i.number for i in inbox.to_collect
-               if not writer.has_label(i.number, STAGE_COLLECTED)]
+               if not writer.has_label(i.number, STAGE_COLLECTED)
+               and not writer.has_label(i.number, NEEDS_OPERATOR)]
+    # Defence in depth on the stronger signal: `collect_plan` excludes a
+    # paused item by its label, and an andon raised without one still stops
+    # this. A raised andon is a pause, and nothing is collected under it.
+    if numbers and writer.tracker is not None:
+        numbers = [n for n in numbers
+                   if not find_andon(writer.tracker.comments(n))]
     if not numbers:
         return False
     for number in numbers:

@@ -84,7 +84,7 @@ five carries an assertion record file"):
 
 ### New Capabilities
 
-- `flywheel-stage-labels`: the `stage:*` vocabulary itself — the six names,
+- `flywheel-stage-labels`: the `stage:*` vocabulary itself — the seven names,
   what each means, that they refine rather than replace `state:*`, that
   `closed:done` stays reserved for the landing, and that `flywheel-setup`
   converges the set onto a repo's tracker.

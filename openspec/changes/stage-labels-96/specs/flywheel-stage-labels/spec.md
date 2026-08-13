@@ -9,7 +9,7 @@ and what the intent loop does with them is
 
 ## ADDED Requirements
 
-### Requirement: The `stage:*` set is exactly six names
+### Requirement: The `stage:*` set is exactly seven names
 
 A flywheel tracker SHALL carry exactly these `stage:*` labels and no others:
 
@@ -23,10 +23,10 @@ A flywheel tracker SHALL carry exactly these `stage:*` labels and no others:
 | `stage:done` | the operator has marked the item finished | **the operator** |
 | `stage:collected` | the item's deliverables are gathered | the intent loop |
 
-The table names seven rows because `stage:done` is the operator's and the
-other six are the loops'; the requirement's count is over the label set,
-which SHALL be exactly `planned`, `built`, `verified`, `merged`,
-`in-session`, `done`, `collected`.
+Seven names, and the table's seven rows are those names. Six of them are
+the loops' — four the bolt loop's, two the intent loop's — and the seventh,
+`stage:done`, is the operator's; that split is who WRITES each label and
+is not a count of the set.
 
 The rule that keeps the vocabulary small: **a stage exists only if a loop
 filter consumes it or the operator's eye needs it.** The rounds inside a
