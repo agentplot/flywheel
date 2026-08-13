@@ -35,7 +35,8 @@ schedules —
 the **landing mode** (merge to main, or a pull request), the
 **owner** read from the items' assignee, the repos,
 the assertions by item number and record path, the sequencing to wire,
-and any ADR the bolt conductor should write directly.
+and any ADR the bolt owes — as its own born-ready item on the bolt, never
+as a direct edit. Nothing edits without an item, ADRs included.
 
 ## The plannotator round
 

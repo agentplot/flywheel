@@ -16,8 +16,9 @@ land in unrelated repos or warrant different bolt types.
   - #<item> — `assertions/<slug>.md` — <the claim, one line>
 - **sequencing**: <blocked-by relations to wire between the items, or
   "none">
-- **ADRs**: <architecture decision records the bolt conductor writes
-  directly: repo, decision, sources — or "none">
+- **ADRs**: <architecture decision records this bolt owes, each born as
+  its own item on it — repo, decision, sources — or "none". Never a
+  direct edit: an ADR is work, and work is an issue.>
 
 ## Held back
 

@@ -37,5 +37,8 @@ a design-level finding is queued for the intent, not fixed in place.
 
 THE ANDON CORD — if the work has gone wrong in a way no further round
 inside your batch will fix (the spec contradicts the decision it cites,
-the tree contradicts the spec), stop, hold the batch, and report.
-Stopping on a defect is expected behaviour.
+the tree contradicts the spec), stop, hold the batch, and report. Raise
+it as the structured marker in your item comment — the form is in the
+plugin's `skills/_reference/tracker.md`. The loop recognizes that marker
+as code and will not read a stop out of your prose, so a report alone
+holds nothing. Stopping on a defect is expected behaviour.

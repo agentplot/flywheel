@@ -97,6 +97,77 @@ queue a question — never invent tracker structure.**
 10. Sub-issues and dependency relations take the **database id**, not
     the issue number — invocations and gotchas in `herdr.md`.
 
+## The inbox filters — the tracker is the only bus
+
+No session, loop, or server ever messages another. Everything moves
+through GitHub issues, and each consumer has an exact filter:
+
+- **server** — milestones with a job: any open `intent/*` or `bolt/*`
+  milestone holding an open item labelled `state:ready` or
+  `state:in-progress`, or a batch at board Status **Ready**; plus closed
+  milestones whose change still sits in `openspec/changes/` (archive).
+- **bolt loop for `bolt/<slug>`** — open items on that milestone
+  labelled `state:ready`, plus that bolt's units at board Status Ready
+  (their `state:queued` sub-issues are relabelled first).
+- **intent loop for `intent/<slug>`** — the same filter on its
+  milestone, plus the guard sweeps: settled unbatched assertions
+  (handoff birth, invariant 6) and orphan `state:queued` items
+  (compose).
+- **dispatch** — open issues with no milestone (triage), and open
+  issues labelled `needs-operator` (relay). The relay half has no
+  milestone condition: an escalation from a running bolt has one and
+  still needs relaying.
+
+**These filters are the whole coordination model.** A discovery is an
+issue; an escalation is a label; a completion is item state. Anything
+not expressible in the filters is a design smell — and that includes
+the conductor's old direct-edit privileges: a CLAUDE.md fix, an ADR, a
+machinery tweak are GitHub issues like all work. Nothing edits without
+one.
+
+They are implemented once, as pure functions over a snapshot, in the
+plugin's `bin/_flywheel_inbox.py`; the loops import them rather than
+each re-deriving a query. Two properties hold across them and are worth
+knowing when reading a loop's behaviour:
+
+- **A server filter may over-approximate; a loop filter must be
+  exact.** The server starting a loop that finds nothing costs one
+  clean exit — the loop STOPs when nothing is ready and the guards
+  wrote nothing — while a milestone the server never starts is work
+  that never happens. So the server sweeps a little wider than the list
+  above, and the loop does the exact test.
+- **A filter never writes.** Flip-consume, handoff birth and compose
+  are guards, and guards write; the filters name what the guard should
+  write and the guard writes it. Applying a guard's plan empties it,
+  which is what makes a second cycle against an unchanged tracker write
+  nothing.
+
+## The andon cord — the marker the loop reads
+
+A **session** raises the andon: when it finds the work wrong in a way
+no further round will fix — the spec contradicts the decision it cites,
+the tree contradicts the claim — it writes the stop **as this marker**
+in its item comment, and settles.
+
+    <!-- flywheel:andon -->
+    ANDON: <what is wrong, and why no further round fixes it — one line>
+    <!-- /flywheel:andon -->
+
+Both delimiters start their own lines, the closing one is required, and
+the `ANDON:` line carries the reason. The loop recognizes it as **code,
+not judgment**: prose that merely mentions the andon cord is not an
+andon, and half a marker is not a stop signal. Write the marker, or the
+loop will not see it — "stopping and saying so plainly" is a report,
+and a report is for the operator, not for the program.
+
+**The marker is the payload; the signal is the label and the state.** A
+comment body is not expressible in any of the four filters above, so no
+loop sweeps comments hunting for stops. The loop pauses the batch and
+sets `needs-operator` — invariant 7 — and reads the marker on the item
+it is already working to find out why. Raising the cord is therefore
+both things at once: the marker in the comment, and the item left in a
+state the filters can see.
+
 ## The literal graph — one assertion, birth to landing
 
 An intent `auth-hardening` needs a forgot-password flow; one question

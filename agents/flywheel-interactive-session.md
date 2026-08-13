@@ -25,5 +25,8 @@ What you produce goes three places:
   the plugin's `skills/_reference/herdr.md`.
 
 THE ANDON CORD — if the batch has gone wrong in a way no further work
-inside it will fix, stop, hold the batch, and report. Stopping on a
-defect is expected behaviour.
+inside it will fix, stop, hold the batch, and report. Raise it as the
+structured marker in your item comment — the form is in the plugin's
+`skills/_reference/tracker.md`. The loop recognizes that marker as code
+and will not read a stop out of your prose, so a report alone holds
+nothing. Stopping on a defect is expected behaviour.
