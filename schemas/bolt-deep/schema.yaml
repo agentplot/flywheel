@@ -63,10 +63,12 @@ apply:
     means: compile THIS instruction into the change's own workflow
     script at openspec/changes/<slug>/workflow.js - the driver,
     outcome, blocked/stalled, serialized-merge, fixture, resume, and
-    report mechanics copied VERBATIM from the contract at
-    <plugin-root>/workflows/reference-loop.js (a WORK agent drives
-    one herdr session and never does the work), the stages taken from
-    the text below. Stamp the script header with a hash of this
+    report mechanics taken from skills/_reference/herdr.md - the one
+    maintained mechanics source (a WORK agent drives one herdr
+    session and never does the work; launches idempotent; one-prompt
+    orders, invocation first line; the script owns all waiting and
+    its arithmetic is the clock; args parsed defensively; a failing
+    cycle halts the run) - and the stages taken from the text below. Stamp the script header with a hash of this
     instruction and reuse it while the hash holds; recompile only
     when this instruction changes. Launch ONE run
     (Workflow {scriptPath}); after a correction, a ruling, or an
