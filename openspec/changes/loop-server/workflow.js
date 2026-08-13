@@ -338,7 +338,12 @@ while (true) {
    already in-progress under a session it had not launched, read the empty
    ready set as done, and started a landing while the build was live. Only the
    merge record on each item is evidence that code landed. */
-const unmerged = lastSnapshot ? lastSnapshot.items.filter((i) => !i.merged) : []
+/* Only the ASSERTIONS carry work that merges. A discovery queued on this
+   milestone (type:build, state:queued) is guard 2's to route and will never
+   have a merge record, so counting it here would block the landing forever. */
+const unmerged = lastSnapshot
+  ? lastSnapshot.items.filter((i) => i.labels.includes('type:assertion') && !i.merged)
+  : []
 let landing = 'not attempted'
 if (A.fixture) {
   landing = 'fixture mode - landing never runs'
