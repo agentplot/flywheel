@@ -135,7 +135,7 @@ phrase is gone".
 
 ## 7. Prose corrections after the code-review
 
-- [ ] 7.1 **The CI-on-push claim, in `skills/construction/SKILL.md`.** The
+- [x] 7.1 **The CI-on-push claim, in `skills/construction/SKILL.md`.** The
       Build stage now says the built repo's CI runs its checks on every
       push. Measured on the tree: `.github/workflows/gates.yml` triggers on
       `push` to `branches: [main]`, on `pull_request`, and on
@@ -144,29 +144,29 @@ phrase is gone".
       Replace it with where a construction branch's commits are actually
       checked: the `[pre-merge]` hooks at merge-back, and CI once the work
       has landed on `main`.
-- [ ] 7.2 The same sentence is re-typed in `devenv.nix`'s `gates` script
+- [x] 7.2 The same sentence is re-typed in `devenv.nix`'s `gates` script
       comment ("`.github/workflows/gates.yml` runs on every push").
       Correct it to what the workflow's own `on:` block says.
-- [ ] 7.3 **Do not touch `AGENTS.md` or `README.md`**, which carry the same
+- [x] 7.3 **Do not touch `AGENTS.md` or `README.md`**, which carry the same
       claim. They are queued as #67. Editing them here is a silent widening.
-- [ ] 7.4 **Split the `--no-hooks` warning; do not move it.**
+- [x] 7.4 **Split the `--no-hooks` warning; do not move it.**
       `grep -n no-hooks skills/_reference/herdr.md` returns one line, under
       "Cutting a worktree", right after the `wt switch --create` block — and
       it now leads with the merge gate. `[pre-merge]` is not among the hooks
       that command runs at all, so there the warm-up is the *only* reason
       and the sentence is backwards.
-- [ ] 7.5 Give each section the warning true of its own command: under
+- [x] 7.5 Give each section the warning true of its own command: under
       "Cutting a worktree", `--no-hooks` skips the `[post-start]` warm-up
       and leaves the worktree cold; under "Merging through the gate", where
       the section currently carries no warning at all, `--no-hooks` skips
       the gate — zero hooks, exit 0, measured.
-- [ ] 7.6 Qualify the shapes claim in the gate section to **"on every shape
+- [x] 7.6 Qualify the shapes claim in the gate section to **"on every shape
       of `wt merge` that does not suppress them"**, the clean fast-forward
       included. It currently carries the bare universal that `bolt.md` was
       corrected for at `28fb534`.
-- [ ] 7.7 Re-read `openspec/changes/merge-gate-remedy/bolt.md` and confirm
+- [x] 7.7 Re-read `openspec/changes/merge-gate-remedy/bolt.md` and confirm
       the reference cites it rather than reproducing its reasoning about a
       zero-hook merge — that reasoning was withdrawn at `28fb534`, which is
       exactly why standing prose cites rather than copies.
-- [ ] 7.8 `openspec validate --strict` green, and the three checks green on
+- [x] 7.8 `openspec validate --strict` green, and the three checks green on
       the committed tree.
