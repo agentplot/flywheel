@@ -57,82 +57,50 @@ apply:
   instruction: |
     Work the READY set to empty, then stop at the queue.
 
-    This instruction is what the dynamic workflow is built from
-    (`/opsx:apply build a dynamic workflow with the instructions for
-    <change>`). Two rules govern the run. The workflow IS the
-    loop: one run works the ready set to empty - re-query after the merge, bounce handling, and the next
-    batch are stages inside the run, never a reason to build another
-    workflow - and a fresh run is built only when this conductor is
-    prompted again. A second rule binds every stage the workflow
-    runs: a WORK stage's agent never does the batch's work itself -
-    its job is to drive herdr: start the session the batch names,
-    deliver the work order — one prompt, the type's invocation as
-    its first line, the brief below — wait on it, return the
-    outcome, and close the session's pane (the worktree and branch
-    stay for the merge step). The
-    operator supervises herdr sessions, and a session that needs the
-    operator - a plannotator round, a lavish page, a plan-mode
-    approval - can only reach them from a real pane; an in-process
-    subagent cannot. Subagents may read and report (QUERY, ANALYSE,
-    synthesis); sessions do the work.
+    THE LOOP IS NOT IMPROVISED. It is the plugin's canonical script at
+    <plugin-root>/workflows/bolt-default.js - read its header: the
+    argument shape and the whole mechanics contract are documented in
+    the file. Launch it as ONE run with the Workflow tool
+    ({scriptPath: "<plugin-root>/workflows/bolt-default.js", args}),
+    and after a correction, a ruling, or an answered pane, RESUME the
+    same run ({scriptPath, resumeFromRunId}) - finished stages replay
+    from cache. One run lineage per bolt; never a rebuilt workflow,
+    never a wave number. "/opsx:apply build a dynamic workflow with
+    the instructions for <change>" means exactly: launch that script.
 
-    The tracker is the org's, named by the `tracker:` line in the org's
-    fleet.yaml; every tracker write runs as the app
-    (`GH_TOKEN=$(<plugin-root>/bin/flywheel-token --org <org>)` — the
-    plugin's bin/ is not on PATH; your loaded loop skill states the
-    root). The invocations are in the
-    flywheel plugin's `skills/_reference/herdr.md`.
+    Your conductor-side work around the run:
 
-    1 · QUERY — the milestone `bolt/<slug>`'s open items labelled
-      `state:ready`, plus any unit of this bolt whose Project Status
-      the operator has moved to Ready on the board: relabel those
-      units' sub-issues
-      to `state:ready` first, then take the whole set. Each item
-      points at its assertion record - THE ASSERTION IS THE PROPOSAL,
-      and the spec is derived from it and the decisions it cites, never
-      from a restatement.
+    1 - QUERY, before launch: the milestone bolt/<slug>'s open items
+      labelled state:ready, plus any unit of this bolt the operator
+      has moved to Ready on the board - relabel those units'
+      sub-issues to state:ready first. Name each item's spec-driven
+      change (one change per assertion) and build the script's args.
+    2 - RUN: launch the script. While it runs, do nothing but answer
+      what it surfaces - a blocked pane is a permission ask or plan
+      dialog: read it, answer one at a time, never by pattern.
+    3 - AFTER: the run's report names what finished and what did not.
+      Answer open panes, then resume the run. When the report is
+      clean and the bolt's merge criteria hold, resume once more with
+      args.land: true for the landing pass.
+    4 - QUEUE: when the ready set is empty, compose this bolt's
+      state:queued items into a unit at Backlog (a discovery rides
+      this bolt only if the bolt cannot land without it; otherwise it
+      goes to the intent that owns its subject, or unmilestoned for
+      dispatch), present the queue one line each, report the run ID,
+      and stop. When every item is closed, propose closure: teardown,
+      openspec archive - the operator's milestone close is the
+      archive signal.
 
-    2 · ANALYSE — group the released items into batches one session could
-      take, each batch naming its session type and model (the type's
-      default unless overridden). Dependencies are the items' blocked-by
-      relations. This step reads and writes nothing.
+    This bolt type is STRIPPED while the mechanics are pinned: no
+    review steps are scheduled. The merge gate still runs unweakened
+    at every landing; reviews return to this schema once the loop
+    mechanics are settled. One-prompt work orders,
+    delivery-is-settling, and pane-close-at-merge are stated in the
+    script and in skills/_reference/herdr.md; the tracker rules are
+    the shared copy at skills/_reference/tracker.md.
 
-    3 · WORK — one session per batch, in parallel, each on a nested
-      worktree off the bolt branch. Flip items to `state:in-progress` as
-      their session starts, and record progress - spec landed, review
-      verdict, build done - as comments on the item. An item's spec agent
-      and its build agent stay two agents. Re-read every neighbour a spec
-      claims something about from disk at build time.
-
-    4 · MERGE — merge each finished branch back to the bolt branch
-      through the gate; when the bolt's merge criteria hold, land each
-      repo's bolt branch on its main through the full release gate, one
-      writer to main at a time. Comment the landing SHA on each item and
-      close it `closed:done`; archive the built repos' spec-driven
-      changes. Then re-query.
-
-    This bolt type's review steps, scheduled by the loop: an independent
-    proposal-review reads every assertion in the batch before its build,
-    an adversarial code-review reads the built batch after it, and the
-    batched acceptance run passes on the bolt branch before anything
-    lands on main. A discovery is routed by one test: does this bolt's
-    merge criteria need it? Only then does it join bolt/<slug>.
-    Design-level findings - the design is wrong, not the build - go to
-    the source intent's milestone; anything else goes to the intent
-    that owns its subject, or unmilestoned for dispatch to triage.
-    Never fixed from here, and never left on the bolt to bloat its
-    close.
-
-    When the ready set is empty: present the queue - this bolt's
-    `state:queued` items and Backlog units, one line each - and stop.
-    An empty ready set with a full queue is the correct resting state.
-    When the milestone's items are all closed, propose closure to the
-    operator: tear down worktrees, branches and the bolt branches, and
-    `openspec archive` the change.
-
-    Report the run ID when the loop ends.
-
-    THE ANDON CORD — a session that finds the work has gone wrong in a
-    way no further round will fix - the spec contradicts the decision it
-    cites, the tree contradicts the spec - stops, holds the batch, and
-    asks the operator. Stopping on a defect is expected behaviour.
+    THE ANDON CORD - a session that finds the work has gone wrong in
+    a way no further round will fix - the spec contradicts the
+    decision it cites, the tree contradicts the spec - stops, holds
+    the batch, and asks the operator. Stopping on a defect is
+    expected behaviour.

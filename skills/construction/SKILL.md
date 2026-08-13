@@ -78,54 +78,34 @@ label stays `state:in-progress` from first spec work until it closes
 discoveries become new items: findings, readiness gaps, design-level
 faults queued to the source intent.
 
-1. **Spec.** A spec-writing session per batch derives **one
-   spec-driven change per assertion** (`/opsx:ff` each, in the built
-   repo) from the assertion and its cited decisions — a session may
-   write several changes, but the change grain is the assertion: its
-   record binds one change id and one landing ref. `openspec validate` green before it counts. Specs cite by
-   anchor or quoted phrase, never line number, and carry a build-time
-   task to re-read every neighbour they assert something about — that is
-   when neighbours have moved longest.
-   **The no-spec path — quick bolts only**: inside a `bolt-quick`,
-   for work too small to warrant a spec-driven change in the built
-   repo — `bolt-no-spec` is deliberately not a schema — the
-   conductor's work order says so, and the build session is STARTED
-   IN PLAN MODE (`--permission-mode plan`, never the skip flag): plan
-   mode blocks every edit mechanically, the plan is the spec
-   surrogate, and the conductor is the approver — read the plan from
-   the pane, check it against the item's claim, approve through the
-   plan dialog (accept-edits) or bounce it with feedback. Parked on
-   `herdr agent wait` afterwards, a `blocked` settle is a permission
-   ask: read the pane, decide, answer with send-keys. On
-   `bolt-default` and `bolt-deep` every item is specced through
-   `/opsx:ff` — the bolt type is the scrutiny the operator chose at
-   release, and the conductor never downgrades it; a conductor that
-   judges an item too small for its bolt type asks the operator,
-   never decides. The item's comments, the bolt type's review steps,
-   and the unweakened merge gate are unchanged either way.
-2. **Review**, per the bolt type. The reviewer reads the batch —
-   the artifact set and the cited sources — because the defects that
-   occur are relational: a rule compressed in one record and carried
-   into several specs, a naming collision spanning two. The reviewer
-   never edits what it reviews; a bounce re-dispatches the spec. When
-   re-reviews start bouncing on defects the fixes introduced, the round
-   is churning: take the binary call — approved, or re-spec from the
-   assertion — rather than buy wording with another round. A session may
-   request the operator's eyes (`human` review) with its reason on the
-   item; it is a request an agent makes, never a standing stage.
-3. **Build.** Build sessions on nested worktrees. The repo's commit
-   checks run on every push; the merge gate runs on the rebased tree at
-   merge-back (`wt merge <bolt-branch> --no-remove -C <worktree>`).
-   Acceptance suites never run inside a construction worktree.
-4. **Test.** Batched acceptance on the bolt branch: full reset, the
-   affected scenarios reseeded, the repo's named suites. Findings are
-   queued items, never in-place fixes.
-5. **Merge.** When the bolt's merge criteria hold (`bolt.md` is the
-   authority), land each repo's bolt branch on its main through the full
-   release gate — full hooks, never weakened, one writer to main at a
-   time. Comment the SHA, close the item, archive the built repo's
-   spec-driven change, and comment the source intent's assertion item so
-   the intent records the landing.
+**WHICH STAGES EXIST IS THE BOLT TYPE'S FACT, NOT THIS SKILL'S.** The
+loop — its stages, their order, whether any review runs — is defined
+solely by the change's schema (`openspec instructions` shows it), and
+for `bolt-default` the loop IS the plugin's canonical script at
+`workflows/bolt-default.js`. This skill never adds a stage the loop
+did not schedule: no review, no re-review, no bounce round exists
+unless the bolt type's own instruction names it. What this skill holds
+is the practice shared by every stage the loop does run:
+
+- **The change grain is the assertion**: one spec-driven change per
+  assertion (`/opsx:ff` each); its record binds one change id and one
+  landing ref. `openspec validate --strict` green before a spec
+  counts; cite by anchor or quoted phrase, never line number; re-read
+  every neighbour a spec claims something about from disk at build
+  time.
+- **The no-spec path — quick bolts only**: inside a `bolt-quick`, the
+  build session starts in plan mode (`--permission-mode plan`) and
+  the conductor approves the plan against the item's claim through
+  the plan dialog. On other types every item is specced — the bolt
+  type is the scrutiny the operator chose at release, and the
+  conductor never downgrades it.
+- **Merging**: session branch to bolt branch through the gate
+  (`wt merge <bolt-branch> --no-remove -C <worktree>`, never
+  `--yes`); bolt branch to main through the full release gate, one
+  writer at a time, when `bolt.md`'s merge criteria hold. Comment the
+  SHA, close the item, archive the built repo's spec-driven change,
+  and comment the source intent's assertion item so the intent
+  records the landing.
 
 ## State claims
 
