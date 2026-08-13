@@ -33,6 +33,15 @@ process freely loses nothing. The one piece of state that cannot be
 recomputed — when a session was launched, which the 4-hour stall budget
 is measured from — is written to the tracker as a marker on the item and
 recovered from there, because the tracker is the only bus.
+
+*Per-item progress is a label, and the tree is what says so.* Each of the
+four boundaries above writes one `stage:*` label on the batch's items —
+planned, built, verified, merged — and `guard_stages` re-derives the two
+git can answer for at the head of every cycle, so the labels self-heal
+across the restart above rather than being remembered. The stage sequence
+itself is the bound type's `loop:` block, which is what makes
+`bolt-direct` — spec, build, merge, land, no verify — a named config
+rather than a branch in this file.
 """
 
 import hashlib
@@ -118,6 +127,12 @@ class LoopError(Exception):
 # The type as a named loop config
 # ---------------------------------------------------------------------------
 
+#: The stages a type runs when its `loop:` block declares none. The three
+#: types that shipped before `bolt-direct` declare no `stages:` key, so the
+#: default is exactly what they have always run.
+DEFAULT_STAGES = ("spec", "build", "verify", "merge", "land")
+
+
 @dataclass(frozen=True)
 class LoopConfig:
     """A bolt type's `loop:` block: what the program does differently."""
@@ -127,11 +142,22 @@ class LoopConfig:
     hooks: tuple = ()
     extensions: tuple = ()
     plan_mode: str = None
+    stages: tuple = DEFAULT_STAGES
 
     @property
     def plan_mode_available(self):
         """Plan-mode is bolt-quick-only, and the type says so itself."""
         return self.plan_mode == "available"
+
+    def runs(self, stage):
+        """Does this type's cycle run that stage?
+
+        `bolt-direct` is a fourth NAMED CONFIG rather than a branch in the
+        cycle's code: it omits verify by declaring a stage set without it,
+        so the next type that varies the sequence declares its own set and
+        adds no second flag here.
+        """
+        return stage in self.stages
 
     @property
     def invocations(self):
@@ -207,6 +233,7 @@ def read_schema_config(path):
         hooks=tuple(block.get("hooks", ())),
         extensions=tuple(block.get("extensions", ())),
         plan_mode=block.get("plan_mode") or None,
+        stages=tuple(block.get("stages") or DEFAULT_STAGES),
     )
 
 
@@ -767,6 +794,33 @@ class BoltLoop:
             if self.tracker.has_label(number, inbox.READY):
                 self.tracker.remove_label(number, inbox.READY)
 
+    def set_stage(self, numbers, stage):
+        """Move items to one `stage:*` label, removing any other.
+
+        An item carries exactly ONE stage label, naming its leading edge —
+        the shape the tracker already uses for `state:*` — so that "the
+        items at `stage:built`" is a question with an answer rather than a
+        set that also holds everything further along.
+
+        **Nothing here touches a `closed:*` label.** `stage:merged` and
+        `closed:done` are two different facts — on the bolt branch, and on
+        main — and the landing stays the sole writer of the second.
+
+        Idempotent, and cheaply so: an item already at the target carries
+        no other stage by this method's own invariant, so the sweep is paid
+        only on a real transition. Returns the numbers it wrote.
+        """
+        wrote = []
+        for number in numbers:
+            if self.tracker.has_label(number, stage):
+                continue
+            for other in inbox.STAGE_LABELS:
+                if other != stage and self.tracker.has_label(number, other):
+                    self.tracker.remove_label(number, other)
+            self.tracker.add_label(number, stage)
+            wrote.append(number)
+        return wrote
+
     def pause(self, numbers, reason):
         """Invariant 7: the label marks a live wait, applied at the moment
         of blocking, with the reason on the item."""
@@ -856,7 +910,70 @@ class BoltLoop:
             return actions, scaffolded
         flipped = self.guard_flip_consume(snapshot, actions)
         failure = self.guard_route(snapshot, actions, skip=flipped)
+        if failure is None:
+            self.guard_stages(snapshot, actions)
         return actions, failure
+
+    def guard_stages(self, snapshot, actions):
+        """3 — re-derive `stage:built` and `stage:merged` from the tree.
+
+        The loop is stateless by construction, so a process killed between
+        an apply and its label write leaves an item whose git state is
+        built and whose label is not. This repairs that without knowing
+        anything about the process that died: an item whose branch is an
+        ancestor of the bolt branch is merged, and otherwise an item whose
+        branch holds a commit beyond the bolt branch is built. Both use the
+        same two checks the boundary writes use — `branch_merged` and
+        `branch_has_commits` — so the label and the boundary cannot
+        disagree.
+
+        **`stage:planned` and `stage:verified` are deliberately left
+        out.** Neither has a witness the tree can answer. A validated spec
+        survives on disk, but the plan-mode path's `planned` is an approval
+        that happened in a pane and left no artifact, so `planned` has no
+        uniform witness; and `verified` has none at any time — verify being
+        clean is a session's finding, and the only way a later cycle could
+        re-derive it is to re-run verify, which is running a stage rather
+        than reconciling a label. So a `verified` item is never walked back
+        to `built` here, and no `verified` is ever invented.
+
+        The branch names come from `analyse` — the same grouping that named
+        the branch at spec time — rather than from a stored string, so an
+        item whose branch genuinely does not exist is correctly read as not
+        built rather than as a name this guard got wrong.
+
+        Scoped to the milestone's open `state:in-progress` items, which is
+        exactly the set a bolt-loop stage label may sit on: `stage:*`
+        refines `state:in-progress` and never replaces a `state:*` label, so
+        an item still queued or merely released has no stage to reconcile
+        and must not acquire one here.
+        """
+        items = [i for i in snapshot.on(self.params.milestone)
+                 if i.is_open and i.in_progress
+                 and not ({inbox.UNIT, inbox.ELABORATION} & i.labels)]
+        if not items:
+            return
+        for batch in analyse(items, snapshot, self.params.slug):
+            branch = f"build/{batch.slug}"
+            if self.branch_merged(branch):
+                target = inbox.STAGE_MERGED
+            elif self.branch_has_commits(branch):
+                target = inbox.STAGE_BUILT
+            else:
+                continue                # the tree witnesses nothing; write nothing
+            for item in batch.items:
+                current = inbox.stage_of(item.labels, inbox.CONSTRUCTION_STAGES)
+                if current == target:
+                    continue
+                if target == inbox.STAGE_BUILT and current == inbox.STAGE_VERIFIED:
+                    continue            # verified has no witness; never walked back
+                if self.dry_run:
+                    actions.append(f"would reconcile #{item.number} "
+                                   f"{current or 'no stage'} -> {target}")
+                    continue
+                if self.set_stage([item.number], target):
+                    actions.append(f"#{item.number} {current or 'no stage'} "
+                                   f"-> {target} (re-derived from {branch})")
 
     def guard_scaffold(self, actions):
         """0 — scaffold-if-missing.
@@ -1181,6 +1298,9 @@ class BoltLoop:
                 return outcome
             verdict, why = self.judge_plan(batch, handle, outcome.report)
             if verdict == "approved":
+                # The approved plan IS the spec surrogate on this path, so
+                # the approval is where `stage:planned` is earned.
+                self.set_stage(batch.numbers, inbox.STAGE_PLANNED)
                 runner.send_keys(handle, "enter")
                 origin = self._clock()          # the clock restarts at approval
                 continue
@@ -1447,21 +1567,35 @@ class BoltLoop:
                                              f"andon on #{paused}: {found.reason}"))
                 continue
             self.flip_in_progress(batch.numbers)
-            spec = self.spec_stage(batch)
-            outcomes.append(spec)
-            if not spec.ok:
-                continue
+            config = self.params.config
+            if config.runs("spec"):
+                spec = self.spec_stage(batch)
+                outcomes.append(spec)
+                if not spec.ok:
+                    continue
+                # On the plan-mode path there is no spec to validate, and
+                # `plan_mode_build` writes `stage:planned` at the approval
+                # instead — the one boundary that path actually has.
+                if not self.params.plan_mode:
+                    self.set_stage(batch.numbers, inbox.STAGE_PLANNED)
             build = self.build_stage(batch)
             outcomes.append(build)
             if not build.ok:
                 continue
-            verify = self.verify_stage(batch, build)
-            outcomes.append(verify)
-            if not verify.ok:
-                continue
+            # `build.ok` is the deliverables check having passed, not the
+            # session's word: no commit on the branch and the stage paused.
+            self.set_stage(batch.numbers, inbox.STAGE_BUILT)
+            if config.runs("verify"):
+                verify = self.verify_stage(batch, build)
+                outcomes.append(verify)
+                if not verify.ok:
+                    continue
+                self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
             merge = self.merge_stage(batch)
             outcomes.append(merge)
             if merge.ok:
+                # merge_stage returns done only on ancestry git confirmed.
+                self.set_stage(batch.numbers, inbox.STAGE_MERGED)
                 merged += 1
                 self._merged += 1
         result.outcomes = tuple(outcomes)

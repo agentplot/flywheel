@@ -166,11 +166,17 @@ raw idea — say which you chose:
 3. **Item on a running bolt** — construction-scoped work a live bolt
    covers: queue it on the bolt's milestone.
 4. **Quick bolt** — small, fully defined work gets a `bolt/<slug>`
-   milestone and one ready item on the operator's word at triage, put
-   on the board at Status Ready (`flywheel-board`) — the lone item
-   carries the approval where a batch would. Something that is
-   genuinely one shell command is still one shell command; run it and
-   say so.
+   milestone and its items born `state:ready` on the operator's word at
+   triage, released under **one `unit` parent** whose sub-issues they
+   are (`flywheel-batch --kind unit`), and that parent goes on the board
+   at Status **Ready** from birth (`flywheel-board --status Ready
+   <parent>`) — the operator's word at triage IS the approval, so there
+   is nothing left to approve. The parent is the board row; the released
+   items themselves are not added to the board, or the one row per bolt
+   this buys is lost. One item or four, the parent is created either
+   way. Something that is
+   genuinely two shell commands is still two shell commands; run them
+   and say so.
 5. **Dropped** — say so; record nothing.
 
 Loops are started by `flywheel server`, never by dispatch.
@@ -198,22 +204,34 @@ belongs to a session or to the operator.
 
 - **Ready items get sessions**, batched one type per batch — prototypes
   alone — and run in parallel where batches are disjoint. Items flip
-  `state:in-progress` as their session launches, and a batch runs only
+  `state:in-progress` and `stage:in-session` as their session launches,
+  and a batch runs only
   once every `blocked_by` of every item in it is closed.
-- **Completion is the operator's.** A session settling is not
+- **Completion is the operator's, and the signal is `stage:done`.** A
+  session settling is not
   completion — the operator may iterate a plannotator or lavish round as
-  often as they like — so the loop waits for the operator's mark on the
-  tracker and reacts to that: it collects the deliverables (session
-  directory, drafts, item comments), merges the session branch through
-  the merge gate (`wt merge --no-remove -C <worktree>`) — books, mermaid
-  and map are exactly what a documentation session should pass — closes
-  the batch's items with the session's report, and closes its pane.
+  often as they like — so the loop waits for that label and nothing else.
+  The operator produces it two ways and the loop cannot tell them apart:
+  by word in the pane, where the session writes `stage:done` on its own
+  item and settles, or by adding the label on GitHub. **Each item flips
+  independently**: for every item carrying `stage:done` the loop collects
+  that item's deliverables (session directory, drafts, item comments),
+  marks it `stage:collected` and closes it, whether or not its siblings
+  in the same session are done. The session-scoped acts wait for the
+  last one — the `sess/*` branch is merged through the merge gate (`wt
+  merge --no-remove -C <worktree>`; books, mermaid and map are exactly
+  what a documentation session should pass) and the pane is closed once
+  every item the session carries has reached `stage:collected`, because
+  a branch merged mid-session merges a half-finished tree and a pane
+  closed under a running session destroys the work in it.
 - **At the queue**, two guards, then wait. First, birth the handoff when
   it is due: an assertion is **settled and unbolted** when its item is
   open on `intent/<slug>` (bolting IS the milestone move to
   `bolt/<slug>`), has no parent batch, and has no open blockers — when
   any exist, one `type:handoff` item names exactly that set, born or
-  amended to match. Second, compose the orphan queued items into a
+  amended to match, inside one `unit` parent at Status **Backlog** whose
+  sub-issues are the handoff item and that set. Second, compose the
+  orphan queued items into a
   proposed batch (`flywheel-batch`) at Status **Backlog** — composing is
   not releasing — and report one line per batch and unbatched item.
   Moving a batch to Ready is the approval; the handoff session inside a

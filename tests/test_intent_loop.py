@@ -91,6 +91,10 @@ class FakeTracker:
         self.calls.append(("create_issue", title, tuple(labels), milestone))
         return 999
 
+    def attach_sub_issue(self, parent, number):
+        self.calls.append(("attach_sub_issue", parent, number))
+        return True
+
     def close_issue(self, number, comment=None, reason=None):
         self.calls.append(("close_issue", number, reason))
 
@@ -157,15 +161,32 @@ class HandoffGuardTest(unittest.TestCase):
             item(2, "type:assertion", "state:queued"),
         ])
         writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap, "x")
-        self.assertEqual([w.kind for w in writer.writes], ["issue"])
+        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
+                             config())
+        self.assertEqual([w.kind for w in writer.writes], ["issue", "command"])
         self.assertEqual(intent.parse_handoff_set(intent.handoff_body("x", (1, 2))),
                          (1, 2))
 
+    def test_birth_composes_one_unit_over_the_handoff_and_its_assertions(self):
+        # Every release creates exactly one unit parent, handoff birth and
+        # born-ready alike; the unit is the board row and the progress bar.
+        run = FakeRun()
+        snap = Snapshot(items=[item(1, "type:assertion", "state:queued"),
+                               item(2, "type:assertion", "state:queued")])
+        writer = intent.Writer(apply=True, run=run,
+                               tracker=FakeTracker(), snapshot=snap)
+        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
+                             config(apply=True))
+        argv = run.calls[0]
+        self.assertEqual(argv[argv.index("--kind") + 1], "unit")
+        self.assertEqual(argv[-3:], ["999", "1", "2"],
+                         "the handoff item and the released assertions")
+        self.assertNotIn("Ready", argv,
+                         "composing is not releasing — the flip seals it")
+
     def test_amend_is_silent_when_the_set_is_unchanged(self):
-        # THE dry-cycle crux. The assertions stay open and unbatched on the
-        # milestone until the handoff SESSION makes the custody move, so
-        # birth-on-cycle-N is seen as amend-on-cycle-N+1 forever. An amend that
+        # THE dry-cycle crux. Birth-on-cycle-N is seen as amend-on-cycle-N+1
+        # for as long as an assertion stays unbatched, so an amend that
         # rewrote an unchanged body would make every cycle wet.
         snap = Snapshot(items=[
             item(1, "type:assertion", "state:queued"),
@@ -175,20 +196,29 @@ class HandoffGuardTest(unittest.TestCase):
         plan = inbox.handoff_plan(snap, "x")
         self.assertEqual(plan.action, "amend")
         writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, plan, snap, "x")
+        intent.apply_handoff(writer, plan, snap, config())
         self.assertEqual(writer.writes, [],
                          "an unchanged set must write nothing at all")
 
-    def test_amend_rewrites_the_body_when_a_newcomer_joins(self):
-        snap = Snapshot(items=[
-            item(1, "type:assertion", "state:queued"),
-            item(2, "type:assertion", "state:queued"),
-            item(9, "type:handoff", "state:queued",
-                 body=intent.handoff_body("x", (1,))),
-        ])
-        writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap, "x")
-        self.assertEqual([w.kind for w in writer.writes], ["body", "comment"])
+    def test_amend_extends_the_set_and_attaches_the_newcomer_to_the_unit(self):
+        # #1 is already a sub-issue of the handoff's unit, so it is no
+        # longer "settled and unbolted" and the plan names only #2. The
+        # body must name the UNION, or the amend would drop #1.
+        snap = Snapshot(
+            items=[item(1, "type:assertion", "state:queued", parent_batch=10),
+                   item(2, "type:assertion", "state:queued"),
+                   item(9, "type:handoff", "state:queued", parent_batch=10,
+                        body=intent.handoff_body("x", (1,)))],
+            batches=[Batch(number=10, kind="unit", status="Backlog",
+                           sub_issues=(9, 1), milestone="intent/x")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
+                             config())
+        self.assertEqual([w.kind for w in writer.writes],
+                         ["body", "comment", "sub-issue"])
+        body = next(w for w in writer.writes if w.kind == "body")
+        self.assertEqual(writer.writes[-1].detail, "-> #10")
+        self.assertEqual(body.target, "#9")
 
     def test_a_handoff_body_round_trips_its_set(self):
         self.assertEqual(
@@ -252,33 +282,25 @@ class DryCycleTest(unittest.TestCase):
                            sub_issues=(1,), milestone="intent/x")],
         )
         self.assertEqual(
-            [w.kind for w in self._guards(cycle1)], ["label", "label", "issue"],
-            "the flip releases #1 and handoff birth claims #2")
+            [w.kind for w in self._guards(cycle1)],
+            ["label", "label", "issue", "command"],
+            "the flip releases #1; handoff birth claims #2 and composes "
+            "the unit that carries the release")
 
-        # #1 flipped, #9 born. The newborn handoff is an orphan, so this cycle
-        # composes it — a real change, not churn.
+        # #1 flipped; #9 born inside unit #10 with #2 as its other
+        # sub-issue. Nothing is an orphan, and nothing is settled-unbolted.
         cycle2 = Snapshot(
             items=[item(1, "state:ready", parent_batch=4),
-                   item(2, "type:assertion", "state:queued"),
-                   item(9, "type:handoff", "state:queued",
-                        body=intent.handoff_body("x", (2,)))],
-            batches=cycle1.batches,
-        )
-        self.assertEqual([w.kind for w in self._guards(cycle2)], ["command"])
-
-        # #9 batched at Backlog, awaiting the operator's flip. Settled.
-        cycle3 = Snapshot(
-            items=[item(1, "state:ready", parent_batch=4),
-                   item(2, "type:assertion", "state:queued"),
+                   item(2, "type:assertion", "state:queued", parent_batch=10),
                    item(9, "type:handoff", "state:queued", parent_batch=10,
                         body=intent.handoff_body("x", (2,)))],
             batches=list(cycle1.batches) + [
-                Batch(number=10, kind="elaboration", status="Backlog",
-                      sub_issues=(9,), milestone="intent/x")],
+                Batch(number=10, kind="unit", status="Backlog",
+                      sub_issues=(9, 2), milestone="intent/x")],
         )
-        self.assertEqual(self._guards(cycle3), (),
+        self.assertEqual(self._guards(cycle2), (),
                          "a settled tracker must produce no write at all")
-        self.assertEqual(self._guards(cycle3), (),
+        self.assertEqual(self._guards(cycle2), (),
                          "and must keep producing none")
 
 
@@ -423,55 +445,42 @@ class SessionSpecTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 4 · completion — the R1 seam. Three candidates, no default.
+# 4 · completion — one label, per item, nothing to configure
 # ---------------------------------------------------------------------------
 
 class CompletionTest(unittest.TestCase):
 
-    def setUp(self):
-        self.batch = intent.DesignBatch("research", (item(1), item(2)))
+    def test_the_operators_stage_done_is_what_the_filter_reads(self):
+        snap = Snapshot(items=[item(1, "stage:done"), item(2)])
+        self.assertTrue(intent.is_done(1, snap))
+        self.assertFalse(intent.is_done(2, snap))
 
-    def test_no_signal_configured_is_unknown_rather_than_incomplete(self):
-        ctx = intent.CompletionContext(snapshot=Snapshot(items=[item(1)]))
-        self.assertIsNone(intent.is_complete(self.batch, config(), ctx))
+    def test_an_item_off_the_snapshot_is_not_read_as_done(self):
+        self.assertFalse(intent.is_done(7, Snapshot(items=[item(1)])))
 
-    def test_closed_means_every_item_is_gone_from_the_open_snapshot(self):
-        ctx = intent.CompletionContext(snapshot=Snapshot(items=[item(1)]))
-        cfg = config(completion_signal="closed")
-        self.assertFalse(intent.is_complete(self.batch, cfg, ctx))
-        ctx.snapshot = Snapshot(items=[])
-        self.assertTrue(intent.is_complete(self.batch, cfg, ctx))
+    def test_stage_collected_is_what_guards_a_second_collect(self):
+        snap = Snapshot(items=[item(1, "stage:done", "stage:collected"),
+                               item(2, "stage:done")])
+        self.assertTrue(intent.is_collected(1, snap))
+        self.assertFalse(intent.is_collected(2, snap))
 
-    def test_label_means_every_open_item_carries_it(self):
-        cfg = config(completion_signal="label", done_label="state:done")
-        ctx = intent.CompletionContext(
-            snapshot=Snapshot(items=[item(1, "state:done"), item(2)]),
-            done_label="state:done")
-        self.assertFalse(intent.is_complete(self.batch, cfg, ctx))
-        ctx.snapshot = Snapshot(items=[item(1, "state:done"),
-                                       item(2, "state:done")])
-        self.assertTrue(intent.is_complete(self.batch, cfg, ctx))
+    def test_the_board_is_not_consulted_for_completion(self):
+        # Per-item session state lives in labels; the board's Status is the
+        # operator's batch-approval surface and nothing else. The filter
+        # takes no board at all, so no Status can make an item complete.
+        import inspect
+        self.assertEqual(list(inspect.signature(intent.is_done).parameters),
+                         ["number", "snapshot"])
 
-    def test_board_means_every_row_is_at_the_done_status(self):
-        cfg = config(completion_signal="board", done_status="Done")
-        ctx = intent.CompletionContext(
-            snapshot=Snapshot(items=[item(1), item(2)]),
-            board={1: {"status": "Done"}, 2: {"status": "Ready"}},
-            done_status="Done")
-        self.assertFalse(intent.is_complete(self.batch, cfg, ctx))
-        ctx.board[2] = {"status": "Done"}
-        self.assertTrue(intent.is_complete(self.batch, cfg, ctx))
-
-    def test_a_signal_that_needs_a_name_and_lacks_one_stops_the_run(self):
-        self.assertIn("--done-label",
-                      intent.config_fault(config(completion_signal="label")))
-        self.assertIn("--done-status",
-                      intent.config_fault(config(completion_signal="board")))
-
-    def test_an_unknown_signal_stops_the_run_before_it_reads_anything(self):
-        report = intent.run(config(completion_signal="vibes"))
-        self.assertEqual(report.status, "stopped")
-        self.assertIn("unknown completion signal", report.failure)
+    def test_nothing_names_a_completion_signal_any_more(self):
+        # The state in which no signal is configured, and completion is
+        # therefore *unknown* rather than false, has ceased to exist.
+        self.assertFalse(hasattr(intent, "COMPLETION_SIGNALS"))
+        self.assertFalse(hasattr(intent, "R1_UNRESOLVED"))
+        self.assertNotIn("completion_signal", Config.__dataclass_fields__)
+        self.assertNotIn("done_label", Config.__dataclass_fields__)
+        self.assertNotIn("done_status", Config.__dataclass_fields__)
+        self.assertIsNone(intent.config_fault(config()))
 
 
 # ---------------------------------------------------------------------------
@@ -487,9 +496,16 @@ class CycleTest(unittest.TestCase):
         self.assertEqual(report.status, "ok")
         kinds = [w.split()[0] for w in report.writes]
         self.assertEqual(kinds.count("issue"), 1, "handoff birth for #202")
-        self.assertEqual(kinds.count("command"), 2,
-                         "flywheel-batch for #203, and one wt switch")
+        self.assertEqual(kinds.count("command"), 3,
+                         "the unit over #202's handoff, flywheel-batch for "
+                         "#203, and one wt switch")
         self.assertEqual(report.dispatched, ("planning-sandbox-design — #201",))
+
+    def test_dispatch_puts_the_batchs_items_in_session(self):
+        report = intent.run(config(
+            slug="sandbox-design",
+            fixture=str(FIXTURES / "intent-tracker.json")))
+        self.assertIn("label #201 — +stage:in-session", report.writes)
 
     def test_a_dry_run_records_its_plan_and_performs_none_of_it(self):
         tracker = FakeTracker()
@@ -514,11 +530,15 @@ class CycleTest(unittest.TestCase):
         self.assertTrue(any("#202" in line for line in report.resting))
         self.assertTrue(any("batch #204" in line for line in report.resting))
 
-    def test_the_r1_note_is_on_every_run_that_names_no_signal(self):
+    def test_a_run_naming_no_signal_reports_no_unresolved_note(self):
+        # There is one filter and nothing to configure, so a run against a
+        # milestone with no completion signal named anywhere is ordinary.
         report = intent.run(config(
             slug="sandbox-design",
             fixture=str(FIXTURES / "intent-tracker.json")))
-        self.assertTrue(any("R1 unresolved" in n for n in report.notes))
+        self.assertEqual(report.status, "ok")
+        self.assertFalse(any("unresolved" in n.lower() for n in report.notes),
+                         report.notes)
 
 
 # ---------------------------------------------------------------------------
@@ -527,31 +547,36 @@ class CycleTest(unittest.TestCase):
 
 class LandingTest(unittest.TestCase):
 
-    def _land(self, cfg, tracker, runner=None, clock=None):
-        batch = intent.DesignBatch("research", (item(1),))
+    def _land(self, cfg, tracker, runner=None, clock=None, items=None,
+              batch=None):
+        items = items or [item(1)]
+        batch = batch or intent.DesignBatch("research", tuple(items))
         spec = sessions.SessionSpec(name="research-x", cwd="/tmp", order="go",
                                     profile="flywheel-design-session")
         runner = runner or ScriptedRunner()
         handle = runner.launch(spec)
-        writer = intent.Writer(tracker=tracker, apply=True,
-                               snapshot=Snapshot(items=[item(1)]))
+        snapshot = Snapshot(items=items)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snapshot)
         report = intent.Report(slug="x")
         intent.land(batch, spec, handle, writer, runner, tracker, cfg,
-                    Snapshot(items=[item(1)]), clock or Clock(), report)
+                    snapshot, clock or Clock(), report)
         return writer, report, runner
 
     def test_a_settled_session_is_not_a_finished_one(self):
+        # A settled pane is still not a finished session — and it is now
+        # `stage:done` that decides.
         tracker = FakeTracker()
         writer, report, runner = self._land(config(apply=True), tracker)
         self.assertEqual(runner.closed, [],
                          "the operator may iterate a round as often as they like")
-        self.assertTrue(any("R1 unresolved" in n for n in report.notes))
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+        self.assertTrue(any("not yet marked done" in n for n in report.notes))
 
     def test_an_andon_pauses_the_batch_and_merges_nothing(self):
         tracker = FakeTracker(comments={
             1: [{"body": inbox.format_andon("the spec contradicts its decision")}]})
         writer, report, runner = self._land(
-            config(apply=True, completion_signal="closed"), tracker)
+            config(apply=True), tracker, items=[item(1, "stage:done")])
         self.assertIn(("add_label", 1, "needs-operator"), tracker.calls)
         self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
         self.assertEqual(runner.closed, [])
@@ -560,22 +585,52 @@ class LandingTest(unittest.TestCase):
     def test_prose_about_stopping_is_not_an_andon(self):
         tracker = FakeTracker(comments={
             1: [{"body": "I nearly raised the andon but did not."}]})
-        writer, report, runner = self._land(
-            config(apply=True, completion_signal="closed"), tracker)
+        writer, report, runner = self._land(config(apply=True), tracker)
         self.assertNotIn(("add_label", 1, "needs-operator"), tracker.calls)
 
-    def test_a_complete_batch_closes_its_items_closed_done(self):
+    def test_a_flipped_item_is_collected_marked_and_closed(self):
         tracker = FakeTracker()
         writer, report, runner = self._land(
-            config(apply=True, completion_signal="label",
-                   done_label="state:done"), tracker)
-        # #1 carries no done label, so nothing closes
+            config(apply=True), tracker, items=[item(1, "stage:done")])
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+        self.assertEqual(runner.closed, ["research-x"],
+                         "every item collected, so the session may be torn down")
+
+    def test_two_of_three_flipped_collects_exactly_those_two(self):
+        tracker = FakeTracker()
+        items = [item(1, "stage:done"), item(2, "stage:done"), item(3)]
+        writer, report, runner = self._land(config(apply=True), tracker,
+                                            items=items)
+        closed = [c[1] for c in tracker.calls if c[0] == "close_issue"]
+        self.assertEqual(closed, [1, 2])
+        self.assertNotIn(("add_label", 3, "stage:collected"), tracker.calls)
+
+    def test_the_session_scoped_acts_wait_for_the_third_item(self):
+        run = FakeRun()
+        tracker = FakeTracker()
+        items = [item(1, "stage:done"), item(2, "stage:done"), item(3)]
+        runner = ScriptedRunner()
+        writer, report, runner = self._land(
+            config(apply=True), tracker, runner=runner, items=items)
+        self.assertEqual(runner.closed, [],
+                         "a pane closed under a running session destroys it")
+        self.assertEqual([w for w in writer.writes if w.kind == "command"], [],
+                         "a branch merged mid-session merges a half tree")
+        self.assertTrue(any("#3" in n for n in report.notes))
+
+    def test_an_already_collected_item_is_not_collected_twice(self):
+        tracker = FakeTracker()
+        items = [item(1, "stage:done", "stage:collected")]
+        writer, report, runner = self._land(config(apply=True), tracker,
+                                            items=items)
         self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+        self.assertEqual(runner.closed, ["research-x"],
+                         "already collected still completes the session")
 
     def test_a_stalled_session_keeps_its_pane_as_evidence(self):
         tracker = FakeTracker()
         runner = ScriptedRunner(states=[WaitState.WORKING] * 40)
-        clock = Clock()
 
         class Ticking(Clock):
             def __call__(self):
@@ -584,10 +639,11 @@ class LandingTest(unittest.TestCase):
                 return value
 
         writer, report, runner = self._land(
-            config(apply=True, completion_signal="closed"), tracker,
-            runner=runner, clock=Ticking())
+            config(apply=True), tracker,
+            runner=runner, clock=Ticking(), items=[item(1, "stage:done")])
         self.assertTrue(any("stalled" in n for n in report.notes))
         self.assertEqual(runner.closed, [])
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
 
 
 # ---------------------------------------------------------------------------

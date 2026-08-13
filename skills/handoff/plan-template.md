@@ -5,8 +5,10 @@ land in unrelated repos or warrant different bolt types.
 
 ## bolt/<slug>
 
-- **type**: bolt-quick | bolt-default | bolt-adversarial — <why this type,
-  from what the assertions touch, never from their count>
+- **type**: bolt-direct | bolt-quick | bolt-default | bolt-adversarial —
+  <why this type, from what the assertions touch, never from their count.
+  bolt-direct runs no verify stage: pick it only where the spec and the
+  repo's merge gate settle correctness between them>
 - **landing**: merge | pr — how the bolt reaches main; carried into
   bolt.md's Merge criteria as its Landing line
 - **owner**: @<login> — whose word settles the bolt's decisions, read

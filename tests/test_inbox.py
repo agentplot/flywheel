@@ -5,11 +5,12 @@ The filters are pure, so these run against the repo's own declared contract
 No network, no `gh`, no token.
 """
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
 
-from context import FIXTURES, inbox
+from context import BIN, FIXTURES, inbox
 
 Item = inbox.Item
 Batch = inbox.Batch
@@ -58,6 +59,48 @@ class FixtureContractTest(unittest.TestCase):
         birth = {i.number for i in box.handoff.assertions}
         compose = {i.number for i in box.orphan_queued}
         self.assertEqual(birth & compose, set())
+
+
+# ---------------------------------------------------------------------------
+# The vocabulary — one enumeration, and the two copies of it cannot drift
+# ---------------------------------------------------------------------------
+
+class VocabularyTest(unittest.TestCase):
+    """One enumeration. The constants here and `flywheel-setup`'s `LABELS`
+    table cannot drift, because a loop writing a label the repo does not
+    define is a failed `gh issue edit`, not a created label."""
+
+    def setup_labels(self):
+        source = (BIN / "flywheel-setup").read_text()
+        return set(re.findall(r'^\s*"(stage:[a-z-]+)":', source, re.MULTILINE))
+
+    def test_the_stage_set_is_exactly_seven_names(self):
+        self.assertEqual(set(inbox.STAGE_LABELS), {
+            "stage:planned", "stage:built", "stage:verified", "stage:merged",
+            "stage:in-session", "stage:done", "stage:collected"})
+        self.assertEqual(len(inbox.STAGE_LABELS), 7, "and no duplicates")
+
+    def test_every_stage_constant_is_defined_in_flywheel_setups_labels(self):
+        self.assertEqual(self.setup_labels(), set(inbox.STAGE_LABELS))
+
+    def test_the_construction_stages_are_in_the_order_the_cycle_runs_them(self):
+        self.assertEqual(inbox.CONSTRUCTION_STAGES,
+                         ("stage:planned", "stage:built", "stage:verified",
+                          "stage:merged"))
+
+    def test_stage_of_reads_one_stage_and_can_be_narrowed_to_a_phase(self):
+        labels = frozenset({"state:in-progress", "stage:built"})
+        self.assertEqual(inbox.stage_of(labels), "stage:built")
+        self.assertEqual(
+            inbox.stage_of(labels, inbox.CONSTRUCTION_STAGES), "stage:built")
+        self.assertIsNone(
+            inbox.stage_of(labels, inbox.DESIGN_STAGES))
+
+    def test_a_stage_label_never_stands_in_for_a_state_label(self):
+        # The four inbox filters all read `state:*`; an item whose state
+        # label were displaced would go invisible to the loop that owns it.
+        found = Snapshot(items=[item(1, "state:in-progress", "stage:built")])
+        self.assertTrue(found.items[0].in_progress)
 
 
 # ---------------------------------------------------------------------------

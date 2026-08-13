@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# The vocabulary. One enumeration, bin/flywheel-setup:57-90.
+# The vocabulary. One enumeration, the `LABELS` table in bin/flywheel-setup.
 # ---------------------------------------------------------------------------
 
 READY = "state:ready"
@@ -46,6 +46,45 @@ UNIT = "unit"
 ELABORATION = "elaboration"
 TYPE_ASSERTION = "type:assertion"
 TYPE_HANDOFF = "type:handoff"
+
+#: The stage names. A `stage:*` label is ADDITIONAL to the item's `state:*`
+#: label and never a substitute for it — every one of the four inbox filters
+#: reads `state:*`, so an item whose state label was displaced would go
+#: invisible to the loop that owns it. An item carries at most one `stage:*`
+#: at a time, naming its leading edge.
+STAGE_PLANNED = "stage:planned"
+STAGE_BUILT = "stage:built"
+STAGE_VERIFIED = "stage:verified"
+STAGE_MERGED = "stage:merged"
+STAGE_IN_SESSION = "stage:in-session"
+STAGE_DONE = "stage:done"
+STAGE_COLLECTED = "stage:collected"
+
+#: The bolt loop's four, in the order its cycle reaches them. The order is
+#: read by the stage reconciliation, which must never walk a label BACK past
+#: a stage the tree cannot witness.
+CONSTRUCTION_STAGES = (STAGE_PLANNED, STAGE_BUILT, STAGE_VERIFIED,
+                       STAGE_MERGED)
+
+#: The intent loop's two, plus the operator's `stage:done` between them.
+DESIGN_STAGES = (STAGE_IN_SESSION, STAGE_DONE, STAGE_COLLECTED)
+
+#: Every stage name there is — what "remove any other stage label" sweeps.
+STAGE_LABELS = CONSTRUCTION_STAGES + DESIGN_STAGES
+
+
+def stage_of(labels, among=STAGE_LABELS):
+    """The one stage label a set of labels carries, or None.
+
+    `among` narrows it to a phase — the bolt loop asks about its four and
+    is not confused by a design stage left over from the item's life on an
+    intent milestone.
+    """
+    for stage in among:
+        if stage in labels:
+            return stage
+    return None
+
 
 CLOSED_DONE = "closed:done"
 CLOSED_DECLINED = "closed:declined"
@@ -870,6 +909,24 @@ class Tracker:
         text = out if isinstance(out, str) else str(out or "")
         tail = text.strip().rsplit("/", 1)[-1]
         return int(tail) if tail.isdigit() else None
+
+    def attach_sub_issue(self, parent, number):
+        """Attach #number as a sub-issue of #parent. True when it wrote.
+
+        Invariant 10: the endpoint takes the issue's DATABASE id, not its
+        number. Invariant 2: an item joins exactly one batch ever, and
+        GitHub answers 422 to an attempt on a parented sub-issue — so one
+        that already has a parent is SKIPPED rather than retried, which is
+        what lets a guard applied twice converge instead of crashing.
+        """
+        raw = self._gh(self.token, "api",
+                       f"/repos/{self.org}/{self.repo}/issues/{number}")
+        if raw.get("parent_issue_url"):
+            return False
+        self._gh(self.token, "api",
+                 f"/repos/{self.org}/{self.repo}/issues/{parent}/sub_issues",
+                 "--input", "-", input_json={"sub_issue_id": raw["id"]})
+        return True
 
     def close_issue(self, number, comment=None, reason=CLOSED_DONE):
         if reason:

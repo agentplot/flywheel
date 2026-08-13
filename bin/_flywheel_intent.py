@@ -23,13 +23,20 @@ Import from a sibling script:
 what lets a test assert the property the whole stateless-process design rests
 on: a second cycle against an unchanged tracker writes nothing.
 
-**Completion is the operator's, and R1 is open.** `design/loop-programs.md`
-leaves "the exact GitHub signal for *operator marks a design session done*" to
-the operator (R1). All three candidates are implemented below and none is the
-default: without `--completion-signal` the loop runs everything up to and
-including supervision and then stops before collecting, saying so. A session
-settling is NOT completion — the operator may iterate a plannotator or lavish
-round as often as they like.
+**Completion is the operator's, and the signal is `stage:done`.** The loop
+writes `stage:in-session` on each item of a batch as it dispatches, and the
+OPERATOR flips `stage:done` — in the pane (the session writes it to its own
+item and settles) or on GitHub directly, one flip either way. That label is
+the loop's only completion filter: there is nothing to configure and no state
+in which completion is *unknown*. A session settling is NOT completion — the
+operator may iterate a plannotator or lavish round as often as they like.
+
+Each item's stages advance independently: the loop collects, marks
+`stage:collected` and closes every item carrying `stage:done`, whether or not
+its siblings in the same session do. Merging the session's `sess/*` branch and
+closing its pane are properties of the SESSION and wait for the last item —
+a branch merged mid-session merges a half-finished tree, and a pane closed
+under a running session destroys the work in it.
 """
 
 import json
@@ -38,12 +45,13 @@ import shlex
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_inbox import (CLOSED_DONE, INTENT_PREFIX, IN_PROGRESS,
-                             NEEDS_OPERATOR, QUEUED, READY, TYPE_ASSERTION,
+                             NEEDS_OPERATOR, QUEUED, READY, STAGE_COLLECTED,
+                             STAGE_DONE, STAGE_IN_SESSION, TYPE_ASSERTION,
                              Tracker, TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, set_needs_operator,
                              unblocked)
@@ -129,7 +137,7 @@ def type_of(item):
 
 @dataclass(frozen=True)
 class Write:
-    kind: str          # label | body | comment | issue | close | command
+    kind: str          # label | body | comment | issue | sub-issue | close | command
     target: str
     detail: str = ""
 
@@ -224,6 +232,12 @@ class Writer:
             return self.tracker.create_issue(title, body, labels, milestone)
         return None
 
+    def attach_sub_issue(self, parent, number):
+        self._record("sub-issue", f"#{number}", f"-> #{parent}")
+        if self.apply and self.tracker:
+            return self.tracker.attach_sub_issue(parent, number)
+        return None
+
     def close_issue(self, number, comment=None, reason=CLOSED_DONE):
         self._record("close", f"#{number}", reason or "")
         if self.apply and self.tracker:
@@ -302,42 +316,110 @@ def handoff_body(slug, numbers):
         "",
         format_handoff_set(numbers),
         "",
-        "Born by the intent loop's handoff-birth guard. The handoff session "
-        "that works this item plans the bolt and makes the custody move; the "
-        "loop creates the item and never moves a milestone itself.",
+        "Born by the intent loop's handoff-birth guard, inside the unit that "
+        "carries this release. The handoff session that works this item plans "
+        "the bolt and makes the custody move; the loop creates the item and "
+        "its unit and never moves a milestone itself.",
     ])
 
 
-def apply_handoff(writer, plan, snapshot, slug):
-    """Ensure ONE open `type:handoff` item names exactly the settled set.
+def apply_handoff(writer, plan, snapshot, config):
+    """Ensure ONE open `type:handoff` item names exactly the settled set,
+    inside ONE `unit` parent whose sub-issues are that set.
 
     Two branches, `_flywheel_inbox.handoff_plan`'s: BIRTH when no open handoff
-    sits unsealed, AMEND when one does. The guard creates the ITEM and attaches
-    no sub-issues — the assertions leave this milestone when the handoff
-    session moves them to `bolt/<slug>`, and that move is the bolting.
+    sits unsealed, AMEND when one does.
+
+    **The handoff item and its unit are born together.** Every release to
+    construction creates exactly one unit parent — the handoff birth here and
+    the operator's born-ready release alike — because the unit is what
+    carries the approval on the board and what gives the bolt GitHub's native
+    sub-issue progress bar. The parent is born at **Backlog**: composing is
+    the loop's and approving is the operator's, and the flip to Ready seals
+    the batch and charges the handoff session.
+
+    The assertions become sub-issues here and STAY sub-issues when the
+    handoff session moves them to `bolt/<slug>` — sub-issue links are
+    independent of milestones (invariant 2), and that milestone move is the
+    bolting.
     """
     if plan is None:
         return
+    slug = config.slug
     numbers = tuple(sorted(i.number for i in plan.assertions))
     if plan.action == "amend":
         item = snapshot.item(plan.handoff_item)
-        current = parse_handoff_set(item.body if item else "")
-        if current == numbers:
+        current = parse_handoff_set(item.body if item else "") or ()
+        # The set EXTENDS. An assertion already attached to this handoff's
+        # unit is no longer "settled and unbolted" by invariant 6's test, so
+        # the plan names only the newcomers and the body names the union.
+        merged = tuple(sorted(set(current) | set(numbers)))
+        if merged == current:
             return                      # unchanged — write nothing
-        writer.set_body(plan.handoff_item, handoff_body(slug, numbers))
+        writer.set_body(plan.handoff_item, handoff_body(slug, merged))
         writer.comment(
             plan.handoff_item,
             "The settled, unbolted set moved: now "
-            + " ".join(f"#{n}" for n in numbers)
+            + " ".join(f"#{n}" for n in merged)
             + ". Amended by the intent loop's handoff-birth guard.",
         )
+        if item is not None and item.parent_batch is not None:
+            attach_to_unit(writer, item.parent_batch,
+                           [n for n in merged if n not in current])
         return
-    writer.create_issue(
+    handoff = writer.create_issue(
         title=f"Plan the bolt for the settled assertions on {slug}",
         body=handoff_body(slug, numbers),
         labels=["type:handoff", QUEUED],
         milestone=f"{INTENT_PREFIX}{slug}",
     )
+    compose_unit(writer, config,
+                 title=f"Handoff: the settled assertions on {slug} to "
+                       f"construction",
+                 numbers=([handoff] if handoff else []) + list(numbers))
+
+
+def compose_unit(writer, config, title, numbers):
+    """One `unit` parent over these items, through `flywheel-batch`.
+
+    `flywheel-batch --kind unit` is the composing move in one call: it
+    creates the parent, attaches the sub-issues, adds the parent to the org
+    Project and defaults its fields, and skips an item that already belongs
+    to a batch rather than failing on it. Reimplementing any of that here
+    would be a second definition of what a batch looks like.
+
+    It puts the parent at **Backlog** and never writes Ready — on this path
+    the operator's flip is the approval, and a batch born at Ready would
+    make the loop the approver of its own handoff. The one release where
+    the parent IS born at Ready is the operator's born-ready release at
+    triage, where their word is itself the approval; that move is made by
+    the release path with `flywheel-board`, not from inside this loop.
+    """
+    if not numbers:
+        return
+    argv = [
+        str(config.batch_cmd),
+        "--org", config.org,
+        "--repo", config.repo,
+        "--kind", "unit",
+        "--milestone", config.milestone,
+        "--title", title,
+        "--project", config.project,
+    ] + [str(n) for n in numbers]
+    writer.command(argv, cwd=config.repo_dir, what="flywheel-batch")
+
+
+def attach_to_unit(writer, batch_number, numbers):
+    """Attach late-settling assertions to the unit that already exists.
+
+    `flywheel-batch` composes a NEW parent, so this is the one place that
+    speaks to GitHub's sub-issue endpoint directly. An item that already
+    belongs to a batch is skipped rather than fatal: an item joins exactly
+    one batch ever, GitHub 422s the second attempt, and a guard applied
+    twice must converge rather than crash.
+    """
+    for number in numbers:
+        writer.attach_sub_issue(batch_number, number)
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +452,7 @@ def run_guards(writer, inbox, snapshot, config):
     """All three, every cycle, in order, each idempotent. Returns its writes."""
     mark = writer.mark()
     apply_flip_consume(writer, inbox.queued_to_flip)
-    apply_handoff(writer, inbox.handoff, snapshot, config.slug)
+    apply_handoff(writer, inbox.handoff, snapshot, config)
     apply_compose(writer, inbox.orphan_queued, config)
     return writer.since(mark)
 
@@ -515,78 +597,38 @@ def parse_dispatch(comments, name=None):
 
 
 # ---------------------------------------------------------------------------
-# Completion — the R1 seam. Three candidates, no default.
+# Completion — one label, per item
 # ---------------------------------------------------------------------------
 
-R1_UNRESOLVED = (
-    'R1 unresolved: the operator has not named the signal for "design session '
-    'done" (design/loop-programs.md, R1 — a state label, a board Status, or '
-    "closing the items). Pass --completion-signal to name it. Sessions were "
-    "dispatched and supervised; nothing was collected, merged or closed."
-)
+def is_done(number, snapshot):
+    """Has the OPERATOR marked THIS item done?
 
-
-@dataclass
-class CompletionContext:
-    snapshot: object
-    board: dict = field(default_factory=dict)
-    done_label: str = None
-    done_status: str = None
-
-
-def _done_closed(batch, ctx):
-    """Every item in the batch is closed on the tracker."""
-    for number in batch.numbers:
-        item = ctx.snapshot.item(number)
-        if item is not None and item.is_open:
-            return False
-    return True
-
-
-def _done_label(batch, ctx):
-    """Every item carries the label the operator sets to mean done."""
-    if not ctx.done_label:
-        raise LoopStop("--completion-signal label needs --done-label")
-    for number in batch.numbers:
-        item = ctx.snapshot.item(number)
-        if item is None:               # closed items satisfy any signal
-            continue
-        if ctx.done_label not in item.labels:
-            return False
-    return True
-
-
-def _done_board(batch, ctx):
-    """Every item's board row is at the done Status."""
-    if not ctx.done_status:
-        raise LoopStop("--completion-signal board needs --done-status")
-    for number in batch.numbers:
-        item = ctx.snapshot.item(number)
-        if item is None:
-            continue
-        if (ctx.board.get(number) or {}).get("status") != ctx.done_status:
-            return False
-    return True
-
-
-COMPLETION_SIGNALS = {
-    "closed": _done_closed,
-    "label": _done_label,
-    "board": _done_board,
-}
-
-
-def is_complete(batch, config, ctx):
-    """Has the OPERATOR marked this session done?
+    Two-valued on purpose. The loop has one filter — the `stage:done` label
+    — and there is no configuration to name it, so the state in which no
+    signal is configured and completion is therefore *unknown* rather than
+    false does not exist.
 
     Never inferred from the session settling: "the operator may iterate a
     plannotator or lavish round as many times as they want", and a loop that
     read a settled pane as a finished session would collect half a decision.
+    Never read off the board either: the board's Status is the operator's
+    batch-approval surface, and per-item session state lives in labels with
+    every other signal the loops read.
     """
-    signal = COMPLETION_SIGNALS.get(config.completion_signal)
-    if signal is None:
-        return None                    # R1 unresolved — not False, unknown
-    return signal(batch, ctx)
+    item = snapshot.item(number)
+    if item is None:
+        return False                   # not on this snapshot; nothing to collect
+    return STAGE_DONE in item.labels
+
+
+def is_collected(number, snapshot):
+    """Whether this item's deliverables were already gathered.
+
+    The guard against collecting twice, and it is exactly the label that
+    says the gathering happened.
+    """
+    item = snapshot.item(number)
+    return item is not None and STAGE_COLLECTED in item.labels
 
 
 # ---------------------------------------------------------------------------
@@ -662,9 +704,6 @@ class Config:
     repo_dir: Path = Path(".")
     base_branch: str = "main"
     goal: str = None
-    completion_signal: str = None
-    done_label: str = None
-    done_status: str = None
     apply: bool = True
     fixture: str = None
     max_cycles: int = 20
@@ -727,14 +766,6 @@ def config_fault(config):
     "a cycle that cannot resolve its parameters STOPS THE RUN"."""
     if not config.slug:
         return "no intent slug — the loop runs one milestone"
-    signal = config.completion_signal
-    if signal is not None and signal not in COMPLETION_SIGNALS:
-        return (f"unknown completion signal {signal!r} — one of "
-                f"{', '.join(sorted(COMPLETION_SIGNALS))}")
-    if signal == "label" and not config.done_label:
-        return "--completion-signal label needs --done-label"
-    if signal == "board" and not config.done_status:
-        return "--completion-signal board needs --done-status"
     return None
 
 
@@ -771,7 +802,13 @@ def resting_queue(inbox, snapshot, undispatchable):
 
 
 def dispatch_batch(batch, writer, runner, config, clock):
-    """Flip the items in progress, record the origin, launch. Idempotent."""
+    """Flip the items in progress and in session, record the origin, launch.
+
+    Idempotent. `stage:in-session` names the whole span in which the
+    operator iterates — however many plannotator or lavish rounds it holds.
+    The rounds themselves are not stages: a stage exists only if a loop
+    filter consumes it or the operator's eye needs it.
+    """
     name = session_name(batch, config.slug)
     cwd = config.repo_dir
     if TYPES[batch.type].worktree:
@@ -787,6 +824,8 @@ def dispatch_batch(batch, writer, runner, config, clock):
     for item in batch.items:
         if READY in item.labels:
             writer.relabel(item.number, remove=[READY], add=[IN_PROGRESS])
+        if not writer.has_label(item.number, STAGE_IN_SESSION):
+            writer.add_label(item.number, STAGE_IN_SESSION)
     writer.comment(batch.first, format_dispatch(name, clock()))
     handle = runner.launch(spec) if writer.apply else None
     return spec, handle
@@ -815,8 +854,6 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
         report.status = "stopped"
         report.failure = fault
         return report
-    if config.completion_signal is None:
-        report.notes += (R1_UNRESOLVED,)
 
     writer = writer or Writer(tracker=tracker, apply=config.apply)
     dispatched = []
@@ -878,7 +915,13 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
 
 def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
          clock, report):
-    """Supervise, then collect/merge/close — the second half behind R1."""
+    """Supervise, then collect/close per item and merge/close per session.
+
+    The per-item half acts on every item carrying `stage:done`, whether or
+    not its siblings do; the session half — the `sess/*` merge and the pane
+    close — waits until every item the session carries has reached
+    `stage:collected`.
+    """
     if handle is None or runner is None:
         return
     origin, notified = (None, False)
@@ -916,28 +959,30 @@ def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
                          f"{andon.reason}",)
         return
 
-    ctx = CompletionContext(
-        snapshot=snapshot,
-        board={row["number"]: row for row in (tracker.board_items() if tracker else ())},
-        done_label=config.done_label,
-        done_status=config.done_status,
-    )
-    complete = is_complete(batch, config, ctx)
-    if complete is None:
-        report.notes += (f"{spec.name} settled; {R1_UNRESOLVED}",)
-        return
-    if not complete:
-        report.notes += (f"{spec.name} settled but the operator has not "
-                         "marked it done; its pane stays open.",)
+    fresh = [n for n in batch.numbers
+             if is_done(n, snapshot) and not is_collected(n, snapshot)]
+    if fresh:
+        collected = runner.collect(handle)
+        evidence = (collected.report or "").strip().splitlines()
+        tail = evidence[-1][:200] if evidence else "no pane report"
+        for number in fresh:
+            writer.add_label(number, STAGE_COLLECTED)
+            writer.close_issue(
+                number,
+                comment=f"Collected from `{spec.name}`. {tail}",
+                reason=CLOSED_DONE)
+
+    # `writer.has_label` answers from the snapshot plus what this cycle just
+    # wrote, so an item collected on an earlier pass counts here too.
+    outstanding = [n for n in batch.numbers
+                   if not writer.has_label(n, STAGE_COLLECTED)]
+    if outstanding:
+        report.notes += (
+            f"{spec.name} settled; " + ", ".join(f"#{n}" for n in outstanding)
+            + " not yet marked done by the operator — its pane stays open.",)
         return
 
-    collected = runner.collect(handle)
+    # Every item collected: the session's own resources may be torn down.
     if TYPES[batch.type].worktree:
         merge_session(writer, config, spec.cwd)
-    evidence = (collected.report or "").strip().splitlines()
-    tail = evidence[-1][:200] if evidence else "no pane report"
-    for number in batch.numbers:
-        writer.close_issue(number,
-                           comment=f"Merged from `{spec.name}`. {tail}",
-                           reason=CLOSED_DONE)
     runner.close(handle)

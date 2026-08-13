@@ -1,0 +1,216 @@
+name: bolt-direct
+version: 1
+description: Flywheel construction tracking, the direct bolt type - one change per
+  bolt; the released assertions are its items on the org's tracker; per-repo
+  bolt branches; the loop schedules no review step AND no verify stage.
+  Picked for work whose correctness the spec and the repo's merge gate
+  already settle between them.
+
+# The type as a named loop config. STUB: declared, nothing built. The loop
+# programs that will read it are #72 and #74; until they exist, a bolt type's
+# behaviour comes from apply.instruction below, which is what the current
+# compile-then-run machinery reads.
+#
+# Whatever ends up reading this block MUST read schema.yaml itself. openspec
+# 1.8.0 parses the file without complaint and then DROPS the block: its
+# workflow-schema validator (dist/core/artifact-graph/types.js,
+# SchemaYamlSchema) is a zod object in default strip mode, so an unknown
+# top-level key is neither an error nor preserved. Measured against the
+# installed loader, 2026-08-13. One corollary: `openspec schema fork`
+# re-serializes the stripped parse over the forked schema.yaml and so erases
+# this block - a repo customizing a type through fork loses its config
+# silently. `bin/install-schemas` copies the tree and is safe.
+#
+# strategy   - the spec commands the loop runs for each item. `ff` is one
+#              command generating every artifact, so this type has no
+#              post-new and no post-artifact boundary to expose.
+# stages     - the stages this type's cycle runs, in order. THIS is what
+#              makes bolt-direct a fourth named config rather than a branch
+#              in the loop's code: it names the sequence it runs, and the
+#              sequence has no verify in it. An item on this type goes from
+#              stage:built to stage:merged, and stage:verified never appears
+#              on it - the absence of the label is the honest record of a
+#              stage that did not run.
+# hooks      - the review points those commands create, named after the real
+#              command boundaries and listed in the order a run reaches them.
+#              post-verify is NOT among them: a hook naming a boundary that
+#              never occurs is a review point nothing can ever attach to.
+# extensions - the sessions attached at those hooks. Empty, and for this type
+#              that is the type: bolt-direct schedules no review step.
+# plan_mode  - absent. The plan-mode path is bolt-quick's alone; the bolt
+#              type is the scrutiny the release approved, and a declaration
+#              against this type is refused rather than honoured quietly.
+loop:
+  strategy: ff
+  stages: [spec, build, merge, land]
+  extensions: []
+  hooks: [post-spec, post-apply, pre-merge, pre-land]
+
+artifacts:
+  - id: bolt
+    generates: bolt.md
+    description: The bolt - scope, source intents, involved repos and branches, merge criteria
+    template: bolt.md
+    instruction: |
+      You are writing the bolt record for a flywheel construction change.
+
+      A bolt is one construction iteration: the record for building a batch
+      of released assertions across one or more built repos. Its loop
+      process (`flywheel-bolt-loop --slug <slug>`) is the sole writer of
+      this change's artifacts. The work items are the released assertions' tracker items,
+      moved into the milestone `bolt/<slug>` at release; anyone may queue
+      an item or comment there. An item's progress through spec, build and
+      merge is its comment history and its `stage:*` label; it closes
+      `closed:done` with the landing SHA in the closing comment.
+
+      THIS TYPE RUNS NO VERIFY STAGE. Say so where the record's Merge
+      criteria name what must hold: the scrutiny this bolt buys is the
+      spec and the repo's merge gate, and nothing between them. That is a
+      reason to write the merge criteria more concretely here than on a
+      type that schedules a verify session, not less.
+
+      THE MERGE GATE IS NOT A FUNCTION OF THE TYPE. `wt merge` runs the
+      repo's own `[pre-merge]` hooks at the merge back to the bolt branch
+      and again at the landing, on this type exactly as on every other,
+      and it is never suppressed, weakened or hand-substituted. "No verify
+      stage" is never "no gate".
+
+      NOTHING the bolt lands is edited without an item. A repo's
+      CLAUDE.md, an architecture decision record (into the built repo's
+      log4brains layout - the bolt is where the material for one exists),
+      a machinery tweak however small and self-evident: each is a GitHub
+      issue like all other work. There is no direct-edit route.
+
+      **Output:** bolt.md with exactly these sections:
+      1. **Scope** - what this bolt builds, in one paragraph.
+      2. **Sources** - the intents whose released assertions this bolt
+         serves; work folded in later is appended here with dates.
+      3. **Repos** - one line per involved built repo: repo · bolt branch
+         name (`bolt/<slug>`) · worktree path. Bolt branches live for the
+         length of the bolt; construction work runs on nested worktrees
+         off them.
+      4. **Merge criteria** - what "thorough enough to land on main" means
+         for this bolt: the acceptance suites that must be green on the
+         bolt branch, and any repo-specific gates. There is no review
+         requirement to state - this type schedules none. The merge gate
+         (wt merge, the repo's hooks) is always implied and never
+         weakened.
+
+
+      EXACTLY these four sections and nothing else. bolt.md carries no
+      narrative: no escalations, no session events, no findings, no
+      status. The items' comments are the narrative; a question for
+      the operator goes on an item with needs-operator, never into
+      this record.
+
+      Two rules bind every section here. State a constraint only as
+      strongly as you verified it, naming the tree and the check behind
+      it; where you have not verified it, say that plainly instead of
+      rounding up, because an agent told to expect a failure that cannot
+      happen learns to discount constraints.
+      And where a section names something that constrains order, coupling
+      or membership, state the fact that makes the constraint CORRECT, not
+      the mechanism that makes it stick.
+    requires: []
+apply:
+  requires:
+    - bolt
+  instruction: |
+    Work the READY set to empty, then stop at the queue.
+
+    COMPILE, THEN RUN. This instruction is the loop's source of
+    truth, and editing it is how loop behavior changes. "/opsx:apply
+    build a dynamic workflow with the instructions for <change>"
+    means: compile THIS instruction into the change's own workflow
+    script at openspec/changes/<slug>/workflow.js - the driver,
+    outcome, blocked/stalled, serialized-merge, fixture, resume, and
+    report mechanics taken from skills/_reference/herdr.md - the one
+    maintained mechanics source (a WORK agent drives one herdr
+    session and never does the work; launches idempotent; one-prompt
+    orders, invocation first line; the script owns all waiting and
+    its arithmetic is the clock; args parsed defensively; a failing
+    cycle halts the run) - and the stages taken from the text below. Stamp the script header with a hash of this
+    instruction and reuse it while the hash holds; recompile only
+    when this instruction changes. Launch ONE run
+    (Workflow {scriptPath}); after a correction, a ruling, or an
+    answered pane, RESUME it ({scriptPath, resumeFromRunId}). One run
+    lineage per bolt; never a rebuilt workflow. The operator
+    supervises herdr sessions; a session that needs them can only
+    reach them from a real pane.
+
+    The tracker is the org's, named by the `tracker:` line in the org's
+    fleet.yaml; every tracker write runs as the app
+    (`GH_TOKEN=$(<plugin-root>/bin/flywheel-token --org <org>)` — the
+    plugin's bin/ is not on PATH; your loaded loop skill states the
+    root). The invocations are in the
+    flywheel plugin's `skills/_reference/herdr.md`.
+
+    1 · QUERY — the milestone `bolt/<slug>`'s open items labelled
+      `state:ready`, plus any unit of this bolt whose Project Status
+      the operator has moved to Ready on the board: relabel those
+      units' sub-issues
+      to `state:ready` first, then take the whole set. Each item
+      points at its assertion record - THE ASSERTION IS THE PROPOSAL,
+      and the spec is derived from it and the decisions it cites, never
+      from a restatement.
+
+    2 · ANALYSE — group the released items into batches one session could
+      take, each batch naming its session type and model (the type's
+      default unless overridden). Dependencies are the items' blocked-by
+      relations. This step reads and writes nothing.
+
+    3 · WORK — one session per batch, in parallel, each on a nested
+      worktree off the bolt branch. Flip items to `state:in-progress` as
+      their session starts, and record progress - spec landed, build
+      done - as comments on the item and as its one `stage:*` label:
+      `stage:planned` when the change validates, `stage:built` when the
+      change is applied and a commit is on the item's branch. An item's
+      spec agent and its build agent stay two agents. Re-read every
+      neighbour a spec claims something about from disk at build time.
+
+    4 · MERGE — merge each finished branch back to the bolt branch
+      through the gate and write `stage:merged`; when the bolt's merge
+      criteria hold, land each repo's bolt branch on its main through the
+      merge gate, one writer to main at a time. Comment the landing SHA
+      on each item and close it `closed:done`; archive the built repos'
+      spec-driven changes. Then re-query.
+
+    THERE IS NO VERIFY STAGE ON THIS TYPE. The cycle goes spec, build,
+    merge, land: no verify session is launched, no go-fix round is run,
+    and `stage:verified` is never written on one of this bolt's items -
+    a label written for a stage that did not run would make these items
+    indistinguishable from verified ones on every view that reads it.
+    Skipping verify is a property of THIS TYPE alone and is not reachable
+    by a per-bolt declaration on another type, for the same reason the
+    plan-mode path is refused outside bolt-quick: the bolt type is the
+    scrutiny the release approved, and no program downgrades it.
+
+    THE MERGE GATE IS UNAFFECTED BY THE TYPE. `wt merge` runs the repo's
+    own `[pre-merge]` hooks on the exact rebased tree at the merge back,
+    and the full gate runs again at the landing with one writer to main
+    at a time - never `--yes`, `--no-hooks` or `--no-verify`, and never
+    hand-substituted by running the hooks' scripts yourself. What a bolt
+    type varies is how much REVIEW the flywheel schedules; what the
+    repo's hooks assert about the tree that lands is not the flywheel's
+    to trade away. "No verify stage" is never read as "no gate".
+
+    Design-level findings - the design is wrong, not the build - go to
+    the source intent's milestone; any other discovery joins
+    bolt/<slug> only when this bolt's merge criteria need it, and
+    otherwise goes to the intent that owns its subject, or unmilestoned
+    for dispatch to triage. Never fixed from here, and never left on
+    the bolt to bloat its close.
+
+    When the ready set is empty: present the queue - this bolt's
+    `state:queued` items and Backlog units, one line each - and stop.
+    An empty ready set with a full queue is the correct resting state.
+    When the milestone's items are all closed, propose closure to the
+    operator: tear down worktrees, branches and the bolt branches, and
+    `openspec archive` the change.
+
+    Report the run ID when the loop ends.
+
+    THE ANDON CORD — a session that finds the work has gone wrong in a
+    way no further round will fix - the spec contradicts the decision it
+    cites, the tree contradicts the spec - stops, holds the batch, and
+    asks the operator. Stopping on a defect is expected behaviour.

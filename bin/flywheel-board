@@ -8,9 +8,13 @@ Adds each item to the Project and, with --status, sets its Status —
 and defaults Start and Target to today (override with --start/--target
 and a stated reason when the work is bigger; automation first). The
 board rule: whatever carries the approval sits on the board — units
-and elaborations (flywheel-batch adds them at Backlog), and a quick
-bolt's lone born-ready item (added at Ready by dispatch at triage, so the roadmap
-and the reconciler's Ready query see it like any released batch).
+and elaborations, which flywheel-batch adds at Backlog. A born-ready
+release's unit parent is moved to Ready with this tool at triage (the
+operator's word there IS the approval, so nothing is left to approve),
+which is what puts it on the roadmap and in front of the reconciler's
+Ready query like any released batch. The released items themselves stay
+off the board: the parent is the row, and it is what carries GitHub's
+native sub-issue progress bar for the bolt.
 Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
 """
 

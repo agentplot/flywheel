@@ -234,6 +234,41 @@ class TypeConfigTest(unittest.TestCase):
         with self.assertRaises(loop.LoopError):
             loop.LoopConfig(name="t", strategy="wishful").invocations
 
+    def test_the_three_older_types_declare_no_stages_and_run_them_all(self):
+        # `bolt-direct` is expressed as config, so the types that predate it
+        # must be untouched by its arrival: no `stages:` key, and the
+        # default sequence.
+        for name in ("bolt-quick", "bolt-default", "bolt-adversarial"):
+            self.assertEqual(loop.load_type(name, ROOT).stages,
+                             loop.DEFAULT_STAGES, name)
+
+    def test_bolt_direct_declares_the_stage_set_it_runs_and_verify_is_not_in_it(self):
+        config = loop.load_type("bolt-direct", ROOT)
+        self.assertEqual(config.stages, ("spec", "build", "merge", "land"))
+        self.assertFalse(config.runs("verify"))
+        self.assertTrue(all(config.runs(s) for s in ("spec", "build", "merge")))
+
+    def test_bolt_direct_declares_no_boundary_its_stages_never_create(self):
+        # A hook naming a boundary that never occurs is a review point
+        # nothing can ever attach to.
+        self.assertNotIn("post-verify", loop.load_type("bolt-direct", ROOT).hooks)
+        for name in ("bolt-quick", "bolt-default", "bolt-adversarial"):
+            self.assertIn("post-verify", loop.load_type(name, ROOT).hooks)
+
+    def test_plan_mode_is_not_reachable_on_bolt_direct_either(self):
+        with self.assertRaises(loop.LoopError):
+            loop.resolve_plan_mode(True, loop.load_type("bolt-direct", ROOT))
+
+    def test_install_schemas_would_publish_the_new_type_with_the_others(self):
+        # `bin/install-schemas` copies every directory under schemas/ that
+        # holds a schema.yaml — so a new type needs no change to it.
+        published = sorted(d.name for d in (ROOT / "schemas").iterdir()
+                           if (d / "schema.yaml").is_file())
+        self.assertIn("bolt-direct", published)
+        self.assertEqual(published, ["bolt-adversarial", "bolt-default",
+                                     "bolt-direct", "bolt-quick",
+                                     "flywheel-intent"])
+
 
 # ---------------------------------------------------------------------------
 # Guards — writes-only, idempotent, and the dry cycle
@@ -525,6 +560,176 @@ class StageTest(unittest.TestCase):
         self.assertIn("wt merge build/add-thing --no-remove", order)
         for suppressor in ("--yes", "--no-hooks", "--no-verify"):
             self.assertIn(suppressor, order, "the order names what it forbids")
+
+
+class StageLabelTest(unittest.TestCase):
+    """#96 — a label at each boundary, one at a time, re-derived from git."""
+
+    #: A tree that says: the item's branch holds commits, and (by default)
+    #: is an ancestor of the bolt branch.
+    def shell(self, commits="3\n", ancestor=0):
+        return FakeShell({("git", "rev-list"): Result(0, commits),
+                          ("git", "merge-base"): Result(ancestor)})
+
+    def worked(self, tracker, **overrides):
+        runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
+                                reports=["No findings."] * 12)
+        return a_loop(tracker, runner=runner,
+                      shell=overrides.pop("shell", self.shell()), **overrides)
+
+    def a_ready_item(self):
+        return Snapshot(items=[item(1, inbox.READY, change="add-thing")],
+                        milestone="bolt/x")
+
+    def stages_written(self, tracker):
+        return [w[2] for w in tracker.writes
+                if w[0] == "add_label" and w[2] in inbox.STAGE_LABELS]
+
+    def test_a_full_cycle_writes_the_four_boundaries_in_the_order_it_runs_them(self):
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        self.worked(tracker).cycle(1)
+        self.assertEqual(self.stages_written(tracker),
+                         [inbox.STAGE_PLANNED, inbox.STAGE_BUILT,
+                          inbox.STAGE_VERIFIED, inbox.STAGE_MERGED])
+
+    def test_an_item_carries_exactly_one_stage_label_at_a_time(self):
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        self.worked(tracker).cycle(1)
+        self.assertEqual(tracker.labels[1] & set(inbox.STAGE_LABELS),
+                         {inbox.STAGE_MERGED},
+                         "the label names the LEADING EDGE, not the history")
+
+    def test_no_stage_write_ever_touches_a_closed_label(self):
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        self.worked(tracker).cycle(1)
+        touched = [w for w in tracker.writes
+                   if w[0] in ("add_label", "remove_label")
+                   and str(w[2]).startswith("closed:")]
+        self.assertEqual(touched, [],
+                         "closed:done stays the landing's, with the SHA")
+
+    def test_a_stage_that_did_not_happen_writes_no_label(self):
+        # The spec stage fails, so the cycle never reaches build.
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot)
+        shell = FakeShell({("openspec", "validate"): Result(1),
+                           ("git", "rev-list"): Result(0, "3\n"),
+                           ("git", "merge-base"): Result(1)})
+        self.worked(tracker, shell=shell).cycle(1)
+        self.assertEqual(self.stages_written(tracker), [])
+
+    def test_a_session_saying_it_built_is_not_the_evidence(self):
+        # The build session settles claiming success, but no commit exists
+        # on the item's branch — so no stage:built, because the check is
+        # `git rev-list` and not the report.
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "all green!"}]})
+        self.worked(tracker, shell=self.shell(commits="0\n", ancestor=1)).cycle(1)
+        self.assertNotIn(inbox.STAGE_BUILT, self.stages_written(tracker))
+
+    # -- the re-derivation -------------------------------------------------
+
+    def in_flight(self, *labels):
+        return Snapshot(items=[item(1, inbox.IN_PROGRESS, *labels,
+                                    change="add-thing")],
+                        milestone="bolt/x")
+
+    def reconcile(self, snapshot, shell, seed=()):
+        tracker = FakeTracker(snapshot)
+        tracker.labels[1] = set(seed)
+        actions = []
+        a_loop(tracker, shell=shell).guard_stages(snapshot, actions)
+        return tracker, actions
+
+    def test_a_commit_the_loop_never_saw_written_supplies_stage_built(self):
+        # A process died after the build session committed and before the
+        # label was written. The next cycle repairs it with no record of
+        # the earlier run consulted.
+        tracker, actions = self.reconcile(self.in_flight(),
+                                          self.shell(ancestor=1))
+        self.assertIn(("add_label", 1, inbox.STAGE_BUILT), tracker.writes)
+        self.assertEqual(len(actions), 1)
+
+    def test_ancestry_of_the_bolt_branch_supplies_stage_merged(self):
+        tracker, actions = self.reconcile(self.in_flight(),
+                                          self.shell(ancestor=0))
+        self.assertIn(("add_label", 1, inbox.STAGE_MERGED), tracker.writes)
+
+    def test_a_label_ahead_of_the_tree_is_walked_back(self):
+        tracker, actions = self.reconcile(
+            self.in_flight(inbox.STAGE_MERGED), self.shell(ancestor=1),
+            seed=[inbox.IN_PROGRESS, inbox.STAGE_MERGED])
+        self.assertIn(("remove_label", 1, inbox.STAGE_MERGED), tracker.writes)
+        self.assertIn(("add_label", 1, inbox.STAGE_BUILT), tracker.writes)
+
+    def test_verified_is_never_walked_back_because_git_cannot_witness_it(self):
+        # A restart mid-verify must not invent a verdict, and must not undo
+        # one either: verify being clean is a session's finding, and the
+        # only way to re-derive it is to re-run verify.
+        tracker, actions = self.reconcile(
+            self.in_flight(inbox.STAGE_VERIFIED), self.shell(ancestor=1),
+            seed=[inbox.IN_PROGRESS, inbox.STAGE_VERIFIED])
+        self.assertEqual(tracker.writes, [])
+        self.assertEqual(actions, [])
+
+    def test_re_derivation_never_invents_planned_or_verified(self):
+        tracker, _ = self.reconcile(self.in_flight(), self.shell(ancestor=1))
+        written = [w[2] for w in tracker.writes if w[0] == "add_label"]
+        self.assertNotIn(inbox.STAGE_PLANNED, written)
+        self.assertNotIn(inbox.STAGE_VERIFIED, written)
+
+    def test_a_tree_that_witnesses_nothing_writes_nothing(self):
+        tracker, actions = self.reconcile(
+            self.in_flight(), self.shell(commits="0\n", ancestor=1))
+        self.assertEqual(tracker.writes, [])
+        self.assertEqual(actions, [])
+
+    def test_an_item_not_yet_in_progress_acquires_no_stage(self):
+        # `stage:*` refines `state:in-progress` and never replaces a
+        # `state:*` label, so a queued item has no stage to reconcile.
+        snapshot = Snapshot(items=[item(1, inbox.QUEUED, change="add-thing")],
+                            milestone="bolt/x")
+        tracker, actions = self.reconcile(snapshot, self.shell(ancestor=0))
+        self.assertEqual(tracker.writes, [])
+
+    def test_the_dry_cycle_holds_with_the_new_guard(self):
+        # Two consecutive cycles against an unchanged tracker and an
+        # unchanged tree: the second writes nothing.
+        snapshot = self.in_flight()
+        tracker = FakeTracker(snapshot)
+        program = a_loop(tracker, shell=self.shell(ancestor=0))
+        first, _ = program.guards(snapshot)
+        self.assertEqual(len(first), 1)
+        before = len(tracker.writes)
+        again, _ = program.guards(snapshot)
+        self.assertEqual(again, [], "a check that changed nothing records nothing")
+        self.assertEqual(len(tracker.writes), before, "and writes nothing")
+
+    # -- the type that runs no verify --------------------------------------
+
+    def direct(self, tracker):
+        return self.worked(tracker, type_name="bolt-direct", config=loop.LoopConfig(
+            name="bolt-direct", strategy="ff",
+            stages=("spec", "build", "merge", "land")))
+
+    def test_a_bolt_direct_cycle_launches_no_verify_session(self):
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        result = self.direct(tracker).cycle(1)
+        self.assertEqual([o.stage for o in result.outcomes],
+                         ["spec", "build", "merge"])
+
+    def test_a_bolt_direct_item_goes_built_to_merged_with_no_verified(self):
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        self.direct(tracker).cycle(1)
+        self.assertEqual(self.stages_written(tracker),
+                         [inbox.STAGE_PLANNED, inbox.STAGE_BUILT,
+                          inbox.STAGE_MERGED])
+        self.assertNotIn(inbox.STAGE_VERIFIED, tracker.labels[1])
 
 
 class LandingTest(unittest.TestCase):

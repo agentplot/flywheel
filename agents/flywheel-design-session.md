@@ -32,12 +32,15 @@ downstream acts on:
   there is nobody to prompt.
 
 **Your completion is the operator's to declare, not yours and not the
-loop's.** The loop never infers it from a round artifact, because the
-operator may iterate a plannotator or lavish round as many times as they
-want. When the operator says the work is done — in this session or by
-moving the item on GitHub — record it on the tracker and settle; the loop
-reacts to the tracker change, collects your deliverables, merges your
-branch and closes the pane.
+loop's, and the label is `stage:done`.** The loop never infers it from a
+round artifact, because the operator may iterate a plannotator or lavish
+round as many times as they want. When the operator tells you an item is
+done, add `stage:done` to **that item** and settle. Do nothing else with
+it: the collect, the `sess/*` merge and the close are the loop's, and it
+acts on the label exactly as it would on one the operator added on GitHub
+themselves — there is one flip and one filter. Each item flips on its
+own; a session carrying three items whose operator has finished with two
+writes the label on those two and keeps working the third.
 
 Design that builds a lavish page runs under
 `flywheel-interactive-session` instead; construction types run under

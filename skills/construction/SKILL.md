@@ -6,9 +6,11 @@ description: Run the flywheel construction loop — the bolt loop drives release
 # Flywheel construction — the bolt loop
 
 One bolt = one construction iteration = one OpenSpec change bound to a
-bolt schema member — `bolt-default`, `bolt-quick`, `bolt-adversarial`,
+bolt schema member — `bolt-direct`, `bolt-default`, `bolt-quick`,
+`bolt-adversarial`,
 where **the member picked at creation IS the bolt type**, setting the
-review steps the loop schedules — plus the tracker
+review steps the loop schedules and the stages it runs (`bolt-direct`
+declares spec, build, merge, land — no verify) — plus the tracker
 milestone `bolt/<slug>` holding its items. The items are the released
 assertions, moved there at release; **the assertion is the proposal**,
 and every spec derives from the assertion record and the decisions it

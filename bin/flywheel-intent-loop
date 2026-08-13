@@ -3,8 +3,7 @@
 
   flywheel-intent-loop --slug SLUG [--org ORG] [--repo REPO] [--project TITLE]
       [--repo-dir DIR] [--base BRANCH] [--goal TEXT]
-      [--completion-signal {closed,label,board}] [--done-label LABEL]
-      [--done-status STATUS] [--max-cycles N] [--dry-run] [--fixture PATH]
+      [--max-cycles N] [--dry-run] [--fixture PATH]
 
 The design half of `design/loop-programs.md`: query and guards (flip-consume,
 handoff birth, compose), typed design sessions, deliverable collection, and
@@ -18,12 +17,13 @@ and the sessions it would dispatch are printed, and the tracker is untouched.
 `--fixture PATH` reads a `workflows/fixtures/intent-tracker.json`-shaped
 snapshot instead of the tracker, and implies `--dry-run`.
 
-**Design-session completion is the operator's, and R1 is open.** The record
-leaves the exact GitHub signal for "the operator marks a design session done"
-unanswered, so `--completion-signal` has no default: name it as `closed` (the
-items are closed), `label` (with `--done-label`), or `board` (with
-`--done-status`). Without it the loop runs everything up to and including
-supervision and stops before collecting, saying so in its report.
+**Design-session completion is the operator's, and the signal is the
+`stage:done` label.** There is nothing to configure: the operator flips
+`stage:done` on an item — in the pane, where the session writes it and
+settles, or on GitHub directly — and the loop collects that item's
+deliverables, marks it `stage:collected` and closes it, independently of its
+siblings in the same session. The `sess/*` merge and the pane close wait
+until every item the session carries is collected.
 
 Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
 """
@@ -35,7 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_gh import GraphqlError, resolve_token
 from _flywheel_inbox import Tracker
-from _flywheel_intent import COMPLETION_SIGNALS, Config, run
+from _flywheel_intent import Config, run
 from _flywheel_sessions import SessionError, runner_for
 
 
@@ -51,11 +51,6 @@ def main():
     ap.add_argument("--base", default="main", metavar="BRANCH")
     ap.add_argument("--goal", default=None, metavar="TEXT",
                     help="one or two sentences carried into every work order")
-    ap.add_argument("--completion-signal", default=None,
-                    choices=sorted(COMPLETION_SIGNALS),
-                    help="R1: how the operator marks a design session done")
-    ap.add_argument("--done-label", default=None, metavar="LABEL")
-    ap.add_argument("--done-status", default=None, metavar="STATUS")
     ap.add_argument("--max-cycles", type=int, default=20, metavar="N")
     ap.add_argument("--dry-run", action="store_true",
                     help="plan every write, apply none")
@@ -72,9 +67,6 @@ def main():
         repo_dir=Path(args.repo_dir).resolve(),
         base_branch=args.base,
         goal=args.goal,
-        completion_signal=args.completion_signal,
-        done_label=args.done_label,
-        done_status=args.done_status,
         apply=not (args.dry_run or args.fixture),
         fixture=args.fixture,
         max_cycles=args.max_cycles,

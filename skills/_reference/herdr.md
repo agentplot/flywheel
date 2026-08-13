@@ -385,12 +385,21 @@ sessions:
   --milestone "bolt/<slug>" --title "<the batch, imperatively>" <item> <item> ...
 ```
 
-A quick bolt's lone born-ready item goes on the board itself — the
-approval-carrier where a batch would be:
+Every release creates one unit parent, the born-ready one included. On a
+born-ready release the operator's word at triage IS the approval, so the
+parent goes to Ready from birth — `flywheel-batch` puts it at Backlog and
+never writes Ready, so the Ready move belongs here, in the release path:
 
 ```bash
-<plugin-root>/bin/flywheel-board --org <org> --repo <tracker> --status Ready <item>
+<plugin-root>/bin/flywheel-batch --kind unit --org <org> --repo <tracker> \
+  --milestone "bolt/<slug>" --title "<the batch, imperatively>" <item> <item> ...
+<plugin-root>/bin/flywheel-board --org <org> --repo <tracker> \
+  --status Ready <the unit parent's number>
 ```
+
+The parent is the board row. The released items are NOT added to the
+board beside it — one row per bolt is what the parent buys, and it is
+lost if the sub-issues appear too.
 
 Finding the batches the operator has released:
 

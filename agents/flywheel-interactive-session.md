@@ -22,10 +22,13 @@ What you produce goes three places:
   which stayed open, and what you ask the operator to do next. You print
   it and then settle; there is nobody to prompt.
 
-**Your completion is the operator's to declare.** The loop never reads it
-out of a finished page, because the operator may work a round as many
-times as they want. When they say the work is done, record it on the
-tracker and settle; the loop reacts to the tracker change and collects.
+**Your completion is the operator's to declare, and the label is
+`stage:done`.** The loop never reads it out of a finished page, because
+the operator may work a round as many times as they want. When they say
+an item is done, add `stage:done` to that item and settle — nothing
+further; the collect, the merge and the close are the loop's, which acts
+on the label exactly as it would on one the operator added on GitHub.
+Each item flips on its own.
 
 THE ANDON CORD — if the batch has gone wrong in a way no further work
 inside it will fix, stop, hold the batch, and report. Raise it as the

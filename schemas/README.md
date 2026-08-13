@@ -1,19 +1,25 @@
 # schemas/
 
-The four OpenSpec workflow schemas the loops track their work under:
+The five OpenSpec workflow schemas the loops track their work under:
 
 - `flywheel-intent` — one design thread: decisions, questions,
   assertions, sessions, typed tasks, and the intent loop's shape in
   `apply.instruction`.
-- `bolt-default` · `bolt-quick` · `bolt-adversarial` — one construction
+- `bolt-direct` · `bolt-default` · `bolt-quick` · `bolt-adversarial` —
+  one construction
   iteration each; the member picked at creation IS the bolt type, and
   what differs between them is the `loop:` block — the type as a named
   config — and `apply.instruction`, the review steps the loop schedules.
+  `bolt-direct` is the no-verify type: its `loop:` block declares the
+  stage set `spec, build, merge, land`, so its items go from
+  `stage:built` to `stage:merged` and never carry `stage:verified`. The
+  repo's own merge gate is not a function of the type and runs
+  unweakened on all four.
   (`bolt-no-spec` is
   deliberately not a schema: plan mode replaces the spec step, and is
   `bolt-quick`'s option alone.)
 
-The `loop:` block is a stub in all three: declared, nothing built. It is
+The `loop:` block is a stub in all four: declared, nothing built. It is
 also invisible to `openspec`, whose workflow-schema validator strips
 unknown top-level keys rather than rejecting or keeping them — so the
 programs that come to read it read `schema.yaml` themselves, and
