@@ -47,10 +47,11 @@ Worktrunk's own path does the same job and fires this repo's lifecycle hooks:
 wt switch --create <branch> --base <base> --no-cd
 ```
 
-No `--no-hooks`. With this repo's checks registered under `[pre-merge]`, the
-flag skips the merge gate: on `wt merge` it runs **zero** hooks and exits 0,
-measured. That it also skips the `[post-start]` warm-up is the smaller
-reason and not the one that matters.
+No `--no-hooks`. On this command the flag skips the `[post-start]` warm-up
+and leaves the worktree cold — that is the whole reason here. `[pre-merge]`
+is not among the hooks `wt switch --create` runs, so the merge gate is not
+what is at stake at this step; the flag's effect on `wt merge` is under
+"Merging through the gate" below.
 
 A herdr-created worktree fires no `wt` lifecycle hooks. Run the repo's hook
 yourself right after creating one:
@@ -215,21 +216,31 @@ wt merge <bolt-branch> --no-remove -C <worktree-path>  # merge-back to the bolt 
 ```
 
 The gate is the repo's `[pre-merge]` hooks. `wt merge` runs them after the
-rebase and before the merge to the target, on every shape of merge including
-the clean fast-forward, with `HEAD` equal to the sha that lands; a failure
-aborts with exit 1 and nothing landed. That is measured across ten merge
-shapes against worktrunk 0.57.0 —
+rebase and before the merge to the target, with `HEAD` equal to the sha that
+lands, on every shape of merge **that does not suppress them** — the clean
+fast-forward included; a failure aborts with exit 1 and nothing landed. That
+is measured across ten merge shapes against worktrunk 0.57.0 —
 `openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md`
 — and it is what makes the green produced by the tool rather than claimed by
 the agent that wrote the work. `--no-remove` keeps the worktree; teardown is
 a separate step.
 
+**No `--no-hooks` here either, and here it is the gate at stake.** On
+`wt merge` the flag runs **zero** hooks and exits 0 — measured, that lab's
+`nohooks` row — so it skips this repo's merge gate outright. `verify = false`
+does the same. The qualifier above is those two shapes and nothing else: a
+bare "every shape" would be refuted by the very finding cited for it.
+
 Which worktree's *configuration* supplies those hooks, when the source and
 the target carry different `.config/wt.toml` files, has **not** been
 measured: that lab measured cwd — the source worktree — and ran symmetric
 configuration throughout, so no row of it distinguishes the two. Assume
-neither side. Where a bolt's own merge-back turns on the answer, the reading
-for that one merge belongs to its `bolt.md` and is cited from there.
+neither side. A merge that ran zero hooks does not settle it either — the
+two suppressing flags above and a misplaced trailing `-C` produce that same
+result, so zero hooks is evidence of nothing until those are excluded. Where
+a bolt's own merge-back turns on the answer, how to read that one merge
+belongs to its `bolt.md` and is cited from there rather than reproduced
+here; that reasoning has already moved once.
 
 `wt merge` on this machine squashes by default and generates the message with
 a headless `claude` that is not logged in. Pass `--no-squash` unless a

@@ -12,9 +12,9 @@
   ];
 
   # `devenv shell -- gates` — the same three commands .config/wt.toml runs
-  # before a merge and .github/workflows/gates.yml runs on every push. Three
-  # callers, one definition, so a green claim in one place means the same thing
-  # in the others.
+  # before a merge and .github/workflows/gates.yml runs on push to main, on
+  # pull requests, and on manual dispatch. Three callers, one definition, so a
+  # green claim in one place means the same thing in the others.
   scripts.gates = {
     description = "Run every gate: plugin manifests, shipped paths, the site";
     exec = ''
