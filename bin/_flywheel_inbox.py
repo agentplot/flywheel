@@ -47,6 +47,11 @@ ELABORATION = "elaboration"
 TYPE_ASSERTION = "type:assertion"
 TYPE_HANDOFF = "type:handoff"
 
+CLOSED_DONE = "closed:done"
+CLOSED_DECLINED = "closed:declined"
+CLOSED_SUPERSEDED = "closed:superseded"
+CLOSED_PARKED = "closed:parked"
+
 STATUS_BACKLOG = "Backlog"
 STATUS_READY = "Ready"
 
@@ -137,6 +142,41 @@ class Item:
             blocked_by=tuple(raw.get("blocked_by", ())),
             parent_batch=raw.get("parent_batch"),
         )
+
+
+def backfill_parentage(items, batches):
+    """Fill each item's `parent_batch` from the batches that claim it.
+
+    **The API does not carry this field and the guards key on it.** Measured on
+    the live tracker, 2026-08-13: `gh api /repos/agentplot/flywheel/issues/73`
+    returns `sub_issues_summary` and no parent of any kind, so
+    `Item.from_api`'s `raw.get("parent_batch")` is always `None` there. Both
+    intent guards test `parent_batch is None` — handoff birth for settled
+    assertions, compose for orphan queued items — so without this every
+    already-batched item on a live milestone reads as an orphan: a second batch
+    per cycle, a 422 on the re-attach GitHub refuses (an item joins exactly one
+    batch, ever), and a cycle that is never dry.
+
+    The fixtures state the field directly, which is why the filter tests pass
+    over the hole; parentage is only ever *derived* on the live path, from the
+    `sub_issues` the snapshot already fetches per batch.
+
+    An item that already carries a parent keeps it — this fills, it never
+    overrides — and the first batch claiming an item wins, since a second
+    claim is the state GitHub forbids anyway.
+    """
+    parent = {}
+    for batch in batches:
+        for number in batch.sub_issues:
+            parent.setdefault(number, batch.number)
+    if not parent:
+        return list(items)
+    filled = []
+    for item in items:
+        if item.parent_batch is None and item.number in parent:
+            item = Item(**{**item.__dict__, "parent_batch": parent[item.number]})
+        filled.append(item)
+    return filled
 
 
 @dataclass(frozen=True)
@@ -441,6 +481,16 @@ def compose_plan(snapshot, slug, handoff=None):
     breaks the dry-cycle property the bolt's merge criteria test for. The
     fixture asserts the same split — `intent-tracker.json` annotates #202 as
     handoff birth's and #203 as compose's, one guard each.
+
+    **A batch is not composable work, and the live tracker is what proves it.**
+    Measured on `intent/relay-delivery`, 2026-08-13: #46 is an `elaboration`
+    parent at Backlog holding #43 and #45, and it is itself an open
+    `state:queued` issue with no parent of its own — so the literal reading
+    proposes batching the batch. That never converges: the parent this guard
+    would create is another queued orphan, which the next cycle composes in
+    turn, for as long as the loop runs. The `unit`/`elaboration` labels are
+    what distinguish a container from the work inside it, so they are what the
+    sweep skips.
     """
     milestone = f"{INTENT_PREFIX}{slug}"
     claimed = {i.number for i in (handoff.assertions if handoff else ())}
@@ -448,6 +498,7 @@ def compose_plan(snapshot, slug, handoff=None):
         i for i in snapshot.on(milestone)
         if i.is_open and i.queued and i.parent_batch is None
         and i.number not in claimed
+        and not ({UNIT, ELABORATION} & i.labels)
     )
 
 
@@ -767,6 +818,8 @@ class Tracker:
             batches.append(Batch(number=number, status=STATUS_READY,
                                  milestone=row.get("milestone")))
 
+        items = backfill_parentage(items, batches)
+
         return TrackerSnapshot(
             items=items, batches=batches,
             closed_milestones=self.closed_milestones(),
@@ -791,6 +844,38 @@ class Tracker:
     def comment(self, number, body):
         self._gh(self.token, "issue", "comment", str(number),
                  "--repo", f"{self.org}/{self.repo}", "--body", body)
+
+    def set_body(self, number, body):
+        self._gh(self.token, "issue", "edit", str(number),
+                 "--repo", f"{self.org}/{self.repo}", "--body", body)
+
+    def create_issue(self, title, body, labels=(), milestone=None):
+        """The one item the intent loop ever creates is the handoff item.
+
+        `gh issue create` prints the URL rather than JSON, so the number comes
+        off the end of it; a URL we cannot parse is not fatal — the guard's
+        write happened, and the next cycle reads the item back from the
+        tracker like everything else.
+        """
+        args = ["issue", "create", "--repo", f"{self.org}/{self.repo}",
+                "--title", title, "--body", body]
+        for label in labels:
+            args += ["--label", label]
+        if milestone:
+            args += ["--milestone", milestone]
+        out = self._gh(self.token, *args)
+        text = out if isinstance(out, str) else str(out or "")
+        tail = text.strip().rsplit("/", 1)[-1]
+        return int(tail) if tail.isdigit() else None
+
+    def close_issue(self, number, comment=None, reason=CLOSED_DONE):
+        if reason:
+            self.add_label(number, reason)
+        args = ["issue", "close", str(number),
+                "--repo", f"{self.org}/{self.repo}"]
+        if comment:
+            args += ["--comment", comment]
+        self._gh(self.token, *args)
 
 
 _BOARD_QUERY = """

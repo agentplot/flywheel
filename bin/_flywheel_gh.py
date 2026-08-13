@@ -41,7 +41,21 @@ def gh(token, *args, input_json=None):
     if proc.returncode != 0:
         sys.exit(f"flywheel: gh {' '.join(args[:2])} failed: "
                  f"{proc.stderr.strip() or proc.stdout.strip()}")
-    return json.loads(proc.stdout) if proc.stdout.strip() else {}
+    out = proc.stdout.strip()
+    if not out:
+        return {}
+    try:
+        return json.loads(out)
+    except json.JSONDecodeError:
+        # NOT every gh subcommand speaks JSON. `gh api` does; `gh issue edit`,
+        # `gh issue comment`, `gh issue create` and `gh issue close` print a URL
+        # or a human line, and parsing one of those as JSON raised on SUCCESS.
+        # Measured 2026-08-13: `gh issue edit 73 --add-label state:in-progress`
+        # prints `https://github.com/agentplot/flywheel/issues/73`. Every write
+        # in `_flywheel_inbox.Tracker` goes through one of those four, so the
+        # raw text is returned rather than thrown: a caller that wants JSON is
+        # calling `gh api` and still gets it.
+        return out
 
 
 def graphql(token, query, variables=None):
