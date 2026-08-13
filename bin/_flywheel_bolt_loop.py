@@ -681,6 +681,45 @@ class BoltLoop:
     def git(self, *args, cwd=None):
         return self.shell(["git", *args], cwd=cwd or self.params.bolt_worktree)
 
+    def _wt_rows(self):
+        out = self.shell(["wt", "list", "--format", "json"],
+                         cwd=self.params.repo_dir)
+        if out.returncode != 0:
+            return None
+        try:
+            rows = json.loads(out.stdout or "[]")
+        except ValueError:
+            return None
+        return rows if isinstance(rows, list) else None
+
+    def worktree_for(self, branch, base):
+        """The loop is the worktree orchestrator — worktrunk's agent-handoff
+        pattern: the orchestrator creates the worktree and the session is
+        born inside it. No order ever tells a session to run `wt switch`.
+
+        Idempotent: an existing worktree for the branch is adopted by path.
+        Returns (path, created); (None, False) when wt cannot provide one.
+        """
+        rows = self._wt_rows()
+        for row in rows or ():
+            if row.get("branch") == branch and row.get("path"):
+                return row["path"], False
+        made = self.shell(["wt", "switch", "--create", branch,
+                           "--base", base, "--no-cd"],
+                          cwd=self.params.repo_dir)
+        if made.returncode != 0:
+            return None, False
+        rows = self._wt_rows()
+        for row in rows or ():
+            if row.get("branch") == branch and row.get("path"):
+                return row["path"], True
+        return None, False
+
+    def batch_worktree(self, batch):
+        path, _created = self.worktree_for(f"build/{batch.slug}",
+                                           self.params.bolt_branch)
+        return path
+
     # -- objective checks: the world, not a report -------------------------
 
     def change_validates(self, change):
@@ -854,6 +893,9 @@ class BoltLoop:
         scaffolded = self.guard_scaffold(actions)
         if scaffolded is not None:
             return actions, scaffolded
+        topology = self.guard_topology(actions)
+        if topology is not None:
+            return actions, topology
         flipped = self.guard_flip_consume(snapshot, actions)
         failure = self.guard_route(snapshot, actions, skip=flipped)
         return actions, failure
@@ -876,7 +918,9 @@ class BoltLoop:
         order = sessions.work_order(f"/opsx:new {self.params.slug}", (
             f"Scaffold the bolt record for bolt/{self.params.slug} and bind the "
             f"{self.params.type_name} schema. Write bolt.md from what the milestone "
-            f"and its items say; commit by pathspec. Do not start any other work, "
+            f"and its items say; commit by pathspec, in THIS worktree on the "
+            f"branch already checked out — never create a branch or worktree; "
+            f"the loop cuts the bolt branch after you settle. Do not start any other work, "
             f"and do not touch the items. Deliver by settling."))
         outcome = self.drive("scaffold", self.spec_for(
             "scaffold", name, self.params.bolt_worktree, order))
@@ -888,6 +932,30 @@ class BoltLoop:
                     f"openspec/changes/{self.params.slug} is still missing"
                     + (f" — its report: {tail}" if tail else ""))
         actions.append(f"scaffolded openspec/changes/{self.params.slug}")
+        return None
+
+    def guard_topology(self, actions):
+        """0.5 — the bolt branch and its worktree are the loop's to cut.
+
+        The record is born on main at scaffold; cutting `bolt/<slug>` from
+        it is the first topological act, and it is the LOOP'S — a session
+        never creates a worktree (worktrunk's agent-handoff pattern).
+        Idempotent: an existing worktree is adopted by path, so this writes
+        nothing on a second cycle. Skipped on --dry-run and under a
+        fixture tracker; wt's canonical path wins even over an explicit
+        --bolt-worktree, because adoption-by-path is what a restarted
+        stateless loop relies on.
+        """
+        if self.dry_run or isinstance(self.tracker, FixtureTracker):
+            return None
+        path, created = self.worktree_for(self.params.bolt_branch,
+                                          self.params.main_branch)
+        if path is None:
+            return (f"topology: wt could not provide {self.params.bolt_branch} "
+                    f"and its worktree")
+        self.params.bolt_worktree = path
+        if created:
+            actions.append(f"cut {self.params.bolt_branch} and its worktree")
         return None
 
     def guard_flip_consume(self, snapshot, actions):
@@ -1059,8 +1127,13 @@ class BoltLoop:
         name = session_name("spec-writing", change)
         invocations = list(self.params.config.invocations)
         order = sessions.work_order(f"{invocations[0]} {change}", self.spec_brief(batch, change))
+        cwd = self.batch_worktree(batch)
+        if cwd is None:
+            return StageOutcome("spec", "failed",
+                                f"wt could not provide build/{batch.slug} "
+                                f"from {self.params.bolt_branch}")
         outcome = self.drive("spec", self.spec_for(
-            "spec", name, self.params.repo_dir, order), batch.numbers, close=False)
+            "spec", name, cwd, order), batch.numbers, close=False)
         runner, handle = self.runner("spec"), outcome.handle
         for invocation in invocations[1:]:
             if not outcome.ok:
@@ -1087,9 +1160,10 @@ class BoltLoop:
         return (
             f"Spec for {items} on milestone {self.params.milestone}.\n\n"
             f"One spec-driven change for these assertions, derived from {records} "
-            f"and the decisions they cite, never from a restatement. Worktree: in "
-            f"\"{self.params.repo_dir}\" run  wt switch --create build/{batch.slug} "
-            f"--base {self.params.bolt_branch} --no-cd  and work there. "
+            f"and the decisions they cite, never from a restatement. You are IN "
+            f"the build/{batch.slug} worktree, already cut from "
+            f"{self.params.bolt_branch} by the loop — work here, and never "
+            f"create a branch or worktree. "
             f"`openspec validate {change} --strict` green before it counts.\n\n"
             f"Record what you specced as a comment on each item. Commit by pathspec; "
             f"do not merge and do not push — the loop merges. Deliver by settling.")
@@ -1103,8 +1177,12 @@ class BoltLoop:
             outcome = self.plan_mode_build(batch, name)
         else:
             order = sessions.work_order(f"/opsx:apply {change}", self.build_brief(batch))
+            cwd = self.batch_worktree(batch)
+            if cwd is None:
+                return StageOutcome("build", "failed",
+                                    f"wt could not provide build/{batch.slug}")
             outcome = self.drive("build", self.spec_for(
-                "build", name, self.params.repo_dir, order), batch.numbers, close=False)
+                "build", name, cwd, order), batch.numbers, close=False)
         if not outcome.ok:
             return outcome
         missing = self.deliverables(batch, since,
@@ -1117,7 +1195,8 @@ class BoltLoop:
         items = ", ".join(f"#{n}" for n in batch.numbers)
         return (
             f"Build for {items} on milestone {self.params.milestone}.\n\n"
-            f"Apply the change on the build/{batch.slug} worktree. Re-read from disk "
+            f"Apply the change in this worktree — build/{batch.slug}, already cut "
+            f"by the loop. Re-read from disk "
             f"every neighbour the spec claims something about — build time is when the "
             f"neighbours have had longest to move.\n\n"
             f"Comment on each item what you built and what you verified on disk versus "
@@ -1165,7 +1244,11 @@ class BoltLoop:
         """
         order = sessions.work_order("/flywheel:build", self.plan_brief(batch))
         runner = self.runner("build")
-        spec = self.spec_for("build", name, self.params.repo_dir, order, plan_mode=True)
+        cwd = self.batch_worktree(batch)
+        if cwd is None:
+            return StageOutcome("build", "failed",
+                                f"wt could not provide build/{batch.slug}")
+        spec = self.spec_for("build", name, cwd, order, plan_mode=True)
         try:
             handle = runner.launch(spec)
         except sessions.SessionError as error:
@@ -1265,15 +1348,17 @@ class BoltLoop:
                                 "plan-mode path: there is no change to verify against")
         change = batch.change or batch.slug
         name = session_name("verify", batch.slug)
+        cwd = self.batch_worktree(batch) or self.params.repo_dir
         seen = {}
         for _ in range(MAX_FIX_ROUNDS + 1):
             order = sessions.work_order(f"/opsx:verify {change}", (
                 f"Verify what was built for {', '.join('#' + str(n) for n in batch.numbers)} "
-                f"against the change's artifacts, on the build/{batch.slug} worktree. "
+                f"against the change's artifacts, in this worktree — "
+                f"build/{batch.slug}, already cut by the loop. "
                 f"Report the findings plainly, or say plainly that there are none. "
                 f"Fix nothing. Deliver by settling."))
             outcome = self.drive("verify", self.spec_for(
-                "verify", name, self.params.repo_dir, order), batch.numbers)
+                "verify", name, cwd, order), batch.numbers)
             if not outcome.ok:
                 return outcome
             findings = (outcome.report or "").strip()

@@ -11,6 +11,7 @@ stage is done because git and openspec say so, never because a session's
 report said so).
 """
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -155,6 +156,17 @@ class FakeShell:
         for prefix, result in self.answers.items():
             if tuple(argv)[:len(prefix)] == prefix:
                 return result() if callable(result) else result
+        # Built-in wt: the loop is the worktree orchestrator, so every test
+        # meets `wt list` / `wt switch --create`. bolt/x pre-exists (topology
+        # adopts, writes nothing — the dry-cycle property holds); build/*
+        # exists once a recorded `wt switch --create` made it. All paths are
+        # TREE, whose change directory the deliverable checks already use.
+        if tuple(argv[:2]) == ("wt", "list"):
+            made = [a[3] for a, _ in self.calls
+                    if a[:3] == ("wt", "switch", "--create")]
+            rows = [{"branch": b, "path": str(TREE)}
+                    for b in ["bolt/x", *made]]
+            return Result(0, stdout=json.dumps(rows))
         return self.default
 
 
