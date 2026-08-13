@@ -146,6 +146,17 @@ reports rather than working around it.
   widening of an accepted one.
 - **The repo's own three gates green on the tree that lands**, run by the
   gate rather than by hand.
+- **No item lands closed while it still carries `needs-operator`.** An
+  item under that label has a stage the operator's word gates, and
+  closing it `closed:done` would put a false claim in its closing
+  comment. This bites concretely today: #73's collect, merge, close and
+  teardown stages are unexercised until R1 is answered — every earlier
+  stage runs and is measured, but the loop stops before collecting, by
+  its own design, and no `--completion-signal` is defaulted. So the
+  landing session lands the branch and closes the items whose evidence
+  it holds, and leaves any `needs-operator` item open with the landing
+  SHA commented instead. The milestone then closes when that item does,
+  not before.
 
 **Landing: merge.** With the criteria above holding,
 `bolt/loop-server` lands on `main` through the full gate, one writer to
