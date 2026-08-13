@@ -883,8 +883,10 @@ class BoltLoop:
         if not outcome.ok:
             return f"scaffold: {outcome.status} — {outcome.detail}"
         if not self.params.change_dir.exists():
+            tail = " ".join((outcome.report or "").split())[-300:]
             return (f"scaffold: the session settled but "
-                    f"openspec/changes/{self.params.slug} is still missing")
+                    f"openspec/changes/{self.params.slug} is still missing"
+                    + (f" — its report: {tail}" if tail else ""))
         actions.append(f"scaffolded openspec/changes/{self.params.slug}")
         return None
 
@@ -1409,6 +1411,10 @@ class BoltLoop:
         result.actions = tuple(actions)
         if failure:
             result.halted = failure
+            # The report renders the ready set; a halt before the drive must
+            # not read as "nothing ready" when the queue is full.
+            result.ready = tuple(
+                i.number for i in inbox.bolt_inbox(snapshot, self.params.slug).ready)
             return result
         if actions:
             snapshot = self.tracker.snapshot(self.params.milestone)

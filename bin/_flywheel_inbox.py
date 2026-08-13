@@ -307,8 +307,11 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
             continue
         if item.ready or item.in_progress:
             add(item.milestone, "run", f"#{item.number} {item.state or ''}".strip())
-        elif sweep and item.queued and item.parent_batch is None:
-            # over-approximation: compose may have work here
+        elif (sweep and item.queued and item.parent_batch is None
+              and not ({UNIT, ELABORATION} & item.labels)):
+            # over-approximation: compose may have work here. Batch parents
+            # are containers, never composable work — counting them keeps a
+            # job open forever (compose_plan skips them for the same reason).
             add(item.milestone, "run", f"#{item.number} queued and unbatched")
         elif (sweep and item.is_assertion and item.parent_batch is None
               and item.milestone.startswith(INTENT_PREFIX)):

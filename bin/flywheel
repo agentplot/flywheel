@@ -5,6 +5,8 @@
   flywheel up     [--host H] [--fleet PATH]
   flywheel server [--host H] [--fleet PATH] [--interval SECONDS]
                   [--once] [--dry-run]
+  flywheel down   [--fleet PATH]
+  flywheel version
 
 The manifest is `fleet.yaml` at the org folder root — the directory above
 the org's repos — found by walking up from the working directory (or
@@ -70,6 +72,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -955,6 +958,11 @@ def dispatch_nudge(env: dict):
 
 def serve(manifest: dict, host: str, session: str, env: dict,
           interval: int, once: bool, dry_run: bool) -> int:
+    # The loops this daemon spawns inherit ITS environment, and their herdr
+    # calls must address the fleet's named session — without the socket they
+    # silently address the default session and drive panes nobody watches.
+    if "HERDR_SOCKET_PATH" in env:
+        os.environ["HERDR_SOCKET_PATH"] = env["HERDR_SOCKET_PATH"]
     config = server_config(manifest, host, interval)
     tracker = inbox.Tracker(resolve_token(config.org), config.org, config.repo,
                             project_title=config.project)
@@ -1051,6 +1059,36 @@ def server_rows(manifest: dict) -> None:
     for job in jobs:
         print(f"  {job.milestone}  {job.kind}  ({job.why})")
 
+def down(manifest: dict) -> int:
+    """Stop the server and every loop process for this org.
+
+    The inverse of `up`, and only the processes: the org's herdr session,
+    its panes, and dispatch stay — sessions are the operator's to keep or
+    close, and a later `up` reattaches to them by name.
+    """
+    tracker = manifest["top"].get("tracker", "")
+    org = tracker.split("/", 1)[0] if "/" in tracker else manifest["root"].name
+    stopped = []
+    pid = server.running_pid(org)
+    if pid:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            stopped.append(f"server (pid {pid})")
+        except OSError as error:
+            print(f"server (pid {pid}): {error}")
+    out = subprocess.run(
+        ["pgrep", "-f", f"flywheel-(bolt|intent)-loop .*--org {org}"],
+        capture_output=True, text=True)
+    for line in out.stdout.split():
+        try:
+            os.kill(int(line), signal.SIGTERM)
+            stopped.append(f"loop (pid {line})")
+        except (OSError, ValueError):
+            pass
+    print("stopped: " + (", ".join(stopped) if stopped else "nothing running"))
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     overrides = {}
@@ -1068,11 +1106,22 @@ def main() -> int:
     once = "--once" in args
     if once:
         args.remove("--once")
-    if len(args) != 1 or args[0] not in {"up", "status", "server"}:
+    if len(args) != 1 or args[0] not in {"up", "status", "server", "down",
+                                         "version"}:
         print(__doc__.strip())
         return 2
+    if args[0] == "version":
+        manifest_path = Path(__file__).resolve().parent.parent
+        plugin = manifest_path / ".claude-plugin" / "plugin.json"
+        v = "unknown"
+        if plugin.exists():
+            v = json.loads(plugin.read_text()).get("version", "unknown")
+        print(f"flywheel {v} · {manifest_path}")
+        return 0
     begin_pass()
     manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
+    if args[0] == "down":
+        return down(manifest)
     session, env = session_env(manifest)
     host = this_host(manifest, overrides.get("--host"))
     if args[0] == "status":

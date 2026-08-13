@@ -91,6 +91,16 @@ class ServerInboxTest(unittest.TestCase):
         self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
                          [("bolt/a", "run")])
 
+    def test_a_queued_batch_parent_is_not_composable_work(self):
+        # A unit or elaboration parent is a container, never compose's work;
+        # counting it kept a job open forever (first boot, 2026-08-13).
+        snap = Snapshot(items=[
+            item(9, inbox.QUEUED, inbox.ELABORATION, milestone="intent/a"),
+            item(8, inbox.QUEUED, inbox.UNIT, milestone="bolt/b"),
+        ])
+        self.assertEqual([j for j in inbox.server_inbox(snap) if j.kind == "run"],
+                         [])
+
     def test_a_backlog_batch_is_not(self):
         snap = Snapshot(batches=[Batch(9, kind=inbox.UNIT,
                                        status=inbox.STATUS_BACKLOG,

@@ -66,14 +66,24 @@ def main():
     token = resolve_token(args.org)
     repo_path = f"/repos/{args.org}/{args.repo}"
 
-    # Fetch every item up front: composing a batch from a missing item or
-    # one already batched should fail before anything is created.
-    items = [gh(token, "api", f"{repo_path}/issues/{n}") for n in args.items]
-    for item in items:
+    # Fetch every item up front: a missing item still fails before anything
+    # is created, but an already-batched one is SKIPPED, not fatal — the
+    # caller's snapshot cannot see a claim whose batch sits on another
+    # milestone (an item moved after composing), and idempotent guards need
+    # the second attempt to converge, not crash.
+    items = []
+    for n in args.items:
+        item = gh(token, "api", f"{repo_path}/issues/{n}")
         if item.get("parent_issue_url"):
             parent = item["parent_issue_url"].rsplit("/", 1)[-1]
-            sys.exit(f"flywheel-batch: #{item['number']} is already in batch "
-                     f"#{parent} — an item joins exactly one batch")
+            print(f"flywheel-batch: skipping #{item['number']} — already in "
+                  f"batch #{parent}, and an item joins exactly one batch")
+            continue
+        items.append(item)
+    if not items:
+        print("flywheel-batch: nothing to compose — every item already "
+              "belongs to a batch")
+        sys.exit(0)
 
     ms_number = ensure_milestone(token, args.org, args.repo,
                                  args.milestone, due_on=args.due)
