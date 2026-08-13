@@ -74,29 +74,59 @@ the loop that owns it.
   label:state:in-progress`
 - **THEN** every item at any bolt-loop stage appears in it
 
-### Requirement: `closed:done` stays reserved for the landing
+### Requirement: The closure vocabulary carries `closed:merged`, and `closed:done` stays the landing's
 
-No `stage:*` write SHALL add, remove or stand in for a `closed:*` label. The
-landing remains the sole writer of `closed:done`, and it SHALL carry the
-landing SHA in the closing comment as it does today.
+The `closed:*` set SHALL be exactly `closed:done`, `closed:declined`,
+`closed:superseded`, `closed:parked` and `closed:merged`, where
+`closed:merged` means **merged to the bolt branch, awaiting the landing**.
 
-`stage:merged` and `closed:done` are two different facts — on the bolt
-branch, and on main — and an item that reaches the first without the second
-is the normal state of a merged batch waiting for its bolt to land.
+`closed:merged` SHALL be defined in the same `bin/flywheel-setup` label
+table as the other four and converged by the same `ensure_labels`, so the
+closure vocabulary keeps a single enumeration.
+
+`closed:done` SHALL remain the landing's alone, and SHALL carry the landing
+SHA in the closing comment as it does today.
+
+No `stage:*` write SHALL add, remove or stand in for a `closed:*` label.
+The two are written at the same boundary but are not the same act: at
+merge-back the loop writes `stage:merged` **and** closes the item with
+`closed:merged`, and a reader of either label alone is never misled about
+the other.
+
+This is what lets tracker.md invariant 5 stand verbatim — "whoever holds
+the evidence closes, always with one `closed:*` reason" — while GitHub's
+native sub-issue bar, which counts closed sub-issues, advances at merge
+rather than at the landing. A close with no reason would have bought the
+same bar by breaking the invariant every skill points at.
 
 #### Scenario: A merged item before its bolt lands
 
 - **WHEN** an item's branch is an ancestor of the bolt branch but the bolt
   branch has not landed on main
-- **THEN** the item carries `stage:merged` and does not carry `closed:done`
+- **THEN** the item is closed, carries `closed:merged` and `stage:merged`,
+  and does not carry `closed:done`
+
+#### Scenario: Every closed item carries exactly one reason at every moment
+
+- **WHEN** any item on a bolt milestone is closed, at merge-back or at the
+  landing
+- **THEN** it carries exactly one `closed:*` label — never none, and never
+  both `closed:merged` and `closed:done`
 
 #### Scenario: The landing writes its own signal
 
 - **WHEN** the bolt branch lands on main
-- **THEN** each assertion item receives `closed:done` and a comment naming
-  the landing SHA
+- **THEN** each assertion item carries `closed:done` in place of
+  `closed:merged`, and a comment naming the landing SHA
 - **AND** the Landed board view's query `is:closed label:closed:done` finds
-  exactly the landed items
+  exactly the landed items, and no merged-but-unlanded one
+
+#### Scenario: A merged item has left the In-flight view
+
+- **WHEN** the board's In-flight view runs its query `is:open
+  label:state:in-progress` while a batch is merged and its bolt unlanded
+- **THEN** the merged items do not appear in it, which is correct: they
+  wait on the landing, not on anyone
 
 ### Requirement: `flywheel-setup` converges the `stage:*` set
 
@@ -120,6 +150,13 @@ label's colour or description.
 - **WHEN** `flywheel-setup` runs against a repo whose labels include no
   `stage:*` name
 - **THEN** it creates every name in the set and reports them as created
+
+#### Scenario: The same run converges the new closure reason
+
+- **WHEN** that run happens on a repo whose labels include no
+  `closed:merged`
+- **THEN** it creates `closed:merged` too, from the same table, and a
+  second run creates nothing
 
 #### Scenario: A converged tracker is re-run
 

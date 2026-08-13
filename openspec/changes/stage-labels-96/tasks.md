@@ -128,9 +128,9 @@ every site by heading, function name or quoted phrase, never by line number.
       names "a quick bolt's lone born-ready item (at Ready from birth, via
       `flywheel-board`)", and the worked example under `## The quick bolt`,
       which shows a lone `#40` on the board with no parent.
-- [x] 5.7 Do **not** implement sub-issue check-off timing. It is out of
-      scope for the reason `design.md` gives, and a queued tracker item owns
-      the decision.
+- [x] 5.7 Sub-issue check-off timing was out of scope when sections 1–8 were
+      built, and was not implemented. The operator has since ruled on
+      `agentplot/flywheel#118`; section 9 carries it.
 
 ## 6. `bolt-direct` (#99)
 
@@ -187,5 +187,94 @@ every site by heading, function name or quoted phrase, never by line number.
 - [x] 8.4 The repo's Python tests green.
 - [x] 8.5 `openspec validate stage-labels-96 --strict` green.
 - [x] 8.6 Commit by pathspec — `git add -- <your paths>`, then
+      `git commit -- <your paths>`. Never `-a`, never `add -A`. Do not merge
+      and do not push; the loop merges.
+
+## 9. The merge-time check-off (#98, per the ruling on #118)
+
+Sections 1–8 are built and committed at `3621c3f`; this section is the half
+`#98` left open, ruled on `agentplot/flywheel#118` after that build ran.
+Re-read each site on this branch before editing it — the tree has moved
+since sections 1–8 were written.
+
+- [ ] 9.1 Add `closed:merged` to `bin/flywheel-setup`'s `LABELS`, beside the
+      other four `closed:*` entries, with a colour and a description saying
+      it means merged to the bolt branch and awaiting the landing. Add the
+      matching `CLOSED_MERGED` constant to `bin/_flywheel_inbox.py`'s
+      vocabulary block beside `CLOSED_DONE`.
+- [ ] 9.2 Run the convergence against `agentplot/flywheel` and record the
+      created name — same merge criterion as 2.4, and the loop cannot write
+      a label the repo does not define.
+- [ ] 9.3 Close each assertion item of a batch with `closed:merged` at the
+      merge boundary in `cycle`, where `set_stage(batch.numbers,
+      STAGE_MERGED)` already runs on git-confirmed ancestry, and comment the
+      merge SHA. Non-assertion items on the milestone are untouched.
+      `Tracker.close` hard-codes `closed:done` today — check every caller
+      before changing its signature, and prefer a reason argument over a
+      second closing method.
+- [ ] 9.4 Correct the merge session's work order, which reads "Comment the
+      merge SHA on each item; do not close them — they close at the
+      landing." The loop closes; the session does not. Keep the rest of that
+      order — the gate language above all — exactly as it is.
+- [ ] 9.5 Make `land_stage` upgrade rather than close: remove
+      `closed:merged`, add `closed:done`, comment the landing SHA, on an
+      item that is already closed. Confirm on disk what `gh issue close`
+      does against an already-closed issue and do not depend on it
+      succeeding; an item that arrives without `closed:merged` still ends at
+      `closed:done`.
+- [ ] 9.6 Carry `closed:merged` items in the picture the bolt loop works
+      from. `Tracker.snapshot` is built from `open_issues()`; whatever you
+      change there, the ready set must stay exactly what it is today, and
+      the intent loop's and dispatch's filters must not acquire closed items
+      they do not want.
+- [ ] 9.7 Make `landing_wanted` count a `closed:merged` item as something to
+      land — its `open_items` test returns False on an empty list with the
+      comment "nothing to close, nothing to land" — and `land_stage`'s item
+      set include them. Without both, a bolt whose last batch merged never
+      lands.
+- [ ] 9.8 Make `server_inbox` treat a bolt milestone holding a
+      `closed:merged` item as a milestone with a job, so a loop killed
+      between the last merge and the landing is restarted. The filter may
+      over-approximate; a loop filter may not.
+- [ ] 9.9 Extend `guard_stages` to reconcile both halves of the merged edge:
+      an item whose branch is an ancestor of the bolt branch ends the guard
+      at `stage:merged` and `closed:merged`. Widen its scope to the
+      milestone's `closed:merged` items as well as its open
+      `state:in-progress` ones, and never walk a `closed:done` item back.
+- [ ] 9.10 Update `skills/_reference/tracker.md` invariant 5's closing
+      sentence, which today reads "the landing stays the sole writer of the
+      second, with the SHA in its closing comment", and the `## The literal
+      graph` and `## The quick bolt` examples where an item closes
+      `closed:done` at the landing. State the merge-back close, the upgrade,
+      and that invariant 5's one-reason rule holds at every moment. Read as
+      current state; do not annotate the change.
+- [ ] 9.11 Check whether any other skill or agent profile tells a session
+      that construction items close only at the landing — grep for
+      `closed:done` across `skills/`, `agents/` and `design/` — and correct
+      what you find.
+
+## 10. Tests and gates for section 9
+
+- [ ] 10.1 `tests/test_bolt_loop.py` — a merged batch's assertion items are
+      closed with `closed:merged` and carry the merge SHA; a non-assertion
+      item on the milestone is untouched.
+- [ ] 10.2 `tests/test_bolt_loop.py` — the landing upgrades `closed:merged`
+      to `closed:done` with the SHA, leaves neither both labels nor none,
+      and works on an item that is already closed.
+- [ ] 10.3 `tests/test_bolt_loop.py` — a bolt whose every item is
+      `closed:merged` still lands: `landing_wanted` is true and the landing
+      runs.
+- [ ] 10.4 `tests/test_bolt_loop.py` — reconciliation closes an open
+      `stage:merged` item whose branch is merged, writes `stage:merged` on a
+      `closed:merged` item that lacks it, leaves a `closed:done` item alone,
+      and the dry-cycle property still holds with merged closed items on the
+      milestone.
+- [ ] 10.5 `tests/test_inbox.py` — a bolt milestone holding only
+      `closed:merged` items is a milestone with a job in `server_inbox`; the
+      bolt loop's ready set on that milestone is empty; every `closed:*`
+      constant is defined in `flywheel-setup`'s `LABELS`.
+- [ ] 10.6 The three repo gates, the Python tests, and `openspec validate
+      stage-labels-96 --strict` — all green on the tree that lands.
+- [ ] 10.7 Commit by pathspec — `git add -- <your paths>`, then
       `git commit -- <your paths>`. Never `-a`, never `add -A`. Do not merge
       and do not push; the loop merges.

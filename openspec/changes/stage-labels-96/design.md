@@ -45,7 +45,6 @@ signals are implemented behind `COMPLETION_SIGNALS` (`closed`, `label`,
 
 **Non-Goals:**
 
-- **When a unit parent's sub-issue checks off.** See Decisions.
 - Any Board Status option for session completion — the specs forbid it.
 - Reworking how sessions are supervised, batched, or named; the stall
   budget, the notify threshold and the andon path are untouched.
@@ -174,27 +173,73 @@ block per schema)").
 one stage this type omits rather than the sequence it runs, so the next type
 that varies the sequence adds a second boolean.
 
-### The check-off timing is out of scope and queued
-
-`#98` asks for two things. The first — one unit parent per release,
-born-ready included — is fully determined and is specced here. The second is
-not, and is deliberately absent from the specs.
+### The check-off is a merge-time close carrying `closed:merged`
 
 `#98` says "A sub-issue checks off at `stage:merged`, never at landing;
 `closed:done` remains the landing's signal." GitHub's native sub-issue
 progress counts **closed** sub-issues, so checking off at `stage:merged`
-means closing the item at merge. But `skills/_reference/tracker.md`
-invariant 5 says an item closes "always with one `closed:*` reason", and
-`#98` reserves the only reason that fits for the landing. The three ways out
-— close with no `closed:*` label, add a new `closed:*` name, or amend
-invariant 5 — are a decision nobody has made, and it is a tracker-contract
-decision rather than a spec-writing one.
+means closing the item at merge — while `skills/_reference/tracker.md`
+invariant 5 says an item closes "always with one `closed:*` reason" and
+`#98` reserves the only fitting reason for the landing.
 
-So this change delivers the container and leaves the check-off timing to
-that decision. A tracker item is queued for it, and the build does not
-invent an answer. Nothing else in this change depends on it: the unit parent
-exists and shows GitHub's bar either way; only *when* the bar advances is
-open.
+The operator ruled on `#118` (2026-08-14): **a new closure reason
+`closed:merged`.** A construction sub-issue closes at merge-back with
+`closed:merged`; the landing upgrades the label to `closed:done` with the
+SHA in its closing comment. Invariant 5 stands verbatim — every close
+carries exactly one `closed:*` reason at every moment. The bar advances at
+merge, the Landed view (`closed:done`) stays exact, and `flywheel-setup`
+gains the label. A merged-not-landed item leaving the In-flight view is
+correct: it waits on the landing, not on anyone.
+
+*Alternatives considered*, both put to the operator on `#118` and both
+declined: closing at merge with **no** `closed:*` label and amending
+invariant 5 to make `stage:merged` the reason — rejected because invariant 5
+is what makes "whoever holds the evidence closes" true, and every skill
+points at it; and keeping the items open at merge and **computing** a
+progress figure — rejected because it contradicts `#98`'s "GitHub's native
+progress bar" and makes the board a second store.
+
+### Closing at merge takes the item out of the filters, so "in flight" has to say so
+
+This is the consequence that costs code rather than vocabulary, and it is
+load-bearing: `Tracker.snapshot` is built from `open_issues()`, so a
+merge-closed item is invisible to everything downstream of it.
+
+Three sites break without a rule, all read on this branch:
+
+- `landing_wanted` returns False when `open_items` is empty — its own
+  comment reads "nothing to close, nothing to land". Once the last batch
+  merge-closes, that is exactly the state, and the bolt would never land.
+- `land_stage` takes `[i for i in snapshot.on(milestone) if i.is_open]`, so
+  the landing would upgrade nothing and comment no SHA.
+- `server_inbox` needs "an open item labelled `state:ready` or
+  `state:in-progress`" to see a job, so a loop killed between the last merge
+  and the landing would never be restarted.
+
+So `closed:merged` is specced as an in-flight state: the loop's picture of
+its milestone carries those items, the landing runs over them, and the
+server counts them as a job. The set that must not change is anything
+reading `state:ready` — a closed item is not ready, and the ready set is
+what the cycle works.
+
+The alternative — leaving the item open at merge and closing only at the
+landing — is the option the operator declined, and it is the one that would
+have cost nothing here. The cost is named rather than hidden: this is what
+the bar at merge-time buys.
+
+### Re-derivation covers the close, because the merged edge is now two writes
+
+`#96` asks for stages that self-heal on a stateless restart, and the merged
+edge now writes a label and a close. A process killed between them leaves an
+item that is half-merged in the tracker's eyes, so the guard reconciles
+both: an item whose branch is an ancestor of the bolt branch ends the guard
+at `stage:merged` and `closed:merged`, whichever half is missing.
+
+That widens the guard's scope, which today reads the milestone's open
+`state:in-progress` items, to also read its `closed:merged` ones — the item
+whose label write died needs the first scope, and the item whose close died
+needs the second. An item at `closed:done` is never walked back: the landing
+is downstream of the merge, and reconciliation does not reverse it.
 
 ## Risks / Trade-offs
 
@@ -222,8 +267,21 @@ open.
   board rule already expects ("whatever carries the approval sits on the
   board"). Existing born-ready bolts in flight keep their shape; this
   applies to releases made after it lands.
+- **A failed landing leaves the items already closed** → under the previous
+  shape a landing failure left everything open and obviously unfinished.
+  Now the items are at `closed:merged`, which is the honest record — the
+  work *is* on the bolt branch — and the bolt's state is carried by the
+  milestone and the andon path, both unchanged. The loop's pause and its
+  `needs-operator` label are what make a failed landing visible, not an
+  open item.
+- **A human may read a fully-checked bar as a landed bolt** → the bar means
+  merged, and the Landed view means landed. The two are different questions
+  and now have different answers on the board; invariant 9's milestone
+  closure is the operator's act and the specs forbid reading a milestone as
+  finished while any item sits at `closed:merged`.
 - **The `stage:*` labels must exist before any item carries one** → a `gh
-  issue edit --add-label` against an undefined label fails. The bolt's merge
+  issue edit --add-label` against an undefined label fails. The same holds
+  for `closed:merged`, which the same convergence run creates. The bolt's merge
   criteria already name the `flywheel-setup` convergence run as a landing
   condition, and the task list runs it before the loops are changed.
 
@@ -237,7 +295,10 @@ open.
    with no `stage:done` as not done, which is what it does today.
 3. Items already in flight on other bolts acquire their labels from the
    first re-derivation cycle their loop runs. No backfill script is needed
-   and none is written — that is what re-derivation is for.
+   and none is written — that is what re-derivation is for. An item on
+   another live bolt whose branch is already merged back is closed with
+   `closed:merged` by that same cycle: the new shape applied to work that
+   is genuinely at that point, and its landing upgrades it like any other.
 4. Rollback is the branch: nothing in this change writes a state that a
    revert cannot leave behind harmlessly, since a stray `stage:*` label on
    an item is inert to every filter that exists before the change.

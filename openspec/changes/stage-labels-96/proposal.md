@@ -69,14 +69,16 @@ five carries an assertion record file"):
   runs at merge and at landing: it belongs to the repo, not to the type.
   On a `bolt-direct` item `stage:verified` never appears.
 
-**Not in this change**, and queued rather than decided here: *when* a unit
-parent's sub-issue checks off. `#98` asks for GitHub's native progress bar,
-which counts **closed** sub-issues, and for the check-off to happen at
-`stage:merged` while `closed:done` "remains the landing's signal" — so the
-merge-time close would carry no `closed:*` reason, which tracker.md
-invariant 5 forbids ("whoever holds the evidence closes, always with one
-`closed:*` reason"). Which reason a merge-time close carries, or whether
-invariant 5 is amended, is a decision nobody has made. See `design.md`.
+- **A sub-issue checks off at merge-back, via a new closure reason
+  `closed:merged`.** `#98` asks for GitHub's native progress bar, which
+  counts **closed** sub-issues, and for the check-off to happen at
+  `stage:merged`. So the loop closes each assertion with `closed:merged`
+  when git confirms ancestry, and the landing upgrades that to
+  `closed:done` with the SHA — invariant 5 standing verbatim, with exactly
+  one `closed:*` reason on a closed item at every moment. Because closing
+  removes an item from every filter built on open issues, a `closed:merged`
+  item stays in flight for the loop, the landing and the server's job
+  filter until the bolt lands.
 
 ## Capabilities
 
@@ -108,7 +110,8 @@ invariant 5 is amended, is a decision nobody has made. See `design.md`.
 
 ## Impact
 
-- **`bin/flywheel-setup`** — the `LABELS` table grows the `stage:*` set.
+- **`bin/flywheel-setup`** — the `LABELS` table grows the `stage:*` set and
+  `closed:merged`.
   `ensure_labels` is already idempotent ("creates what is missing and never
   rewrites what exists"), so converging an existing tracker adds only the
   new names.
@@ -118,7 +121,13 @@ invariant 5 is amended, is a decision nobody has made. See `design.md`.
 - **`bin/_flywheel_bolt_loop.py`** — a stage-label guard in `guards`, and
   the writes at `spec_stage` / `build_stage` / `verify_stage` /
   `merge_stage`. `LoopConfig` grows the stage set that lets `cycle` skip
-  verify.
+  verify. The merge boundary gains the `closed:merged` close, `land_stage`
+  the upgrade to `closed:done`, and `landing_wanted` — whose "nothing to
+  close, nothing to land" test reads open items only — the merge-closed
+  set.
+- **`bin/_flywheel_inbox.py`'s `snapshot` and `server_inbox`** — a bolt
+  milestone's `closed:merged` items are in flight, and `snapshot` is built
+  from `open_issues()` today.
 - **`bin/_flywheel_intent.py`** — `dispatch_batch`, `is_complete` /
   `COMPLETION_SIGNALS`, and `land`'s batch-wide predicate.
   `bin/flywheel-intent-loop`'s `--completion-signal` argument follows.
@@ -136,5 +145,8 @@ invariant 5 is amended, is a decision nobody has made. See `design.md`.
   `test_a_settled_session_is_not_a_finished_one` and
   `test_the_r1_note_is_on_every_run_that_names_no_signal`, which asserts a
   note this change removes.
-- Not in this change: the check-off timing named above; any Board Status
-  option; the `bolt-adversarial` rename and the two-programs split (R3).
+- **`skills/_reference/tracker.md`** — invariant 5's closing sentence, which
+  today says the landing is the sole writer of a `closed:*` label on a
+  construction item.
+- Not in this change: any Board Status option; the `bolt-adversarial`
+  rename and the two-programs split (R3).

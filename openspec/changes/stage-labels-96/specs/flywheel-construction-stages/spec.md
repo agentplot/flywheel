@@ -153,3 +153,152 @@ verified one on every view that reads the label.
 - **WHEN** the operator lists items that carry or have carried
   `stage:verified`
 - **THEN** no `bolt-direct` item is among them
+
+### Requirement: The merge boundary closes the item with `closed:merged`
+
+At the same boundary at which it writes `stage:merged` — ancestry confirmed
+by git, never a session's report — the loop SHALL close each assertion item
+of the batch with `closed:merged`, and SHALL comment the merge SHA on it.
+
+Closing SHALL be the loop's, not the merge session's, for the reason the
+landing already gives: closing is bookkeeping, not judgment. The merge
+session's work order, which today reads "Comment the merge SHA on each
+item; do not close them — they close at the landing", SHALL be corrected to
+match, so the session and the loop do not race for the same act.
+
+Only `type:assertion` items SHALL be closed this way. A discovery item
+queued on the bolt closes on its own evidence, as it does today.
+
+#### Scenario: A batch reaches the bolt branch
+
+- **WHEN** `merge_stage` confirms the batch's branch is an ancestor of the
+  bolt branch
+- **THEN** each assertion item of that batch carries `stage:merged`, is
+  closed, carries `closed:merged`, and has the merge SHA in a comment
+
+#### Scenario: The merge session does not close anything
+
+- **WHEN** a merge session settles
+- **THEN** it has closed no item, and the close that follows is the loop's,
+  made against git's ancestry answer
+
+#### Scenario: A discovery item on the bolt is untouched by the merge
+
+- **WHEN** a batch merges while a `type:assertion`-less discovery item is
+  open on the same milestone
+- **THEN** that item is neither closed nor labelled `closed:merged`
+
+### Requirement: The landing upgrades `closed:merged` to `closed:done`
+
+At the landing the loop SHALL replace each assertion item's `closed:merged`
+with `closed:done` and comment the landing SHA, leaving the item closed
+throughout. It SHALL NOT depend on the item being open at that moment, and
+SHALL NOT leave an item carrying both labels or neither.
+
+An item that reaches the landing without `closed:merged` — a bolt landed by
+a path that never merged it back, or an item closed by hand — SHALL still
+be brought to `closed:done` with the SHA. The landing's job is the end
+state, not a transition it must have witnessed.
+
+#### Scenario: A bolt lands with every item merge-closed
+
+- **WHEN** the bolt branch lands on main
+- **THEN** each assertion item carries `closed:done`, no longer carries
+  `closed:merged`, and has the landing SHA in a comment
+
+#### Scenario: The landing is not blocked by an already-closed item
+
+- **WHEN** the landing runs over items that are already closed with
+  `closed:merged`
+- **THEN** the upgrade succeeds on each, and no step fails because the item
+  was not open
+
+#### Scenario: A pull-request landing closes nothing early
+
+- **WHEN** the bolt's Landing line reads `pr` and the pull request is not
+  yet merged
+- **THEN** the items stay at `closed:merged`, and nothing is upgraded
+
+### Requirement: A merge-closed item is still in flight until the bolt lands
+
+An item closed with `closed:merged` SHALL count as work in flight on its
+bolt milestone until the landing. Specifically:
+
+- the picture the bolt loop works from SHALL include the milestone's
+  `closed:merged` items, which the snapshot — built today from
+  `open_issues()` alone — does not;
+- the landing SHALL run over them: `landing_wanted`'s "nothing to close,
+  nothing to land" test SHALL count a `closed:merged` item as something to
+  land, and `land_stage`'s item set SHALL include them;
+- the server's job filter SHALL treat a bolt milestone holding a
+  `closed:merged` item as a milestone with a job, so a loop killed between
+  the last merge and the landing is started again;
+- a bolt milestone SHALL NOT be read as finished while any of its items is
+  at `closed:merged`; the landing is what finishes it.
+
+This requirement exists because closing at merge removes an item from every
+filter that reads open issues, and those filters are what start the loop
+and trigger the landing. Without it the last batch of a bolt would merge,
+the milestone would look empty, and the bolt would never land.
+
+The filters that read `state:ready` SHALL be unaffected: a closed item is
+not ready, and the ready set stays exactly what it is today.
+
+#### Scenario: The last batch of a bolt merges
+
+- **WHEN** every assertion on a bolt has merged and closed with
+  `closed:merged`
+- **THEN** the landing still runs in that same run, rather than the loop
+  concluding there is nothing to land
+
+#### Scenario: The loop process dies between the last merge and the landing
+
+- **WHEN** the server sweeps for milestones with a job and the bolt's items
+  are all `closed:merged`
+- **THEN** that milestone has a job, a loop is started for it, and it lands
+
+#### Scenario: The ready set is unchanged
+
+- **WHEN** the bolt loop computes its ready set on a milestone holding
+  `closed:merged` items
+- **THEN** none of them is in it, and no closed item is ever worked
+
+### Requirement: Re-derivation repairs the merge-close as well as the label
+
+The re-derivation guard SHALL treat the merged edge as one fact with two
+writes. An item whose branch is an ancestor of the bolt branch SHALL end
+the guard carrying `stage:merged` **and** closed with `closed:merged`,
+whichever of the two a dead process left undone.
+
+The guard's scope SHALL therefore reach the milestone's open
+`state:in-progress` items — as it does today, for the item whose close did
+not happen — and the milestone's `closed:merged` items, for the item whose
+label did not.
+
+An item already at `closed:done` SHALL NOT be walked back to
+`closed:merged`. The landing is downstream of the merge, and re-derivation
+never reverses it.
+
+#### Scenario: A process dies after the stage label and before the close
+
+- **WHEN** a new loop process runs its guards over an item carrying
+  `stage:merged`, open, whose branch is an ancestor of the bolt branch
+- **THEN** the guard closes it with `closed:merged` and records the write in
+  its actions
+
+#### Scenario: A process dies after the close and before the label
+
+- **WHEN** a new loop process runs its guards over a `closed:merged` item
+  carrying no `stage:merged`
+- **THEN** the guard writes `stage:merged` on it
+
+#### Scenario: A landed item is never walked back
+
+- **WHEN** re-derivation runs over an item carrying `closed:done`
+- **THEN** it is left exactly as it is, and no `closed:merged` is written
+
+#### Scenario: The dry cycle still holds
+
+- **WHEN** two consecutive cycles run against an unchanged tracker and tree
+  that include merged, closed items
+- **THEN** the second cycle writes nothing

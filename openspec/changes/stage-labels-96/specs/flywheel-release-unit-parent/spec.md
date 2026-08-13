@@ -104,6 +104,40 @@ maintained itself would be exactly that.
   progress figure for a bolt
 - **THEN** none is found, and the parent's native bar is the only one
 
+### Requirement: A sub-issue checks off at merge-back, not at the landing
+
+A released item SHALL check off on its unit parent's bar when its work
+reaches the bolt branch, and SHALL NOT wait for the bolt to land.
+
+Because the bar counts closed sub-issues, this is achieved by the item
+being closed at merge-back with `closed:merged`, and by nothing else — no
+computed figure, no second store. The landing then upgrades the reason to
+`closed:done` with the SHA, which the bar cannot see and does not need to.
+
+The board's Landed view SHALL keep filtering `closed:done`, so a
+merged-but-unlanded item advances the parent's bar without appearing as
+landed.
+
+#### Scenario: Two of four batches have merged
+
+- **WHEN** two of a release's four items have merged back and the bolt has
+  not landed
+- **THEN** the parent's native bar reads 2 of 4
+
+#### Scenario: The bar is full before the bolt lands
+
+- **WHEN** every item of a release has merged back and the bolt has not yet
+  landed
+- **THEN** the parent's bar is complete, and the Landed view still shows
+  none of them
+
+#### Scenario: The landing does not change the bar
+
+- **WHEN** the bolt lands and each item's reason is upgraded to
+  `closed:done`
+- **THEN** the parent's bar is unchanged, because the items were already
+  closed
+
 ### Requirement: An item still joins exactly one batch
 
 Creating a unit parent SHALL NOT attach an item that already belongs to a
