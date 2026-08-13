@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/bolt-default/schema.yaml apply.instruction
-INSTRUCTION SHA256: 00f9d1124fbe2105
+INSTRUCTION SHA256: 6360d1296ad1023b
 COMPILED BY: static compile pass, third round - review-2 verdicts
 folded: fixture trace, criteria-fix bounds, stage checkout rules. No INVENTED marks remain: models, limits, landing
 mode, and the landing actor are now the instruction's own words.
@@ -26,10 +26,11 @@ export const meta = {
   ],
 }
 
-const A = args
+/* Defensive args (#29): a JSON string arriving as args is parsed. */
+const A = typeof args === 'string' ? JSON.parse(args) : args
 const trace = [] // every stage outcome; in fixture mode this is the verification artifact
 const T = A.fixture
-  ? `FIXTURE MODE: read the tracker snapshot from ${A.fixture}; make NO tracker writes; report what you would have written.`
+  ? `FIXTURE MODE: the file at ${A.fixture} IS the tracker - read state from it and write every tracker update (labels, moves, closes, comments as a comments array) back to that file instead of GitHub; never touch the real tracker; record each write in your outcome detail.`
   : `Tracker writes run as the app: GH_TOKEN=$("${A.pluginRoot}/bin/flywheel-token" --org ${A.org}); if the token cannot mint, stop and return status failed - never ambient credentials.`
 
 /* MODELS - the instruction's tiers, explicit in every call. */
@@ -56,8 +57,10 @@ const SNAPSHOT = {
       sub_issues: { type: 'array', items: { type: 'number' } },
     }, required: ['number', 'status', 'sub_issues'] } },
     guard_actions: { type: 'array', items: { type: 'string' } },
+    status: { type: 'string', enum: ['ok', 'failed'] },
+    failure: { type: ['string', 'null'] },
   },
-  required: ['items', 'batches', 'guard_actions'],
+  required: ['items', 'batches', 'guard_actions', 'status'],
 }
 const OUTCOME = {
   type: 'object',
@@ -77,7 +80,7 @@ GUARDS, in order, each idempotent - record every action you take in guard_action
 1. Any unit at board Status Ready with state:queued sub-issues: relabel those sub-issues state:ready.
 2. Any state:queued item with no parent_batch: keep it on this bolt ONLY if the bolt cannot land without it; otherwise move it to the intent that owns its subject, or leave it unmilestoned for dispatch. Compose what remains into a unit at Backlog.
 
-Return the snapshot AFTER your guard actions.`,
+Return the snapshot AFTER your guard actions, with status ok. If you cannot read the tracker, mint the token, or resolve these parameters: status failed with the reason in failure, guard_actions empty - the run stops on your word.`,
   { label: `cycle${cycle}:query+guards`, phase: 'Cycle', schema: SNAPSHOT, ...DRIVER_OPTS })
 
 /* HERDR.MD: the driver recipe - one-prompt order, invocation first
@@ -109,7 +112,10 @@ let cycle = 0
 while (true) {
   cycle++
   const s = await queryAndGuards(cycle)
-  trace.push({ stage: `cycle${cycle}:query+guards`, actions: s.guard_actions })
+  trace.push({ stage: `cycle${cycle}:query+guards`, status: s && s.status, actions: s ? s.guard_actions : null })
+  if (!s || s.status === 'failed') { // a failing cycle never loops
+    return { slug: A.slug, cycles: cycle, halted: (s && s.failure) || 'query+guards agent lost', trace }
+  }
   lastSnapshot = s
   const work = ready(s).filter((i) => unblocked(s, i))
   if (work.length === 0 && s.guard_actions.length === 0) break // STOP: no ready work and the guards changed nothing

@@ -1,6 +1,6 @@
 /*
 COMPILED FROM: schemas/flywheel-intent/schema.yaml apply.instruction
-INSTRUCTION SHA256: bf40d18ed7c103b1
+INSTRUCTION SHA256: 2313d86708ee2093
 COMPILED BY: static compile pass for review - not yet run. Mechanics
 marked "HERDR.MD:" delegated to skills/_reference/herdr.md.
 
@@ -20,10 +20,11 @@ export const meta = {
   ],
 }
 
-const A = args
+/* Defensive args (#29): a JSON string arriving as args is parsed. */
+const A = typeof args === 'string' ? JSON.parse(args) : args
 const trace = [] // every stage outcome; in fixture mode this is the verification artifact
 const T = A.fixture
-  ? `FIXTURE MODE: read the tracker snapshot from ${A.fixture}; make NO tracker writes; report what you would have written.`
+  ? `FIXTURE MODE: the file at ${A.fixture} IS the tracker - read state from it and write every tracker update (labels, moves, closes, comments as a comments array) back to that file instead of GitHub; never touch the real tracker; record each write in your outcome detail.`
   : `Tracker writes run as the app: GH_TOKEN=$("${A.pluginRoot}/bin/flywheel-token" --org ${A.org}); if the token cannot mint, stop and return status failed - never ambient credentials.`
 
 /* MODELS - the instruction's tiers. */
@@ -59,8 +60,10 @@ const SNAPSHOT = {
       sub_issues: { type: 'array', items: { type: 'number' } },
     }, required: ['number', 'status', 'sub_issues'] } },
     guard_actions: { type: 'array', items: { type: 'string' } },
+    status: { type: 'string', enum: ['ok', 'failed'] },
+    failure: { type: ['string', 'null'] },
   },
-  required: ['items', 'batches', 'guard_actions'],
+  required: ['items', 'batches', 'guard_actions', 'status'],
 }
 const OUTCOME = {
   type: 'object',
@@ -81,7 +84,7 @@ GUARDS, in order, each idempotent - record every action in guard_actions (empty 
 2. HANDOFF BIRTH: any type:assertion item open on this milestone with no parent_batch and no open blocked_by -> ensure ONE open type:handoff item names exactly that set (create it, or extend the open unstarted one).
 3. COMPOSE: any state:queued item with no parent_batch -> group the orphans into proposed batches (${A.pluginRoot}/bin/flywheel-batch) at Backlog, by thread. Composing is not releasing.
 
-Return the snapshot AFTER your guard actions.`,
+Return the snapshot AFTER your guard actions, with status ok. If you cannot read the tracker, mint the token, or resolve these parameters: status failed with the reason in failure, guard_actions empty - the run stops on your word.`,
   { label: `cycle${cycle}:query+guards`, phase: 'Cycle', schema: SNAPSHOT, ...DRIVER_OPTS })
 
 /* HERDR.MD: the driver recipe. Design sessions have no slash
@@ -124,7 +127,10 @@ let cycle = 0
 while (true) {
   cycle++
   const s = await queryAndGuards(cycle)
-  trace.push({ stage: `cycle${cycle}:query+guards`, actions: s.guard_actions })
+  trace.push({ stage: `cycle${cycle}:query+guards`, status: s && s.status, actions: s ? s.guard_actions : null })
+  if (!s || s.status === 'failed') { // a failing cycle never loops
+    return { slug: A.slug, cycles: cycle, halted: (s && s.failure) || 'query+guards agent lost', trace }
+  }
   lastSnapshot = s
   const work = ready(s).filter((i) => unblocked(s, i))
   if (work.length === 0 && s.guard_actions.length === 0) break // STOP

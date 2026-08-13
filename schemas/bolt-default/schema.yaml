@@ -72,9 +72,17 @@ apply:
     the API, never inferred), parent batch, record path - and this
     bolt's units with their board Status. When launched with a
     fixture snapshot instead of the live tracker (an isolated run):
-    read state from the snapshot, write nothing to the tracker, never
-    land, and collect every would-be tracker write and pane event
-    into a trace array in the run report.
+    the snapshot file IS the tracker - read state from it and write
+    every tracker update (labels, moves, closes, comments) back to it
+    instead of GitHub; never touch the real tracker; never land; and
+    collect every write and pane event into a trace array in the run
+    report.
+
+    Two hard rules on the run itself: parse the script's args
+    defensively - an args object that arrives as a JSON string is
+    parsed, never trusted as-is (#29) - and a cycle that cannot read
+    the tracker, mint its token, or resolve its parameters STOPS THE
+    RUN with the failure in the report; a failing cycle never loops.
 
     GUARDS - checked EVERY cycle, in this order; each is idempotent:
 
