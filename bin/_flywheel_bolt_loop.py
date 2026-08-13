@@ -704,9 +704,15 @@ class BoltLoop:
         for row in rows or ():
             if row.get("branch") == branch and row.get("path"):
                 return row["path"], False
-        made = self.shell(["wt", "switch", "--create", branch,
-                           "--base", base, "--no-cd"],
-                          cwd=self.params.repo_dir)
+        # A branch may exist with no worktree — a restart, a landing that
+        # pruned, a session that got there first. Plain `wt switch` attaches
+        # a worktree to an existing branch; `--create` is only for a branch
+        # not born yet, and errors on one that is.
+        exists = self.git("rev-parse", "--verify", "--quiet", branch,
+                          cwd=self.params.repo_dir).returncode == 0
+        argv = (["wt", "switch", branch, "--no-cd"] if exists else
+                ["wt", "switch", "--create", branch, "--base", base, "--no-cd"])
+        made = self.shell(argv, cwd=self.params.repo_dir)
         if made.returncode != 0:
             return None, False
         rows = self._wt_rows()

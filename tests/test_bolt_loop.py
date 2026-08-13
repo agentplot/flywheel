@@ -162,8 +162,9 @@ class FakeShell:
         # exists once a recorded `wt switch --create` made it. All paths are
         # TREE, whose change directory the deliverable checks already use.
         if tuple(argv[:2]) == ("wt", "list"):
-            made = [a[3] for a, _ in self.calls
-                    if a[:3] == ("wt", "switch", "--create")]
+            made = [a[3] if a[2] == "--create" else a[2]
+                    for a, _ in self.calls
+                    if a[:2] == ("wt", "switch") and len(a) > 2]
             rows = [{"branch": b, "path": str(TREE)}
                     for b in ["bolt/x", *made]]
             return Result(0, stdout=json.dumps(rows))
@@ -189,6 +190,31 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
     return loop.BoltLoop(loop.BoltParams(**fields), tracker,
                          runner_factory=lambda stage: runner,
                          run=shell or FakeShell(), clock=clock or FakeClock())
+
+
+class WorktreeOrchestrationTest(unittest.TestCase):
+
+    def test_an_existing_branch_without_a_worktree_gets_plain_switch(self):
+        # FakeShell's default answers git rev-parse with rc 0: the branch
+        # exists. --create on an existing branch errors in wt, so the loop
+        # must attach with plain switch (the restart / session-got-there
+        # -first case).
+        shell = FakeShell()
+        l = a_loop(FakeTracker(), shell=shell)
+        path, created = l.worktree_for("bolt/y", "main")
+        self.assertEqual(path, str(TREE))
+        creates = [a for a, _ in shell.calls if a[:3] == ("wt", "switch", "--create")]
+        self.assertFalse(creates, "an existing branch is attached, never --create'd")
+
+    def test_a_branch_not_born_yet_is_created_from_its_base(self):
+        shell = FakeShell(answers={("git", "rev-parse"): Result(1)})
+        l = a_loop(FakeTracker(), shell=shell)
+        path, created = l.worktree_for("build/z", "bolt/x")
+        self.assertEqual(path, str(TREE))
+        self.assertTrue(created)
+        create = next(a for a, _ in shell.calls
+                      if a[:3] == ("wt", "switch", "--create"))
+        self.assertIn("--base", create)
 
 
 # ---------------------------------------------------------------------------
