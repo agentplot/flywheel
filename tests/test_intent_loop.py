@@ -221,6 +221,23 @@ class ComposeGuardTest(unittest.TestCase):
                                item(51, "type:planning", "state:queued")])
         self.assertEqual([i.number for i in inbox.compose_plan(snap, "x")], [51])
 
+    def test_compose_appends_to_the_open_backlog_elaboration(self):
+        # The amend branch, like handoff birth's: newcomers JOIN the open
+        # Backlog batch instead of fragmenting into near-identical
+        # containers (observed live: #131/#132, #109/#114/#129).
+        run = FakeRun()
+        writer = intent.Writer(apply=True, run=run)
+        snap = Snapshot(
+            items=[item(46, "elaboration", "state:queued")],
+            batches=[Batch(46, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/x")])
+        intent.apply_compose(writer, [item(5, "state:queued")],
+                             config(apply=True), snap)
+        argv = run.calls[0]
+        self.assertIn("--into", argv)
+        self.assertEqual(argv[argv.index("--into") + 1], "46")
+
     def test_no_orphans_runs_no_command(self):
         run = FakeRun()
         writer = intent.Writer(apply=True, run=run)

@@ -1052,7 +1052,7 @@ class BoltLoop:
                 self.tracker.set_milestone(item.number, route)
                 actions.append(f"#{item.number} moved to {route}")
         if keep:
-            composed = self.compose(keep)
+            composed = self.compose(keep, snapshot)
             if composed:
                 actions.append(composed)
         return None
@@ -1118,7 +1118,7 @@ class BoltLoop:
             return "keep", f"the verdict named {route}, which is not an open intent"
         return route, why
 
-    def compose(self, items):
+    def compose(self, items, snapshot=None):
         """What stays on the bolt becomes one unit at Backlog.
 
         Backlog, never Ready: composing is the loop's, approving is the
@@ -1127,15 +1127,40 @@ class BoltLoop:
         """
         numbers = [str(i.number) for i in items]
         batch = Path(__file__).resolve().parent / "flywheel-batch"
-        proc = self.shell([
+        argv = [
             str(batch), "--kind", "unit", "--org", self.params.org,
             "--repo", self.params.repo, "--milestone", self.params.milestone,
-            "--title", f"Work the discoveries queued on bolt/{self.params.slug}",
-            *numbers], cwd=self.params.repo_dir)
+            "--title", f"Work the discoveries queued on bolt/{self.params.slug}"]
+        # AMEND, like the intent side: while an open unit for this bolt
+        # sits at Backlog, newcomers join it rather than fragmenting into
+        # near-identical containers.
+        if snapshot is not None:
+            for b in sorted(snapshot.batches, key=lambda b: b.number):
+                if (b.kind == inbox.UNIT and b.status == inbox.STATUS_BACKLOG
+                        and b.milestone == self.params.milestone):
+                    argv += ["--into", str(b.number)]
+                    break
+        proc = self.shell(argv + numbers, cwd=self.params.repo_dir)
         if proc.returncode != 0:
             self._log(f"compose failed: {(proc.stderr or proc.stdout or '').strip()}")
             return None
+        self._await_listed(proc.stdout)
         return f"composed #{', #'.join(numbers)} into a unit at Backlog"
+
+    def _await_listed(self, stdout):
+        """Read-your-writes: do not finish the guard until a batch this
+        cycle created is visible in the list the next snapshot reads."""
+        if self.dry_run or isinstance(self.tracker, FixtureTracker):
+            return
+        match = re.search(r"^unit #(\d+):", stdout or "", re.MULTILINE)
+        if not match:
+            return
+        number = int(match.group(1))
+        for _ in range(6):
+            snap = self.tracker.snapshot(self.params.milestone)
+            if any(i.number == number for i in snap.items):
+                return
+            time.sleep(5)
 
     # -- stages ------------------------------------------------------------
 

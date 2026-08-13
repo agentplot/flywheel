@@ -194,6 +194,21 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
                          run=shell or FakeShell(), clock=clock or FakeClock())
 
 
+class ComposeAmendTest(unittest.TestCase):
+
+    def test_bolt_compose_appends_to_the_open_backlog_unit(self):
+        shell = FakeShell()
+        snap = Snapshot(
+            items=[item(120, inbox.QUEUED, inbox.UNIT, milestone="bolt/x")],
+            batches=[Batch(120, kind=inbox.UNIT,
+                           status=inbox.STATUS_BACKLOG, milestone="bolt/x")])
+        l = a_loop(FakeTracker(snap), shell=shell)
+        l.compose([item(7, inbox.QUEUED, milestone="bolt/x")], snap)
+        call = next(a for a, _ in shell.calls if "flywheel-batch" in str(a[0]))
+        self.assertIn("--into", call)
+        self.assertEqual(call[call.index("--into") + 1], "120")
+
+
 class StatelessResumeTest(unittest.TestCase):
     """A restarted loop re-adopts its own in-progress items (observed live:
     a restart saw only state:ready, found nothing, and stranded the bolt)."""

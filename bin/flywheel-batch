@@ -53,6 +53,9 @@ def main():
     ap.add_argument("--team", metavar="NAME",
                     help="board Team (routes the milestone's host); "
                          "defaults to the field's first option")
+    ap.add_argument("--into", type=int, metavar="N",
+                    help="append the items to open batch #N instead of "
+                         "creating a new one — compose's amend branch")
     ap.add_argument("items", nargs="+", type=int, metavar="ITEM_NUMBER")
     args = ap.parse_args()
 
@@ -84,6 +87,20 @@ def main():
         print("flywheel-batch: nothing to compose — every item already "
               "belongs to a batch")
         sys.exit(0)
+
+    if args.into:
+        batch = gh(token, "api", f"{repo_path}/issues/{args.into}")
+        if batch.get("state") != "open":
+            sys.exit(f"flywheel-batch: batch #{args.into} is not open")
+        for item in items:
+            gh(token, "api", f"{repo_path}/issues/{args.into}/sub_issues",
+               "--input", "-", input_json={"sub_issue_id": item["id"]})
+            print(f"  sub-issue: #{item['number']} {item['title']}")
+        gh(token, "api", f"{repo_path}/issues/{args.into}/comments",
+           "--input", "-", input_json={"body": "Newcomers joined by compose: "
+           + ", ".join(f"#{i['number']}" for i in items) + "."})
+        print(f"{batch.get('title', 'batch')} #{args.into}: appended")
+        return 0
 
     ms_number = ensure_milestone(token, args.org, args.repo,
                                  args.milestone, due_on=args.due)
