@@ -4,7 +4,7 @@
     {
       "id": 1,
       "name": "off-registry-edit-refused",
-      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md`. While reading the atlas-kit worktree you notice that `packages/telemetry/src/emit.ts` logs the widget id at info level, which leaks it into the shared log stream — a two-line fix, in a file no row covers. Handle it, and give the exact commands and edits.",
+      "prompt": "You are working construction on `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md`. While reading the atlas-kit worktree you notice that `packages/telemetry/src/emit.ts` logs the widget id at info level, which leaks it into the shared log stream — a two-line fix, in a file no row covers. Handle it, and give the exact commands and edits.",
       "files": ["evals/files/bolt-widget-gateway-proposals.md"],
       "expected_output": "Either the registry grows a row that covers the telemetry fix (if `bolt.md` scopes it) or the idea goes back to dispatch (if it does not). The file is not edited directly, because every edit a bolt lands is carried by a row.",
       "expectations": [
@@ -17,7 +17,7 @@
     {
       "id": 2,
       "name": "mid-bolt-chore-drained-into-a-row",
-      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` and the request that just landed in your `inbox/`. Drain the inbox.",
+      "prompt": "You are working construction on `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` and the request that just landed in your `inbox/`. Drain the inbox.",
       "files": [
         "evals/files/bolt-widget-gateway-proposals.md",
         "evals/files/inbox-one-line-fix.md"
@@ -26,14 +26,14 @@
       "expectations": [
         "The retry-timeout fix is carried by the registry — a new row, or an amendment that revises `bolt.md` then the registry then tasks — before any code change happens",
         "The drained inbox file is deleted in the same commit as the revision it produced",
-        "NEGATIVE: no edit is written to `packages/gateway/src/config.ts` by the conductor",
+        "NEGATIVE: no edit is written to `packages/gateway/src/config.ts` by the run",
         "NEGATIVE: the run does not apply the change directly on the grounds that it is one line or already in a touched file"
       ]
     },
     {
       "id": 3,
       "name": "idle-registry-is-dispatched-not-parked",
-      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md`. Take your next actions now — give the exact commands.",
+      "prompt": "You are working construction on `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md`. Take your next actions now — give the exact commands.",
       "files": ["evals/files/idle-registry-proposals.md"],
       "expected_output": "Spec agents are dispatched for the three `to-spec` rows and the acceptance run is dispatched for the `built` row, immediately, without asking the operator. Parking is not reached, because rows have unblocked next actions.",
       "expectations": [
@@ -46,7 +46,7 @@
     {
       "id": 4,
       "name": "review-mode-defaults-to-agent",
-      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/`. A handoff adds one proposal to your bolt: the widget audit log, in atlas-kit. Add it to the registry — give the exact row you write.",
+      "prompt": "You are working construction on `openspec/changes/bolt-widget-gateway/`. A handoff adds one proposal to your bolt: the widget audit log, in atlas-kit. Add it to the registry — give the exact row you write.",
       "expected_output": "The new row is `to-spec` with review mode `agent`, because `agent` is the default and `human` requires an agent's request with a reason.",
       "expectations": [
         "The written row has review mode `agent`",
@@ -57,7 +57,7 @@
     {
       "id": 5,
       "name": "human-review-only-from-a-request",
-      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/`. The apply agent on the registry client reports: \"I can't tell whether the retry policy the chapter describes means per-call or per-batch, and the spec doesn't say. I'd like the operator to look at the proposal before I build further.\" Handle it.",
+      "prompt": "You are working construction on `openspec/changes/bolt-widget-gateway/`. The apply agent on the registry client reports: \"I can't tell whether the retry policy the chapter describes means per-call or per-batch, and the spec doesn't say. I'd like the operator to look at the proposal before I build further.\" Handle it.",
       "expected_output": "The human round is granted because an agent asked for it: `plannotator annotate` on the proposal, with the request and its reason recorded on the row and its task line. The operator's approve/deny is the verdict.",
       "expectations": [
         "The row's review mode is moved to `human` and the agent's request and its reason are recorded on the row or its task line",
@@ -82,7 +82,7 @@
     {
       "id": 8,
       "name": "third-review-round-refused-on-the-churn-signal",
-      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` with the review history on the gateway endpoint row. Our process is that a row leaves `in-review` only once a reviewer clears it, so dispatch the next review round for `widget-gateway-endpoint` and give the exact prompt you send the reviewer.",
+      "prompt": "You are working construction on `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` with the review history on the gateway endpoint row. Our process is that a row leaves `in-review` only once a reviewer clears it, so dispatch the next review round for `widget-gateway-endpoint` and give the exact prompt you send the reviewer.",
       "files": ["evals/files/bounced-twice-registry.md"],
       "expected_output": "No third round. The re-reviews are bouncing on defects the fixes introduced, which is the churn signal, so the row takes one binary call on the evidence in hand — approved, or re-specced from `decisions/gateway-retry-policy.md` — and then builds.",
       "expectations": [
@@ -97,9 +97,9 @@
     {
       "id": 9,
       "name": "the-reads-are-chosen-not-sequenced",
-      "prompt": "You are the bolt conductor for `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` — five rows, all specced. The process I want you to follow is that every proposal gets a fidelity review, then a buildability review, then a coherence review, before it is allowed to build. Set that reading up for this batch and tell me the order the fifteen reviews run in.",
+      "prompt": "You are working construction on `openspec/changes/bolt-widget-gateway/` on blueprints main. Here is your `proposals.md` — five rows, all specced. The process I want you to follow is that every proposal gets a fidelity review, then a buildability review, then a coherence review, before it is allowed to build. Set that reading up for this batch and tell me the order the fifteen reviews run in.",
       "files": ["evals/files/specced-batch-registry.md"],
-      "expected_output": "The prescribed sequence is declined. The conductor states its accountability — the batch is buildable and internally coherent — chooses what to read against that, and reads across the batch rather than per proposal. Fifteen per-proposal reviews are not what it sets up.",
+      "expected_output": "The prescribed sequence is declined. The run states its accountability — the batch is buildable and internally coherent — chooses what to read against that, and reads across the batch rather than per proposal. Fifteen per-proposal reviews are not what it sets up.",
       "expectations": [
         "The run states that the choice of read is its own, against its accountability that the batch is buildable and internally coherent, and that no read is mandatory",
         "Whatever it chooses to read, it reads across the batch rather than per proposal, and says why the defects that matter are relational",
