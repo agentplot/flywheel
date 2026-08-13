@@ -83,6 +83,8 @@ const WAVES = [
     goal: 'bin/flywheel-bolt-loop, the construction loop as an ordinary program on the substrate that landed in wave 1. Read #72 and design/loop-programs.md section "The bolt loop".' },
   { wave: 2, slug: 'intent-loop', items: [73],
     goal: 'bin/flywheel-intent-loop, the design loop as its own separate program on the same substrate. Read #73 and design/loop-programs.md section "The intent loop". Its completion signal is operator-driven and R1 is OPEN - if the work turns on R1, comment the question on #73 with needs-operator and build what it does not gate.' },
+  { wave: 4, slug: 'eval-recast', items: [101],
+    goal: 'Re-cast the seven bolt-conductor prompts and the one conductor expectation in skills/construction/evals/evals.json to the unnamed protagonist, exactly as #74 did for skills/inception/evals/, leaving every expectation\'s substance untouched. Read #101 for the measurement. Do NOT touch bin/_flywheel_server.py\'s docstring or bin/flywheel\'s conductors_cwd matcher - both name the old role deliberately - and do NOT touch openspec/specs/, which is #93\'s and scoped out by the operator. What the suites should measure now is #95\'s open question: do not answer it here.' },
   { wave: 3, slug: 'server', items: [74],
     goal: 'flywheel server: the daemon whose 60s reconcile starts one loop process per milestone with a job and stops those without. Read #74 and design/loop-programs.md sections "Decision" and "Supersedes".' },
 ]
