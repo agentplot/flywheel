@@ -829,7 +829,12 @@ def dispatch_batch(batch, writer, runner, config, clock):
     for item in batch.items:
         if READY in item.labels:
             writer.relabel(item.number, remove=[READY], add=[IN_PROGRESS])
-        set_stage(writer, item.number, STAGE_IN_SESSION)
+        # Never walk the operator's flip back. A resumed batch may hold an
+        # item already at `stage:done`, and writing `stage:in-session` over
+        # it would erase the one signal the completion filter reads.
+        if not (writer.has_label(item.number, STAGE_DONE)
+                or writer.has_label(item.number, STAGE_COLLECTED)):
+            set_stage(writer, item.number, STAGE_IN_SESSION)
     writer.comment(batch.first, format_dispatch(name, clock()))
     handle = runner.launch(spec) if writer.apply else None
     return spec, handle
@@ -875,6 +880,12 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
             if guard_writes and config.apply:
                 continue               # the tracker moved; re-query before working
 
+            # A flip the loop was not there to see. Collected BEFORE the
+            # ready set is worked, so a restarted process finishes what it
+            # left behind before starting anything new.
+            if resume_collect(inbox, writer, config, snapshot, report):
+                continue               # the tracker moved; re-query
+
             batches, undispatchable = batch_ready(snapshot, inbox.ready)
             for item, kind in undispatchable:
                 set_needs_operator(
@@ -915,6 +926,57 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
     if inbox is not None and snapshot is not None:
         report.resting = resting_queue(inbox, snapshot, undispatchable or ())
     return report
+
+
+def resume_collect(inbox, writer, config, snapshot, report):
+    """Collect items flipped while no loop was watching. True if it wrote.
+
+    The pane path is handled inside `land`, which re-reads the tracker
+    after its session settles. This is the other half: an item whose
+    session is over — the process died, or the operator flipped long after
+    the pane was gone — sits `state:in-progress` with `stage:done` and is
+    invisible to the ready filter forever. `collect_plan` names that set;
+    this consumes it.
+
+    **Nothing is re-launched.** A session that already settled has left its
+    deliverables where they belong — the session directory and the `sess/*`
+    branch, both on disk — and `runner.collect` only ever supplied the
+    pane's last line for the closing comment. Starting a fresh session on
+    an item the operator has already called done would redo finished work,
+    so the comment says plainly that there was no pane to read rather than
+    inventing one.
+
+    The `sess/*` merge is deliberately NOT done here. Which session an item
+    belonged to is not recoverable from the item alone once its pane is
+    gone, and merging the wrong branch — or a branch whose session never
+    finished its siblings — is the one mistake that costs work. The item is
+    collected and closed; the branch is left for the operator, and the
+    report says so.
+    """
+    if not inbox.to_collect or not config.apply:
+        return False
+    # Idempotent within the run as well as across cycles: this path ends
+    # with a `continue`, so an item whose write the next snapshot has not
+    # caught up with yet must not be collected and closed twice.
+    numbers = [i.number for i in inbox.to_collect
+               if not writer.has_label(i.number, STAGE_COLLECTED)]
+    if not numbers:
+        return False
+    for number in numbers:
+        set_stage(writer, number, STAGE_COLLECTED)
+        writer.close_issue(
+            number,
+            comment=("Collected by the intent loop after its session had "
+                     "ended — the operator's `stage:done` was flipped with "
+                     "no pane to read, so this comment carries no session "
+                     "report. The deliverables are the session directory "
+                     "and its `sess/*` branch."),
+            reason=CLOSED_DONE)
+    report.notes += (
+        "collected after the fact: " + ", ".join(f"#{n}" for n in numbers)
+        + " carried stage:done with no live session. Their `sess/*` "
+          "branches are not merged by this path — check and merge them.",)
+    return True
 
 
 def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
@@ -962,6 +1024,17 @@ def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
         report.notes += (f"{spec.name} raised the andon on #{number}: "
                          f"{andon.reason}",)
         return
+
+    # **Re-read before asking who is done.** The operator's flip lands
+    # DURING the session — that is the whole point of the pane path, where
+    # the session writes `stage:done` to its own item and settles — so the
+    # picture this cycle opened with, taken before the session was even
+    # launched, cannot contain it. Asking the stale snapshot means the pane
+    # path can never see its own write, and there is no next pass to catch
+    # it: the item left the ready set when dispatch flipped it in-progress.
+    if tracker is not None or config.fixture:
+        snapshot = read_snapshot(config, tracker)
+        writer.snapshot = snapshot
 
     fresh = [n for n in batch.numbers
              if is_done(n, snapshot) and not is_collected(n, snapshot)]

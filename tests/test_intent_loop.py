@@ -63,6 +63,11 @@ class FakeTracker:
         self.calls = []
 
     # reads
+    def snapshot(self, milestone=None, with_edges=True):
+        """The loop re-reads the tracker mid-cycle, so the double must be
+        the source of truth rather than a bag of writes."""
+        return self.snapshot_obj if self.snapshot_obj is not None else Snapshot()
+
     def comments(self, number):
         return self._comments.get(number, [])
 
@@ -302,6 +307,69 @@ class DryCycleTest(unittest.TestCase):
                          "a settled tracker must produce no write at all")
         self.assertEqual(self._guards(cycle2), (),
                          "and must keep producing none")
+
+
+class ResumeCollectTest(unittest.TestCase):
+    """A flip the loop was not there to see.
+
+    Dispatch takes an item out of the ready set for good, so without this
+    an item flipped after its session ended is invisible to every filter
+    and its milestone keeps a job forever.
+    """
+
+    def flipped(self):
+        return Snapshot(items=[
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            item(2, "type:research", inbox.IN_PROGRESS, "stage:in-session"),
+        ])
+
+    def test_the_filter_names_a_flipped_in_progress_item(self):
+        box = inbox.intent_inbox(self.flipped(), "x")
+        self.assertEqual([i.number for i in box.to_collect], [1])
+        self.assertEqual(box.ready, (), "it is not ready, and never will be")
+        self.assertFalse(box.empty)
+
+    def test_an_already_collected_item_is_not_named_again(self):
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:collected")])
+        self.assertEqual(inbox.collect_plan(snap, "x"), ())
+
+    def test_it_collects_closes_and_says_there_was_no_pane(self):
+        snap = self.flipped()
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        report = intent.Report(slug="x")
+        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer,
+                                      config(apply=True), snap, report)
+        self.assertTrue(wrote)
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+        self.assertEqual([c for c in tracker.calls
+                          if c[0] == "close_issue" and c[1] == 2], [],
+                         "#2 is not flipped and is untouched")
+        self.assertTrue(any("no pane" in n or "after the fact" in n
+                            for n in report.notes))
+
+    def test_it_writes_nothing_when_no_item_is_flipped(self):
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:in-session")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        report = intent.Report(slug="x")
+        self.assertFalse(intent.resume_collect(
+            inbox.intent_inbox(snap, "x"), writer, config(), snap, report))
+        self.assertEqual(writer.writes, [])
+
+    def test_dispatch_never_walks_the_operators_flip_back(self):
+        # A resumed batch may hold an item already at stage:done; writing
+        # stage:in-session over it would erase the completion signal.
+        flipped = item(1, "type:research", inbox.READY, "stage:done")
+        snap = Snapshot(items=[flipped])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        intent.dispatch_batch(intent.DesignBatch("research", (flipped,)),
+                              writer, None, config(), Clock())
+        self.assertNotIn("+stage:in-session",
+                         [w.detail for w in writer.writes])
+        self.assertNotIn("-stage:done", [w.detail for w in writer.writes])
 
 
 class ParentageTest(unittest.TestCase):
@@ -577,6 +645,8 @@ class LandingTest(unittest.TestCase):
         runner = runner or ScriptedRunner()
         handle = runner.launch(spec)
         snapshot = Snapshot(items=items)
+        if tracker.snapshot_obj is None:
+            tracker.snapshot_obj = snapshot
         writer = intent.Writer(tracker=tracker, apply=True, snapshot=snapshot)
         report = intent.Report(slug="x")
         intent.land(batch, spec, handle, writer, runner, tracker, cfg,
@@ -617,6 +687,41 @@ class LandingTest(unittest.TestCase):
         self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
         self.assertEqual(runner.closed, ["research-x"],
                          "every item collected, so the session may be torn down")
+
+    def test_the_flip_written_during_the_session_is_seen(self):
+        """The pane path, which is the primary one.
+
+        The session writes `stage:done` to its own item and settles WHILE
+        the loop is blocked in `supervise`, so the picture the cycle opened
+        with cannot contain it. Reading the stale snapshot meant the pane
+        path could never see its own write — and there is no next pass,
+        because dispatch already took the item out of the ready set.
+        """
+        before = Snapshot(items=[item(1, "stage:in-session")])
+        after = Snapshot(items=[item(1, "stage:in-session", "stage:done")])
+        tracker = FakeTracker(snapshot=after)          # the tracker as it is NOW
+        batch = intent.DesignBatch("research", (item(1, "stage:in-session"),))
+        spec = sessions.SessionSpec(name="research-x", cwd="/tmp", order="go",
+                                    profile="flywheel-design-session")
+        runner = ScriptedRunner()
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=before)
+        report = intent.Report(slug="x")
+        intent.land(batch, spec, handle, writer, runner, tracker,
+                    config(apply=True), before, Clock(), report)
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+        self.assertEqual(runner.closed, ["research-x"],
+                         "the session is torn down once its item is collected")
+
+    def test_an_unflipped_item_is_still_not_collected_after_the_re_read(self):
+        # The re-read must not turn "not done" into "done".
+        unchanged = Snapshot(items=[item(1, "stage:in-session")])
+        tracker = FakeTracker(snapshot=unchanged)
+        writer, report, runner = self._land(
+            config(apply=True), tracker, items=[item(1, "stage:in-session")])
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+        self.assertEqual(runner.closed, [])
 
     def test_a_collected_item_ends_carrying_one_stage_label(self):
         tracker = FakeTracker()

@@ -503,11 +503,12 @@ class IntentInbox:
     queued_to_flip: tuple = ()
     handoff: HandoffPlan = None
     orphan_queued: tuple = ()
+    to_collect: tuple = ()
 
     @property
     def empty(self):
-        return not (self.ready or self.queued_to_flip
-                    or self.handoff or self.orphan_queued)
+        return not (self.ready or self.queued_to_flip or self.handoff
+                    or self.orphan_queued or self.to_collect)
 
 
 def handoff_plan(snapshot, slug):
@@ -579,6 +580,29 @@ def compose_plan(snapshot, slug, handoff=None):
     )
 
 
+def collect_plan(snapshot, slug):
+    """Items the operator flipped that the loop has not yet collected.
+
+    **The ready filter cannot see these, and that is the hole.** Dispatch
+    relabels an item `state:in-progress`, so once a session is launched the
+    item is out of `ready` for good. A process killed between that dispatch
+    and the collect — or one whose operator flips long after the pane is
+    gone — leaves an item `state:in-progress` carrying `stage:done`, which
+    no filter here would name and no cycle would work. The flip would never
+    be consumed, and the milestone would keep a job forever.
+
+    `flywheel-design-session-completion` requires the opposite in so many
+    words: the loop "consumes the flip on its next pass", and an item
+    flipped "on a later pass" is collected then. This names that set.
+    """
+    milestone = f"{INTENT_PREFIX}{slug}"
+    return tuple(
+        i for i in snapshot.on(milestone)
+        if i.is_open and i.in_progress
+        and STAGE_DONE in i.labels and STAGE_COLLECTED not in i.labels
+    )
+
+
 def intent_inbox(snapshot, slug):
     """The bolt filter's shape on an intent milestone, plus the two guard
     sweeps the record names: handoff birth and compose."""
@@ -596,6 +620,7 @@ def intent_inbox(snapshot, slug):
         queued_to_flip=flip_consume_plan(snapshot, milestone),
         handoff=handoff,
         orphan_queued=compose_plan(snapshot, slug, handoff),
+        to_collect=collect_plan(snapshot, slug),
     )
 
 
