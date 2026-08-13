@@ -809,6 +809,29 @@ class StageLabelTest(unittest.TestCase):
         self.assertEqual([o.stage for o in result.outcomes],
                          ["spec", "build", "merge"])
 
+    def test_every_stage_the_cycle_runs_is_gated_on_the_declared_set(self):
+        # `runs()` claims the next type that varies the sequence declares
+        # its own set and adds no flag. That is only true if EVERY stage is
+        # gated — gating the one stage bolt-direct omits would make the
+        # claim true of it and false of the type after it.
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        program = self.worked(tracker, type_name="spec-only", config=loop.LoopConfig(
+            name="spec-only", strategy="ff", stages=("spec",)))
+        result = program.cycle(1)
+        self.assertEqual([o.stage for o in result.outcomes], ["spec"],
+                         "no build, no verify, no merge")
+        self.assertFalse(program.landing_wanted(
+            "force", inbox.BoltInbox(milestone="bolt/x"), [object()]),
+            "and no landing, because the set does not name one")
+
+    def test_a_type_that_declares_no_build_still_writes_no_built_label(self):
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        self.worked(tracker, type_name="spec-only", config=loop.LoopConfig(
+            name="spec-only", strategy="ff", stages=("spec",))).cycle(1)
+        self.assertEqual(self.stages_written(tracker), [inbox.STAGE_PLANNED])
+
     def test_a_bolt_direct_item_goes_built_to_merged_with_no_verified(self):
         snapshot = self.a_ready_item()
         tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})

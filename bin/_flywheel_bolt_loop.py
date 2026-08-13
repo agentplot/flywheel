@@ -156,6 +156,12 @@ class LoopConfig:
         cycle's code: it omits verify by declaring a stage set without it,
         so the next type that varies the sequence declares its own set and
         adds no second flag here.
+
+        Every stage the cycle runs is gated on this — spec, build, verify
+        and merge in `cycle`, and land in `landing_wanted`. Gating only the
+        one stage a shipped type happens to omit would make that sentence
+        true of `bolt-direct` and false of the type after it, which is the
+        shape a reader would trust and be wrong about.
         """
         return stage in self.stages
 
@@ -1741,27 +1747,31 @@ class BoltLoop:
                 # instead — the one boundary that path actually has.
                 if not self.params.plan_mode:
                     self.set_stage(batch.numbers, inbox.STAGE_PLANNED)
-            build = self.build_stage(batch)
-            outcomes.append(build)
-            if not build.ok:
-                continue
-            # `build.ok` is the deliverables check having passed, not the
-            # session's word: no commit on the branch and the stage paused.
-            self.set_stage(batch.numbers, inbox.STAGE_BUILT)
+            build = StageOutcome("build", "skipped",
+                                 "the type declares no build stage")
+            if config.runs("build"):
+                build = self.build_stage(batch)
+                outcomes.append(build)
+                if not build.ok:
+                    continue
+                # `build.ok` is the deliverables check having passed, not the
+                # session's word: no commit on the branch and the stage paused.
+                self.set_stage(batch.numbers, inbox.STAGE_BUILT)
             if config.runs("verify"):
                 verify = self.verify_stage(batch, build)
                 outcomes.append(verify)
                 if not verify.ok:
                     continue
                 self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
-            merge = self.merge_stage(batch)
-            outcomes.append(merge)
-            if merge.ok:
-                # merge_stage returns done only on ancestry git confirmed.
-                self.set_stage(batch.numbers, inbox.STAGE_MERGED)
-                self.close_merged(batch)
-                merged += 1
-                self._merged += 1
+            if config.runs("merge"):
+                merge = self.merge_stage(batch)
+                outcomes.append(merge)
+                if merge.ok:
+                    # merge_stage returns done only on ancestry git confirmed.
+                    self.set_stage(batch.numbers, inbox.STAGE_MERGED)
+                    self.close_merged(batch)
+                    merged += 1
+                    self._merged += 1
         result.outcomes = tuple(outcomes)
         if merged == 0:
             result.stopped = ("no batch reached the bolt branch this cycle — "
@@ -1822,6 +1832,8 @@ class BoltLoop:
         """
         if not land or self.dry_run:
             return False
+        if not self.params.config.runs("land"):
+            return False               # the type's declared sequence has no landing
         if box.ready:
             return False                       # there is still released work
         if not unlanded:
