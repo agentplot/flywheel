@@ -161,6 +161,8 @@ class FakeShell:
         # adopts, writes nothing — the dry-cycle property holds); build/*
         # exists once a recorded `wt switch --create` made it. All paths are
         # TREE, whose change directory the deliverable checks already use.
+        if tuple(argv[:2]) == ("git", "merge-base"):
+            return Result(1)   # not an ancestor: batches still need driving
         if tuple(argv[:2]) == ("wt", "list"):
             made = [a[3] if a[2] == "--create" else a[2]
                     for a, _ in self.calls
@@ -190,6 +192,33 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
     return loop.BoltLoop(loop.BoltParams(**fields), tracker,
                          runner_factory=lambda stage: runner,
                          run=shell or FakeShell(), clock=clock or FakeClock())
+
+
+class StatelessResumeTest(unittest.TestCase):
+    """A restarted loop re-adopts its own in-progress items (observed live:
+    a restart saw only state:ready, found nothing, and stranded the bolt)."""
+
+    def _snap(self):
+        return Snapshot(items=[
+            item(96, inbox.IN_PROGRESS, inbox.TYPE_ASSERTION,
+                 milestone="bolt/x")])
+
+    def test_an_unmerged_in_progress_item_is_re_driven_not_stranded(self):
+        l = a_loop(FakeTracker(self._snap()))
+        l.dry_run = True   # merge-base answers rc 1: not merged
+        result = l.cycle(1)
+        self.assertNotEqual(result.stopped,
+                            "nothing is ready and the guards wrote nothing")
+
+    def test_a_merged_in_progress_item_awaits_the_landing(self):
+        shell = FakeShell(answers={("git", "merge-base"): Result(0),
+                                   ("git", "rev-parse"): Result(0)})
+        l = a_loop(FakeTracker(self._snap()), shell=shell)
+        result = l.cycle(1)
+        self.assertIn("awaiting the landing", result.stopped)
+        box = inbox.bolt_inbox(self._snap(), "x")
+        self.assertTrue(l.landing_wanted("auto", box,
+                                         list(self._snap().items)))
 
 
 class ContainerRoutingTest(unittest.TestCase):

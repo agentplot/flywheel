@@ -662,6 +662,7 @@ class BoltLoop:
         self._fix_rounds = {}
         self._landing_attempts = 0
         self._merged = 0
+        self._resume_landing = False
 
     # -- plumbing ----------------------------------------------------------
 
@@ -720,6 +721,16 @@ class BoltLoop:
             if row.get("branch") == branch and row.get("path"):
                 return row["path"], True
         return None, False
+
+    def batch_merged(self, batch):
+        """Git's answer to "does this batch still need driving": a build
+        branch fully an ancestor of the bolt branch awaits only the
+        landing. A branch that does not exist is work not yet started."""
+        branch = f"build/{batch.slug}"
+        if self.git("rev-parse", "--verify", "--quiet", branch).returncode != 0:
+            return False
+        return self.git("merge-base", "--is-ancestor", branch,
+                        self.params.bolt_branch).returncode == 0
 
     def batch_worktree(self, batch):
         path, _created = self.worktree_for(f"build/{batch.slug}",
@@ -1515,15 +1526,27 @@ class BoltLoop:
             snapshot = self.tracker.snapshot(self.params.milestone)
         box = inbox.bolt_inbox(snapshot, self.params.slug)
         result.ready = tuple(i.number for i in box.ready)
-        if not box.ready and not actions:
+        if not box.ready and not box.in_progress and not actions:
             result.stopped = "nothing is ready and the guards wrote nothing"
             return result
-        work = inbox.unblocked(snapshot, box.ready)
-        if not work:
+        work = list(inbox.unblocked(snapshot, box.ready))
+        resume = [i for i in inbox.unblocked(snapshot, box.in_progress)
+                  if i not in work]
+        if not work and not resume:
             result.stopped = ("every ready item is blocked by an open item — "
                               "nothing to work this cycle")
             return result
-        batches = analyse(work, snapshot, self.params.slug)
+        batches = analyse(tuple(work) + tuple(resume), snapshot, self.params.slug)
+        done = [b for b in batches if self.batch_merged(b)]
+        batches = [b for b in batches if b not in done]
+        if done:
+            # merged-awaiting-landing: nothing to drive, and a restarted
+            # process must still reach for the landing it never saw happen.
+            self._resume_landing = True
+        if not batches:
+            result.stopped = (f"every batch is merged to "
+                              f"{self.params.bolt_branch} — awaiting the landing")
+            return result
         if self.dry_run:
             result.outcomes = tuple(
                 StageOutcome("batch", "skipped",
@@ -1613,7 +1636,7 @@ class BoltLoop:
             return False                       # there is still released work
         if not open_items:
             return False                       # nothing to close, nothing to land
-        return land == "force" or self._merged > 0
+        return land == "force" or self._merged > 0 or self._resume_landing
 
     def describe(self, result):
         parts = [f"cycle {result.number}:"]

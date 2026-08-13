@@ -341,6 +341,7 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
 class BoltInbox:
     milestone: str
     ready: tuple = ()
+    in_progress: tuple = ()   # the loop's own half-done items, for re-adoption
     ready_units: tuple = ()
     queued_to_flip: tuple = ()
 
@@ -391,7 +392,14 @@ def bolt_inbox(snapshot, slug):
     """
     milestone = f"{BOLT_PREFIX}{slug}"
     on_milestone = [i for i in snapshot.on(milestone) if i.is_open]
+    # `ready` stays exactly the record's filter. `in_progress` rides
+    # beside it because the loop itself flips ready -> in-progress when a
+    # batch starts, and a STATELESS RESTART must re-adopt its half-done
+    # items — but which of them still need driving is git's to say (a
+    # batch whose build branch is an ancestor of the bolt branch awaits
+    # only the landing), so the split is the loop's, not this filter's.
     ready = tuple(i for i in on_milestone if i.ready)
+    in_progress = tuple(i for i in on_milestone if i.in_progress)
     units = tuple(
         b for b in snapshot.batches
         if b.at_ready and b.kind == UNIT and b.milestone in (None, milestone)
@@ -399,6 +407,7 @@ def bolt_inbox(snapshot, slug):
     return BoltInbox(
         milestone=milestone,
         ready=ready,
+        in_progress=in_progress,
         ready_units=units,
         queued_to_flip=flip_consume_plan(snapshot, milestone),
     )
