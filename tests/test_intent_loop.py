@@ -441,10 +441,15 @@ class ResumeMergeTest(unittest.TestCase):
     branch nobody would look for.
     """
 
-    def session_of(self, *items):
+    def session_of(self, *items, name="writeback-x"):
         snap = Snapshot(items=list(items))
         run = FakeRun(stdout="worktree /tmp/sess-x\nbranch refs/heads/sess/writeback-x\n")
-        tracker = FakeTracker(snapshot=snap)
+        # PRODUCTION SHAPE: dispatch writes its marker on every item, and
+        # that marker is the only record of which session an item belongs
+        # to. A fixture without it pins a state the loop cannot produce.
+        tracker = FakeTracker(snapshot=snap, comments={
+            i.number: [{"body": intent.format_dispatch(name, 1000.0)}]
+            for i in items})
         writer = intent.Writer(tracker=tracker, apply=True, run=run,
                                snapshot=snap)
         report = intent.Report(slug="x")
@@ -478,8 +483,122 @@ class ResumeMergeTest(unittest.TestCase):
         # branch to merge — the resume path must not invent one.
         self.assertFalse(intent.TYPES["research"].worktree)
         run, report, runner = self.session_of(
-            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"))
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            name="research-x")
         self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
+
+
+class SessionMembershipTest(unittest.TestCase):
+    """The loop must be able to name the set of items a session carries.
+
+    Both defects here had one root: the session-scoped teardown was keyed
+    on the batch (which a later batch of the same type is not) and on
+    type+slug (which is a NAME, not a membership). The dispatch marker is
+    now written on every item, and is that membership.
+    """
+
+    def test_dispatch_records_the_session_on_every_item(self):
+        items = [item(1, "type:writeback", inbox.READY),
+                 item(2, "type:writeback", inbox.READY)]
+        snap = Snapshot(items=items)
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        intent.dispatch_batch(intent.DesignBatch("writeback", tuple(items)),
+                              writer, ScriptedRunner(), config(apply=True),
+                              Clock())
+        marked = [c[1] for c in tracker.calls if c[0] == "comment"]
+        self.assertEqual(sorted(marked), [1, 2], "not just batch.first")
+
+    def test_the_marker_round_trips_its_session_name(self):
+        body = intent.format_dispatch("writeback-x", 1000.0)
+        self.assertEqual(intent.session_named([{"body": body}]), "writeback-x")
+        self.assertIsNone(intent.session_named([{"body": "no marker here"}]))
+
+    def test_a_later_batch_in_the_same_session_holds_the_teardown(self):
+        # `launch` is idempotent and reuses the agent running under the
+        # name, so a second same-type batch joins THIS pane and branch.
+        # Tearing them down on the first batch's completion cut it off.
+        first = item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done")
+        later = item(2, "type:writeback", inbox.IN_PROGRESS, "stage:in-session")
+        snap = Snapshot(items=[first, later])
+        tracker = FakeTracker(snapshot=snap, comments={
+            n: [{"body": intent.format_dispatch("writeback-x", 1000.0)}]
+            for n in (1, 2)})
+        run = FakeRun()
+        runner = ScriptedRunner()
+        spec = sessions.SessionSpec(name="writeback-x", cwd="/tmp", order="go",
+                                    profile="flywheel-design-session")
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, run=run,
+                               snapshot=snap)
+        report = intent.Report(slug="x")
+        intent.land(intent.DesignBatch("writeback", (first,)), spec, handle,
+                    writer, runner, tracker, config(apply=True), snap,
+                    Clock(), report)
+        self.assertEqual(runner.closed, [],
+                         "#2 is still in session; the pane is not ours to close")
+        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [],
+                         "and its branch is not ours to merge")
+        self.assertTrue(any("#2" in n for n in report.notes), report.notes)
+
+
+class PauseMarksTheBatchTest(unittest.TestCase):
+    """A pause must mark every item, because the label IS the guard.
+
+    `collect_plan` excludes a paused item by its `needs-operator` label. A
+    pause that labelled only the raising item — or, on a stall, nothing —
+    left the next cycle free to collect and close a flipped sibling of the
+    very batch it had paused.
+    """
+
+    def _land(self, items, states=(), comments=None):
+        snap = Snapshot(items=items)
+        tracker = FakeTracker(snapshot=snap, comments=comments or {})
+        runner = ScriptedRunner(states=list(states))
+        spec = sessions.SessionSpec(name="research-x", cwd="/tmp", order="go",
+                                    profile="flywheel-design-session")
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        clock = Clock()
+        if states:
+            class Ticking(Clock):
+                def __call__(s):
+                    v = s.now
+                    s.now += sessions.WAIT_CHUNK_S
+                    return v
+            clock = Ticking()
+        intent.land(intent.DesignBatch("research", tuple(items)), spec, handle,
+                    writer, runner, tracker, config(apply=True), snap, clock,
+                    intent.Report(slug="x"))
+        return tracker
+
+    def paused_items(self, tracker):
+        return sorted(c[1] for c in tracker.calls
+                      if c[0] == "add_label" and c[2] == inbox.NEEDS_OPERATOR)
+
+    def test_an_andon_pauses_every_item_of_the_batch(self):
+        items = [item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+                 item(3, "type:research", inbox.IN_PROGRESS)]
+        tracker = self._land(items, comments={
+            3: [{"body": inbox.format_andon("the spec contradicts its decision")}]})
+        self.assertEqual(self.paused_items(tracker), [1, 3],
+                         "the flipped sibling must be paused too, or the next "
+                         "cycle collects it")
+
+    def test_a_stall_pauses_every_item_of_the_batch(self):
+        items = [item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+                 item(3, "type:research", inbox.IN_PROGRESS)]
+        tracker = self._land(items, states=[WaitState.WORKING] * 40)
+        self.assertEqual(self.paused_items(tracker), [1, 3])
+
+    def test_the_pause_then_makes_the_sibling_uncollectable(self):
+        # The two halves together: the label the pause writes is exactly
+        # what `collect_plan` reads.
+        paused = Snapshot(items=[
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done",
+                 inbox.NEEDS_OPERATOR),
+            item(3, "type:research", inbox.IN_PROGRESS, inbox.NEEDS_OPERATOR)])
+        self.assertEqual(inbox.collect_plan(paused, "x"), ())
 
 
 class HandoffReleaseTest(unittest.TestCase):

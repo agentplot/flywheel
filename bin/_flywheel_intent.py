@@ -572,6 +572,41 @@ def format_dispatch(name, origin, notified=False):
             f"Dispatched design session `{name}`.")
 
 
+def session_named(comments):
+    """The session name an item's dispatch marker records, or None.
+
+    The counterpart to `format_dispatch`, and what lets the loop answer
+    "which items does this session carry" — a question it could not ask
+    before, so the session-scoped teardown was keyed on the batch (which a
+    later batch of the same type is not) and on type+slug (which is a name,
+    not a membership).
+    """
+    latest = None
+    for comment in comments or ():
+        body = comment.get("body") if isinstance(comment, dict) else comment
+        found = _DISPATCH.search(body or "")
+        if not found:
+            continue
+        fields = dict(pair.split("=", 1)
+                      for pair in found.group("fields").split() if "=" in pair)
+        latest = fields.get("name") or latest
+    return latest
+
+
+def session_members(tracker, snapshot, milestone, name, fallback=()):
+    """Every open item whose dispatch marker names this session.
+
+    Falls back to the caller's set when there is no tracker to ask — a
+    dry run or a fixture — so the teardown is never wider than what it
+    can actually see.
+    """
+    if tracker is None:
+        return list(fallback)
+    found = [i.number for i in snapshot.on(milestone)
+             if i.is_open and session_named(tracker.comments(i.number)) == name]
+    return found or list(fallback)
+
+
 def parse_dispatch(comments, name=None):
     """(origin, notified) recovered from the item's comments, or (None, False).
 
@@ -836,7 +871,15 @@ def dispatch_batch(batch, writer, runner, config, clock):
         if not (writer.has_label(item.number, STAGE_DONE)
                 or writer.has_label(item.number, STAGE_COLLECTED)):
             set_stage(writer, item.number, STAGE_IN_SESSION)
-    writer.comment(batch.first, format_dispatch(name, clock()))
+    # **On every item, not just the first.** The dispatch marker is the only
+    # record of which session an item belongs to, and the loop's
+    # session-scoped acts — the `sess/*` merge and the pane close — need
+    # that set. Keying them on type+slug instead made a second same-type
+    # batch land inside the running session, and its completion tore down
+    # the pane and branch under items still at `stage:in-session`.
+    origin = clock()
+    for number in batch.numbers:
+        writer.comment(number, format_dispatch(name, origin))
     handle = runner.launch(spec) if writer.apply else None
     return spec, handle
 
@@ -1018,22 +1061,31 @@ def merge_resumed(inbox, writer, runner, config, snapshot, report, collected):
     never a guess.
     """
     done = set(collected)
-    for kind in sorted({type_of(i) for i in inbox.to_collect} - {None}):
-        if kind not in TYPES or not TYPES[kind].worktree:
+    tracker = writer.tracker
+    # Group by the session each item's dispatch marker NAMES, not by
+    # type+slug. Two same-type batches share a name but not a membership,
+    # and merging on the name alone would cut the second one off.
+    names = {}
+    for item in inbox.to_collect:
+        if item.number not in done:
             continue
-        siblings = [i for i in snapshot.on(config.milestone)
-                    if i.is_open and i.in_progress and type_of(i) == kind]
-        outstanding = [i.number for i in siblings
-                       if i.number not in done
-                       and not writer.has_label(i.number, STAGE_COLLECTED)]
+        found = session_named(tracker.comments(item.number)) if tracker else None
+        if found:
+            names.setdefault(found, []).append(item.number)
+    for name, mine in sorted(names.items()):
+        kind = next((k for k in TYPES if name.startswith(f"{k}-")), None)
+        if kind is None or not TYPES[kind].worktree:
+            continue
+        members = session_members(tracker, snapshot, config.milestone, name,
+                                  fallback=mine)
+        outstanding = [n for n in members
+                       if n not in done
+                       and not writer.has_label(n, STAGE_COLLECTED)]
         if outstanding:
             report.notes += (
-                f"the {kind} session's `sess/*` branch is not merged yet — "
+                f"`sess/{name}` is not merged yet — "
                 + ", ".join(f"#{n}" for n in outstanding) + " still open.",)
             continue
-        first = min(i.number for i in siblings) if siblings else min(done)
-        name = session_name(DesignBatch(kind, (Item(number=first),)),
-                            config.slug)
         worktree = worktree_path(config.repo_dir, f"sess/{name}",
                                  run=writer._run)
         if not worktree:
@@ -1077,6 +1129,17 @@ def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
     if result.notified and result.state != WaitState.STALLED:
         clear_needs_operator(writer, batch.first)
     if result.state == WaitState.STALLED:
+        # Mark EVERY item, not none: `collect_plan` excludes a paused item
+        # by its `needs-operator` label, so a stall that labelled nothing
+        # left the next cycle free to collect and close a flipped sibling
+        # of the stalled batch.
+        for number in batch.numbers:
+            set_needs_operator(
+                writer, number,
+                f"`{spec.name}` stalled after {result.elapsed / 3600:.1f} h "
+                "without settling. Its pane is left open — a stalled session "
+                "is evidence — and nothing on this batch is collected, "
+                "merged or closed until you say so.")
         report.notes += (f"{spec.name} stalled after "
                          f"{result.elapsed / 3600:.1f} h; its pane is left "
                          "open — a stalled session is evidence.",)
@@ -1085,11 +1148,16 @@ def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
     raised = batch_andon(batch, tracker)
     if raised:
         number, andon = raised
-        set_needs_operator(
-            writer, number,
-            f"Andon raised by `{spec.name}`: {andon.reason}. The batch is "
-            "paused; nothing merged and nothing closed.",
-        )
+        # The whole batch, not just the item that raised it. A raised andon
+        # pauses the BATCH — the spec says "nothing is merged or closed" —
+        # and the label is what the next cycle's collect filter reads, so
+        # marking only the raiser left its flipped siblings collectable.
+        for member in batch.numbers:
+            set_needs_operator(
+                writer, member,
+                f"Andon raised by `{spec.name}` on #{number}: {andon.reason}. "
+                "The batch is paused; nothing merged and nothing closed.",
+            )
         report.notes += (f"{spec.name} raised the andon on #{number}: "
                          f"{andon.reason}",)
         return
@@ -1120,7 +1188,13 @@ def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
 
     # `writer.has_label` answers from the snapshot plus what this cycle just
     # wrote, so an item collected on an earlier pass counts here too.
-    outstanding = [n for n in batch.numbers
+    # The session's items, not this batch's. `launch` is idempotent and
+    # reuses an agent already running under the name, so a later batch of
+    # the same type joins THIS pane and THIS branch; tearing them down on
+    # this batch's completion would cut that batch off mid-flight.
+    members = session_members(tracker, snapshot, config.milestone, spec.name,
+                              fallback=batch.numbers)
+    outstanding = [n for n in members
                    if not writer.has_label(n, STAGE_COLLECTED)]
     if outstanding:
         report.notes += (
