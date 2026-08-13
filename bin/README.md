@@ -14,8 +14,10 @@ The `_`-prefixed `.py` files here are the exception the rule needs: shared
 modules the commands beside them import, and that no user ever calls. They
 carry the underscore and the extension precisely so they read as
 not-a-command — `_flywheel_gh.py` (tracker plumbing), `_flywheel_sessions.py`
-(session launch and supervision) and `_flywheel_inbox.py` (the tracker's four
-inbox filters). A sibling imports one by putting its own directory on the
+(session launch and supervision), `_flywheel_inbox.py` (the tracker's four
+inbox filters) and `_flywheel_bolt_loop.py` (the construction loop itself,
+which `flywheel-bolt-loop` runs and the unit suite imports). A sibling
+imports one by putting its own directory on the
 path, since the commands beside them are extensionless:
 
 ```python
@@ -28,12 +30,15 @@ an open question — the bar stated below is "self-contained", and a command
 importing a sibling module is arguably not that. It is queued rather than
 settled mid-bolt, because moving `_flywheel_gh.py` touches five commands.
 
-Two commands live here now, whole — each is a self-contained,
-zero-dependency script, which is the bar for skipping the `../tools/`
-split:
+The commands here are zero-dependency stdlib scripts, which is the bar for
+skipping the `../tools/` split:
 
 - `flywheel` — drive an org fleet from its `fleet.yaml` (`up` /
   `status`); the `flywheel:fleet` skill wraps it.
+- `flywheel-bolt-loop` — run one bolt's construction loop: query+guards,
+  spec by the type's strategy, apply, verify, merge through the gate,
+  landing per `bolt.md`, STOP. `--dry-run` reads and decides without
+  writing; `--fixture` points it at a tracker file instead of GitHub.
 - `install-schemas` — publish the plugin's OpenSpec schemas as user
   schemas, moving any existing copy aside as `<name>.replaced`.
 

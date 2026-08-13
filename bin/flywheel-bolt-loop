@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Run one bolt's construction loop.
+
+    flywheel-bolt-loop --slug loop-server
+    flywheel-bolt-loop --slug loop-server --dry-run      # read, decide, write nothing
+    flywheel-bolt-loop --slug sandbox --fixture t.json   # the file is the tracker
+
+One milestone, one process, no state of its own: every cycle re-reads the
+tracker and the records, and stops when nothing is ready and the guards
+wrote nothing. A server that starts and stops these processes is #74's;
+this command is what it starts, and what an operator runs by hand.
+
+The loop itself is `_flywheel_bolt_loop.py` beside this file.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _flywheel_bolt_loop as loop      # noqa: E402
+import _flywheel_inbox as inbox         # noqa: E402
+from _flywheel_gh import resolve_token  # noqa: E402
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="flywheel-bolt-loop",
+        description="Run the construction loop for one bolt milestone.")
+    parser.add_argument("--slug", required=True,
+                        help="the bolt's slug; the milestone is bolt/<slug>")
+    parser.add_argument("--org", default="agentplot")
+    parser.add_argument("--repo", default="flywheel",
+                        help="the org's tracker repo")
+    parser.add_argument("--project", default="Flywheel",
+                        help="the org Project whose Status lane carries the approval")
+    parser.add_argument("--repo-dir", default=".",
+                        help="the built repo's main checkout")
+    parser.add_argument("--bolt-worktree", default=None,
+                        help="the bolt branch's worktree (default: --repo-dir)")
+    parser.add_argument("--bolt-branch", default=None,
+                        help="default: bolt/<slug>")
+    parser.add_argument("--main-branch", default="main")
+    parser.add_argument("--type", dest="type_name", default=None,
+                        help="bolt type; default: the change's own binding")
+    parser.add_argument("--plan-mode", dest="plan_mode", action="store_true",
+                        default=None, help="force the plan-mode path")
+    parser.add_argument("--no-plan-mode", dest="plan_mode", action="store_false",
+                        help="refuse the plan-mode path whatever the bolt declares")
+    parser.add_argument("--fixture", default=None,
+                        help="a bolt-tracker.json to use AS the tracker")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="read and decide; write nothing, launch nothing")
+    parser.add_argument("--once", action="store_true", help="one cycle only")
+    parser.add_argument("--max-cycles", type=int, default=None)
+    parser.add_argument("--no-land", dest="land", action="store_const",
+                        const=False, default="auto",
+                        help="stop at the queue; never attempt the landing")
+    parser.add_argument("--force-land", dest="land", action="store_const",
+                        const="force",
+                        help="land even though this run merged nothing — for "
+                             "resuming a run that died after its last merge")
+    parser.add_argument("--json", dest="as_json", action="store_true",
+                        help="print the report as JSON")
+    return parser.parse_args(argv)
+
+
+def build_loop(args):
+    repo_dir = str(Path(args.repo_dir).resolve())
+    worktree = str(Path(args.bolt_worktree).resolve()) if args.bolt_worktree else repo_dir
+
+    if args.fixture:
+        tracker = loop.FixtureTracker(args.fixture, write_back=not args.dry_run)
+        description = ""
+    else:
+        tracker = loop.BoltTracker(resolve_token(args.org), args.org, args.repo,
+                                   project_title=args.project)
+        milestone = tracker.milestone(f"{inbox.BOLT_PREFIX}{args.slug}")
+        description = (milestone or {}).get("description", "")
+
+    change_dir = Path(worktree) / "openspec" / "changes" / args.slug
+    binding = loop.read_binding(change_dir)
+    type_name = args.type_name or binding.get("schema") or "bolt-quick"
+    config = loop.load_type(type_name, repo_dir)
+    declared = loop.plan_mode_declared(binding, description, args.plan_mode)
+
+    params = loop.BoltParams(
+        slug=args.slug, org=args.org, repo=args.repo, repo_dir=repo_dir,
+        bolt_worktree=worktree, bolt_branch=args.bolt_branch,
+        main_branch=args.main_branch, type_name=type_name,
+        plan_mode=loop.resolve_plan_mode(declared, config), config=config)
+
+    if args.dry_run:
+        tracker = loop.ReadOnlyTracker(tracker)
+    return loop.BoltLoop(params, tracker, log=lambda m: print(m, flush=True),
+                         dry_run=args.dry_run), params
+
+
+def render(report, params):
+    lines = [
+        f"bolt loop · {report.milestone} · type {params.type_name}"
+        + (" · plan-mode path" if params.plan_mode else ""),
+    ]
+    for cycle in report.cycles:
+        lines.append(f"  cycle {cycle.number}: "
+                     + (", ".join(f"#{n}" for n in cycle.ready) or "nothing ready"))
+        for action in cycle.actions:
+            lines.append(f"    guard · {action}")
+        for outcome in cycle.outcomes:
+            lines.append(f"    {outcome.stage} · {outcome.status} · {outcome.detail}")
+        if cycle.stopped:
+            lines.append(f"    STOP · {cycle.stopped}")
+        if cycle.halted:
+            lines.append(f"    HALTED · {cycle.halted}")
+    lines.append(f"  landing: {report.landing}")
+    if report.queue:
+        lines.append("  queue:")
+        lines += [f"    {row}" for row in report.queue]
+    return "\n".join(lines)
+
+
+def as_dict(report):
+    return {
+        "milestone": report.milestone,
+        "halted": report.halted,
+        "landing": report.landing,
+        "queue": report.queue,
+        "cycles": [
+            {"number": c.number, "ready": list(c.ready), "actions": list(c.actions),
+             "stopped": c.stopped, "halted": c.halted,
+             "outcomes": [{"stage": o.stage, "status": o.status, "detail": o.detail}
+                          for o in c.outcomes]}
+            for c in report.cycles
+        ],
+    }
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    try:
+        runner, params = build_loop(args)
+    except loop.LoopError as error:
+        print(f"flywheel-bolt-loop: {error}", file=sys.stderr)
+        return 2
+    max_cycles = 1 if (args.once or args.dry_run) else args.max_cycles
+    report = runner.run(max_cycles=max_cycles, land=args.land)
+    print(json.dumps(as_dict(report), indent=2) if args.as_json
+          else render(report, params))
+    return 0 if report.ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
