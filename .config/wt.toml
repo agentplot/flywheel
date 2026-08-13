@@ -6,20 +6,27 @@
 
 # This repo's merge gate is the three [pre-merge] hooks below. Worktrunk runs a
 # repo's [pre-merge] hooks after the rebase and before the merge to the target,
-# on every shape of `wt merge` — the clean fast-forward included — with HEAD
-# equal to the sha that lands and the source worktree as cwd; a failing hook
-# aborts with exit 1 and nothing landed. So the green claim is produced by the
-# tool rather than asserted by whoever wrote the change. Measured across ten
-# merge shapes against worktrunk 0.57.0:
+# with HEAD equal to the sha that lands and the source worktree as cwd, on every
+# shape of `wt merge` THAT DOES NOT SUPPRESS THEM — the clean fast-forward
+# included; a failing hook aborts with exit 1 and nothing landed. So the green
+# claim is produced by the tool rather than asserted by whoever wrote the
+# change. Measured across ten merge shapes against worktrunk 0.57.0:
 # openspec/changes/gated-merge-guarantee/sessions/2026-08-12-ff-gate-facts/finding.md
+#
+# The qualifier is load-bearing rather than decorative: --no-hooks and
+# --no-verify are the suppressing shapes, and that same lab's `nohooks` and
+# `noverify` rows ran nothing and exited 0. A bare "every shape" is refuted by
+# the very evidence cited for it.
 #
 # Which worktree's CONFIGURATION supplies the hooks, when the source and target
 # worktrees carry different copies of this file, is an open question: that lab
 # ran symmetric configuration throughout, so no row of it distinguishes the two.
-# This file does not answer it in either direction. For the one merge where the
-# answer changes what to expect — this bolt's own merge-back — the reading is
-# openspec/changes/merge-gate-remedy/bolt.md's, and belongs there rather than
-# here.
+# This file does not answer it in either direction — and a merge that runs zero
+# hooks does not answer it either, since the suppressing flags above and a
+# misplaced -C also produce that result. How to read one particular merge is a
+# bolt record's to say, and is cited from
+# openspec/changes/merge-gate-remedy/bolt.md rather than restated here, because
+# that reasoning has already moved once.
 #
 # manifests: `claude plugin validate --strict` is the shipped validator, and
 #   its own help names CI as the use case. The script wraps it for two
@@ -41,10 +48,15 @@ paths     = "node scripts/check-paths.mjs"
 site      = "node scripts/check-site.mjs"
 
 # A worktree `wt` cuts starts cold, and check-site.mjs needs jsdom out of
-# node_modules. `wt step copy-ignored` copies the gitignored files in rather
-# than paying a fresh `npm ci` — the cheaper path to the same state. Its source
-# is stated at the precision worktrunk states it: `wt step copy-ignored --help`
-# on wt 5fba0bd gives `--from` as "Defaults to main worktree".
+# node_modules. `wt step copy-ignored` copies the gitignored files in.
+# decisions/gate-runs-under-pre-merge.md chose that copy over a fresh `npm ci`,
+# and worktrunk offers it as its own eliminate-cold-starts step. The two have
+# not been compared here: `npm ci` is timed in finding.md at 2.0 s and the copy
+# is timed nowhere, and they do not reach the same state either — the copy
+# delivers jsdom only if the source worktree has it, where `npm ci` fetches it
+# regardless. Its source is stated at the precision worktrunk states it:
+# `wt step copy-ignored --help` on wt 5fba0bd gives `--from` as "Defaults to
+# main worktree".
 #
 # A herdr-created worktree fires no `wt` lifecycle hooks at all, so run
 # `wt -C <worktree-path> hook post-start` by hand right after creating one —
