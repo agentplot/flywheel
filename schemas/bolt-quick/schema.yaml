@@ -4,6 +4,38 @@ description: Flywheel construction tracking, the quick bolt type - one change pe
   bolt; the released assertions are its items on the org's tracker; per-repo
   bolt branches; the loop schedules no review step. Picked for small,
   mechanical work where a wrong claim is cheap to catch.
+
+# The type as a named loop config. STUB: declared, nothing built. The loop
+# programs that will read it are #72 and #74; until they exist, a bolt type's
+# behaviour comes from apply.instruction below, which is what the current
+# compile-then-run machinery reads.
+#
+# Whatever ends up reading this block MUST read schema.yaml itself. openspec
+# 1.8.0 parses the file without complaint and then DROPS the block: its
+# workflow-schema validator (dist/core/artifact-graph/types.js,
+# SchemaYamlSchema) is a zod object in default strip mode, so an unknown
+# top-level key is neither an error nor preserved. Measured against the
+# installed loader, 2026-08-13. One corollary: `openspec schema fork`
+# re-serializes the stripped parse over the forked schema.yaml and so erases
+# this block - a repo customizing a type through fork loses its config
+# silently. `bin/install-schemas` copies the tree and is safe.
+#
+# strategy   - the spec commands the loop runs for each item. `ff` is one
+#              command generating every artifact, so this type has no
+#              post-new and no post-artifact boundary to expose.
+# hooks      - the review points those commands create, named after the real
+#              command boundaries and listed in the order a run reaches them.
+# extensions - the sessions attached at those hooks. Empty, and for this type
+#              that is the type: bolt-quick schedules no review step.
+# plan_mode  - the plan-mode path is AVAILABLE on this type and no other.
+#              Whether a given bolt takes it is declared per bolt, in the
+#              handoff plan or the milestone description, never here.
+loop:
+  strategy: ff
+  extensions: []
+  plan_mode: available
+  hooks: [post-spec, post-apply, post-verify, pre-merge, pre-land]
+
 artifacts:
   - id: bolt
     generates: bolt.md

@@ -5,6 +5,37 @@ description: Flywheel construction tracking, the default bolt type - one change 
   bolt branches; the loop schedules an independent proposal-review, an
   adversarial code-review, and batched acceptance. Picked for normal work
   touching code others read.
+
+# The type as a named loop config. STUB: declared, nothing built. The loop
+# programs that will read it are #72 and #74; until they exist, a bolt type's
+# behaviour comes from apply.instruction below, which is what the current
+# compile-then-run machinery reads.
+#
+# Whatever ends up reading this block MUST read schema.yaml itself. openspec
+# 1.8.0 parses the file without complaint and then DROPS the block: its
+# workflow-schema validator (dist/core/artifact-graph/types.js,
+# SchemaYamlSchema) is a zod object in default strip mode, so an unknown
+# top-level key is neither an error nor preserved. Measured against the
+# installed loader, 2026-08-13. One corollary: `openspec schema fork`
+# re-serializes the stripped parse over the forked schema.yaml and so erases
+# this block - a repo customizing a type through fork loses its config
+# silently. `bin/install-schemas` copies the tree and is safe.
+#
+# strategy   - the spec commands the loop runs for each item. `new+ff` lands
+#              the proposal before the rest of the spec is generated, which is
+#              the boundary a proposal review attaches at.
+# hooks      - the review points those commands create, named after the real
+#              command boundaries and listed in the order a run reaches them.
+#              No post-artifact: `ff` generates the remaining artifacts in one
+#              command, so there is no per-artifact boundary to expose.
+# extensions - the sessions attached at those hooks. Empty: the extension
+#              mechanism is not designed yet, and this type's review points
+#              attach here when it arrives.
+loop:
+  strategy: new+ff
+  extensions: []
+  hooks: [post-new, post-spec, post-apply, post-verify, pre-merge, pre-land]
+
 artifacts:
   - id: bolt
     generates: bolt.md

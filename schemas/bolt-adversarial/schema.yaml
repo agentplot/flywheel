@@ -1,10 +1,42 @@
-name: bolt-deep
+name: bolt-adversarial
 version: 2
-description: Flywheel construction tracking, the deep bolt type - one change per
+description: Flywheel construction tracking, the adversarial bolt type - one change per
   bolt; the released assertions are its items on the org's tracker; per-repo
   bolt branches; the loop schedules a persona read before the build,
   adversarial and human review after it, and personas exercising the
   result. Picked when the work has users who are not the author.
+
+# The type as a named loop config. STUB: declared, nothing built. The loop
+# programs that will read it are #72 and #74; until they exist, a bolt type's
+# behaviour comes from apply.instruction below, which is what the current
+# compile-then-run machinery reads.
+#
+# Whatever ends up reading this block MUST read schema.yaml itself. openspec
+# 1.8.0 parses the file without complaint and then DROPS the block: its
+# workflow-schema validator (dist/core/artifact-graph/types.js,
+# SchemaYamlSchema) is a zod object in default strip mode, so an unknown
+# top-level key is neither an error nor preserved. Measured against the
+# installed loader, 2026-08-13. One corollary: `openspec schema fork`
+# re-serializes the stripped parse over the forked schema.yaml and so erases
+# this block - a repo customizing a type through fork loses its config
+# silently. `bin/install-schemas` copies the tree and is safe.
+#
+# strategy   - the spec commands the loop runs for each item.
+# hooks      - the review points those commands create, named after the real
+#              command boundaries and listed in the order a run reaches them.
+#              A type exposes exactly the boundaries its strategy has: new+ff
+#              has a post-new because the proposal lands before the rest;
+#              new+continue also has a post-artifact because it steps artifact
+#              by artifact; ff has neither, being one command.
+# extensions - the sessions attached at those hooks. Empty everywhere: the
+#              extension mechanism is not designed yet, and this type's
+#              persona battery and per-artifact review points attach here
+#              when it arrives.
+loop:
+  strategy: new+continue
+  extensions: []
+  hooks: [post-new, post-artifact, post-spec, post-apply, post-verify, pre-merge, pre-land]
+
 artifacts:
   - id: bolt
     generates: bolt.md

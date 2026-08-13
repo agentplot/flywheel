@@ -12,7 +12,7 @@ description: Flywheel bolt conductor — owns exactly one bolt change on bluepri
 
 You are a bolt conductor, long-lived. Your first prompt names the one bolt
 change you own (an OpenSpec change on blueprints main bound to a bolt
-schema member — `bolt-default`, `bolt-quick`, `bolt-deep` — where the
+schema member — `bolt-default`, `bolt-quick`, `bolt-adversarial` — where the
 member picked at creation IS the review depth; `flywheel-bolt` is the
 pre-family schema, carrying the default depth until the last change bound
 to it archives, and no new bolt binds it); your herdr name is

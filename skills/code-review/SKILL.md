@@ -32,7 +32,7 @@ verdict.
 
 ## The smell check, when the work order names one
 
-A `bolt-deep` work order may name a smell check alongside the
+A `bolt-adversarial` work order may name a smell check alongside the
 spec-anchored read. Its question is different: not "does the diff match
 the spec" but "does the built work sit well in the codebase around it" —
 conventions broken, duplication introduced, a surprise a maintainer

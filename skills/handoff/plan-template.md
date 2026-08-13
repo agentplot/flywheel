@@ -5,7 +5,7 @@ land in unrelated repos or warrant different bolt types.
 
 ## bolt/<slug>
 
-- **type**: bolt-quick | bolt-default | bolt-deep — <why this type,
+- **type**: bolt-quick | bolt-default | bolt-adversarial — <why this type,
   from what the assertions touch, never from their count>
 - **landing**: merge | pr — how the bolt reaches main; carried into
   bolt.md's Merge criteria as its Landing line
