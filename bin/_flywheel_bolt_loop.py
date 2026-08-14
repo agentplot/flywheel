@@ -208,23 +208,50 @@ def parse_loop_block(text):
     lists, and dash lists — and nothing else, because anything richer would
     be a YAML parser this repo has no dependency budget for.
     """
-    block, inside = {}, False
-    pending = None
+    lines, inside = [], False
     for line in (text or "").splitlines():
         if not inside:
             if re.match(r"^loop:\s*(#.*)?$", line):
                 inside = True
             continue
         if not line.strip() or line.lstrip().startswith("#"):
-            continue
+            continue                           # never ends the block
         if not line[:1].isspace():
             break                              # dedent ends the block
+        lines.append(line)
+    return _parse_mapping(lines, nested=True)
+
+
+def _scalar(raw):
+    return raw.strip().strip("'\"").strip()
+
+
+def _parse_mapping(lines, nested=False):
+    """The three YAML shapes the flywheel corners use, and nothing else.
+
+    Scalars, flow lists and dash lists — one parser, so `parse_loop_block`
+    and `read_binding` cannot disagree about what a key looks like. A key
+    the parser cannot SEE is a key nothing can refuse, so teaching this
+    about a new shape teaches every reader at once. Anything richer would
+    be a YAML parser this repo has no dependency budget for.
+
+    `nested` matches keys after stripping (a schema's indented `loop:`
+    block); a top-level file keeps keys at column 0, so a nested map's
+    indented keys open no entry. A key with no value on its line opens a
+    block list, and is recorded even if no `- ` item follows — an empty
+    declaration is still a declaration and still refusable.
+    """
+    block, pending = {}, None
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
         stripped = line.strip()
         if stripped.startswith("- "):
             if pending is not None:
                 block.setdefault(pending, []).append(_scalar(stripped[2:]))
             continue
-        match = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", stripped)
+        match = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$",
+                         stripped if nested else line)
         if not match:
             continue
         key, raw = match.group(1), match.group(2).strip()
@@ -238,10 +265,6 @@ def parse_loop_block(text):
             block[key] = []
             pending = key
     return block
-
-
-def _scalar(raw):
-    return raw.strip().strip("'\"").strip()
 
 
 def read_schema_config(path):
@@ -314,32 +337,7 @@ def read_binding(change_dir):
     path = Path(change_dir) / ".openspec.yaml"
     if not path.exists():
         return {}
-    binding = {}
-    pending = None
-    for line in path.read_text().splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        stripped = line.strip()
-        if stripped.startswith("- ") and pending is not None:
-            binding.setdefault(pending, []).append(_scalar(stripped[2:]))
-            continue
-        match = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", line)
-        if not match:
-            continue
-        key, raw = match.group(1), match.group(2).strip()
-        if raw.startswith("["):
-            binding[key] = [_scalar(v) for v in raw.strip("[]").split(",") if v.strip()]
-            pending = None
-        elif raw:
-            binding[key] = _scalar(raw)
-            pending = None
-        else:
-            # A key with no value on its line opens a block list. It is
-            # recorded even if no `- ` item follows, so an empty declaration
-            # is still a declaration and still refusable.
-            binding[key] = []
-            pending = key
-    return binding
+    return _parse_mapping(path.read_text().splitlines())
 
 
 def plan_mode_declared(binding=None, milestone_description=None, flag=None):

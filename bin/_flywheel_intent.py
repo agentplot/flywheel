@@ -633,6 +633,24 @@ def format_dispatch(name, origin, notified=False):
             f"Dispatched design session `{name}`.")
 
 
+def _dispatch_markers(comments):
+    """Every dispatch marker in these comments, as parsed field dicts.
+
+    The one reader of the marker format. `session_named` and
+    `parse_dispatch` both consume it, so a change to the fields cannot
+    update one and silently starve the other — a `session_named` that
+    stopped matching would skip a whole session group at teardown, the
+    stranded-deliverables failure `resume_collect` exists to prevent.
+    """
+    for comment in comments or ():
+        body = comment.get("body") if isinstance(comment, dict) else comment
+        found = _DISPATCH.search(body or "")
+        if not found:
+            continue
+        yield dict(pair.split("=", 1)
+                   for pair in found.group("fields").split() if "=" in pair)
+
+
 def session_named(comments):
     """The session name an item's dispatch marker records, or None.
 
@@ -643,13 +661,7 @@ def session_named(comments):
     not a membership).
     """
     latest = None
-    for comment in comments or ():
-        body = comment.get("body") if isinstance(comment, dict) else comment
-        found = _DISPATCH.search(body or "")
-        if not found:
-            continue
-        fields = dict(pair.split("=", 1)
-                      for pair in found.group("fields").split() if "=" in pair)
+    for fields in _dispatch_markers(comments):
         latest = fields.get("name") or latest
     return latest
 
@@ -678,16 +690,7 @@ def parse_dispatch(comments, name=None):
     the tracker is the only bus by construction.
     """
     latest = (None, False)
-    for comment in comments or ():
-        body = comment.get("body") if isinstance(comment, dict) else comment
-        found = _DISPATCH.search(body or "")
-        if not found:
-            continue
-        fields = dict(
-            pair.split("=", 1)
-            for pair in found.group("fields").split()
-            if "=" in pair
-        )
+    for fields in _dispatch_markers(comments):
         if name is not None and fields.get("name") != name:
             continue
         try:
