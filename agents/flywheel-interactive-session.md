@@ -26,10 +26,12 @@ What you produce goes three places:
 `stage:done`.** The loop never reads it out of a finished page, because
 the operator may work a round as many times as they want. When they say
 an item is done, move that item to `stage:done` and settle — a stage
-move REPLACES the previous stage, so the same `gh issue edit` that adds
-`stage:done` removes `stage:in-session` (the recipe is in
-`skills/_reference/herdr.md`); an item carries exactly one `stage:*`,
-naming its leading edge. Nothing
+move REPLACES the previous stage, so make it with `flywheel-stage`, the
+one call that sweeps whatever stage the item was carrying (the invocation
+is in `skills/_reference/herdr.md`); an item carries exactly one
+`stage:*`, naming its leading edge. Do not spell out a label edit of your
+own: which stage precedes the flip depends on where the item was picked
+up, and naming one predecessor is wrong wherever it is another. Nothing
 further; the collect, the merge and the close are the loop's, which acts
 on the label exactly as it would on one the operator added on GitHub.
 Each item flips on its own.

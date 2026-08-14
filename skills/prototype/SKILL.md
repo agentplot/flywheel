@@ -45,7 +45,7 @@ beside it. Your contract:
 - **You receive**: usually one item per prototype (prototypes ride alone), `type:prototype`, flipped `state:in-progress` by the intent loop.
 - **You leave**: the finding as a comment on the item and `prototypes/<slug>.md` in the change; the spike code stays in the spike repo and dies there.
 - A finding that opens new work is a queued item, never an in-place expansion of your charge.
-- The operator's word is the completion signal, and it is one label: told in the pane that an item is done, move that item to `stage:done` — the same `gh issue edit` removing `stage:in-session`, since an item carries exactly one `stage:*` — and settle. The loop reads the label and does the rest. You never close your own item — the finding is your evidence, and the loop closes on it.
+- The operator's word is the completion signal, and it is one label: told in the pane that an item is done, move that item to `stage:done` — the one call `flywheel-stage <n> --org <org> --repo <tracker> --stage stage:done`, which sweeps whatever stage the item carried, since an item carries exactly one `stage:*` — and settle. The loop reads the label and does the rest. You never close your own item — the finding is your evidence, and the loop closes on it.
 
 ## What you report
 

@@ -141,6 +141,18 @@ class ServerInboxTest(unittest.TestCase):
         self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
                          [("bolt/a", "run")])
 
+    def test_a_ready_batch_on_a_closed_milestone_is_not_a_run_job(self):
+        # The same test the per-item condition above already makes. Without
+        # it a unit parent left open at Ready keeps its milestone reporting a
+        # job forever — including after the operator closes the milestone,
+        # where it collides with the `archive` job this same sweep adds.
+        snap = Snapshot(batches=[Batch(9, kind=inbox.UNIT,
+                                       status=inbox.STATUS_READY,
+                                       milestone="bolt/a",
+                                       milestone_state="closed")])
+        self.assertEqual(
+            [j for j in inbox.server_inbox(snap) if j.kind == "run"], [])
+
     def test_a_merge_closed_item_keeps_its_milestone_in_the_job_list(self):
         # Closing at merge takes an item out of every filter that reads open
         # issues — including this one. Without the merge-closed branch, a
@@ -520,10 +532,6 @@ class NeedsOperatorTest(unittest.TestCase):
         self.assertFalse(inbox.clear_needs_operator(tracker, 75))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 # ---------------------------------------------------------------------------
 # The prose surfaces the loops' docstrings cite as their definition
 # ---------------------------------------------------------------------------
@@ -578,11 +586,77 @@ class RecordConsistencyTest(unittest.TestCase):
             self.assertIn("stage:done",
                           self.read("agents", f"{profile}.md"), profile)
 
-    def test_the_pane_written_flip_removes_the_previous_stage(self):
-        # The one path the loop cannot fix for itself: the same rule as
-        # `inbox.set_stage`, stated where the writer reads it.
+    def test_the_pane_written_flip_goes_through_the_one_implementation(self):
+        # The one path the loop cannot fix for itself. What is held is that
+        # the profile names the CALL — not merely that it mentions a removal.
+        # A profile spelling out its own two-label edit satisfied the old
+        # check and was the defect: it hard-codes one predecessor, which is
+        # wrong wherever the item's actual predecessor is another stage.
         for profile in ("flywheel-design-session", "flywheel-interactive-session"):
             flat = " ".join(self.read("agents", f"{profile}.md").split())
-            self.assertIn("removes `stage:in-session`", flat, profile)
-        self.assertIn("--remove-label stage:in-session --add-label stage:done",
-                      self.read("skills", "_reference", "herdr.md"))
+            self.assertIn("flywheel-stage", flat, profile)
+            self.assertNotIn("--remove-label stage:", flat, profile)
+
+    def test_no_design_surface_spells_out_a_hand_built_stage_edit(self):
+        # "The rule is stated once and copied nowhere": every surface a
+        # session reads points at the call, and none of them hands it a
+        # label edit to copy.
+        for skill in ("planning", "research", "writeback", "interactive",
+                      "prototype", "handoff"):
+            flat = " ".join(self.read("skills", skill, "SKILL.md").split())
+            self.assertIn("flywheel-stage", flat, skill)
+            self.assertNotIn("--remove-label stage:", flat, skill)
+
+    def test_the_reference_gives_the_flip_as_the_call(self):
+        # `herdr.md` is where the profiles send a session for the invocation.
+        flat = " ".join(self.read("skills", "_reference", "herdr.md").split())
+        self.assertIn("flywheel-stage", flat)
+        self.assertNotIn("--remove-label stage:in-session", flat)
+        # The sentence the recipe carried must survive the replacement.
+        self.assertIn("REPLACES the previous stage", flat)
+
+
+class SetStageTest(unittest.TestCase):
+    """The one implementation of the one-stage rule."""
+
+    def test_it_moves_the_leading_edge(self):
+        tracker = FakeTracker({inbox.STAGE_BUILT})
+        self.assertTrue(inbox.set_stage(tracker, 1, inbox.STAGE_VERIFIED))
+        self.assertEqual(tracker.labels, {inbox.STAGE_VERIFIED})
+
+    def test_a_clean_item_already_at_the_target_writes_nothing(self):
+        # The dry-cycle property depends on this: a second cycle over an
+        # unchanged tracker writes nothing.
+        tracker = FakeTracker({inbox.STAGE_DONE})
+        self.assertFalse(inbox.set_stage(tracker, 1, inbox.STAGE_DONE))
+        self.assertEqual(tracker.writes, [])
+
+    def test_an_item_at_the_target_carrying_another_stage_is_swept(self):
+        # The early return may not be taken on the strength of the target
+        # alone. The operator adding `stage:done` by hand on GitHub sweeps
+        # nothing, and this capability permits exactly that — so an item can
+        # reach this function carrying the target AND a predecessor.
+        tracker = FakeTracker({inbox.STAGE_COLLECTED, inbox.STAGE_DONE})
+        self.assertTrue(inbox.set_stage(tracker, 1, inbox.STAGE_DONE))
+        self.assertEqual(tracker.labels, {inbox.STAGE_DONE})
+        self.assertIn(("remove", inbox.STAGE_COLLECTED), tracker.writes)
+        # ...and the target it already carried is not re-added.
+        self.assertNotIn(("add", inbox.STAGE_DONE), tracker.writes)
+
+    def test_an_item_picked_up_at_collected_is_flipped_done(self):
+        # The case the hard-coded recipe got wrong. `dispatch_batch` leaves
+        # an item at `stage:collected` alone when a later session picks it
+        # up, so a flip removing only `stage:in-session` left it carrying
+        # `stage:collected` and `stage:done` at once.
+        tracker = FakeTracker({inbox.STAGE_COLLECTED})
+        self.assertTrue(inbox.set_stage(tracker, 1, inbox.STAGE_DONE))
+        self.assertEqual(tracker.labels, {inbox.STAGE_DONE})
+
+    def test_it_touches_no_closure_label(self):
+        tracker = FakeTracker({inbox.STAGE_BUILT, inbox.CLOSED_MERGED})
+        inbox.set_stage(tracker, 1, inbox.STAGE_MERGED)
+        self.assertIn(inbox.CLOSED_MERGED, tracker.labels)
+
+
+if __name__ == "__main__":
+    unittest.main()

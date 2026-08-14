@@ -354,9 +354,13 @@ GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
 GH_TOKEN=$tok gh issue comment <n> --repo <org>/<tracker> --body "<what happened>"
 # A stage move REPLACES the previous stage — an item carries exactly one
 # `stage:*`, naming its leading edge. The operator's flip, written by a
-# design session on their word, is a move like any other:
-GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
-  --remove-label stage:in-session --add-label stage:done
+# design session on their word, is a move like any other. Name the stage you
+# want and let the one implementation sweep whatever came before: which
+# label that is depends on where the item was picked up, so a hand-built
+# two-label edit naming one predecessor gets it wrong exactly when the
+# predecessor is a different stage.
+GH_TOKEN=$tok <plugin-root>/bin/flywheel-stage <n> \
+  --org <org> --repo <tracker> --stage stage:done
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label closed:done
 GH_TOKEN=$tok gh issue close <n> --repo <org>/<tracker> --comment "<landing SHA / outcome>"
 ```

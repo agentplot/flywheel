@@ -208,11 +208,35 @@ class TypeConfigTest(unittest.TestCase):
         # and this parser is the only thing that reads it.
         wanted = {"bolt-quick": ("ff", ("/opsx:ff",)),
                   "bolt-default": ("new+ff", ("/opsx:new", "/opsx:ff")),
-                  "bolt-adversarial": ("new+continue", ("/opsx:new", "/opsx:continue"))}
+                  "bolt-adversarial": ("new+continue", ("/opsx:new", "/opsx:continue")),
+                  "bolt-direct": ("ff", ("/opsx:ff",))}
         for name, (strategy, invocations) in wanted.items():
             config = loop.load_type(name, ROOT)
             self.assertEqual(config.strategy, strategy, name)
             self.assertEqual(config.invocations, invocations, name)
+
+    def test_each_shipped_type_declares_the_stage_set_it_runs(self):
+        # Strategy and invocations are not the whole declaration: the stage
+        # set is what makes bolt-direct a fourth named config rather than a
+        # branch in the loop's code. A schema edited to add `verify` back to
+        # bolt-direct must fail something, and this is that something.
+        wanted = {
+            "bolt-quick": ("spec", "build", "verify", "merge", "land"),
+            "bolt-default": ("spec", "build", "verify", "merge", "land"),
+            "bolt-adversarial": ("spec", "build", "verify", "merge", "land"),
+            "bolt-direct": ("spec", "build", "merge", "land"),
+        }
+        for name, stages in wanted.items():
+            self.assertEqual(tuple(loop.load_type(name, ROOT).stages), stages, name)
+        self.assertNotIn("verify", loop.load_type("bolt-direct", ROOT).stages)
+
+    def test_bolt_direct_declares_no_hook_for_a_boundary_it_never_reaches(self):
+        # A hook naming a boundary that never occurs is a review point
+        # nothing can ever attach to.
+        config = loop.load_type("bolt-direct", ROOT)
+        self.assertNotIn("post-verify", config.hooks)
+        for name in ("bolt-quick", "bolt-default", "bolt-adversarial"):
+            self.assertIn("post-verify", loop.load_type(name, ROOT).hooks, name)
 
     def test_the_hooks_a_type_declares_are_the_boundaries_its_strategy_creates(self):
         # ff is one command, so bolt-quick has no post-new to expose.
@@ -301,6 +325,36 @@ class TypeConfigTest(unittest.TestCase):
         for key in loop.STAGE_DECLARATION_KEYS:
             with self.assertRaises(loop.LoopError, msg=key):
                 loop.refuse_stage_declaration({key: "false"}, default)
+
+    def test_a_command_line_type_disagreeing_with_the_binding_is_refused(self):
+        # The other route to "no program downgrades the scrutiny the release
+        # approved". The declaration door is shut; this is the entry point's
+        # own precedence, which resolved --type ahead of the binding and so
+        # let a flag alone run a bolt-default bolt with no verify stage.
+        with self.assertRaises(loop.LoopError) as caught:
+            loop.refuse_type_disagreement({"schema": "bolt-default"}, "bolt-direct")
+        message = str(caught.exception)
+        self.assertIn("bolt-default", message, "the refusal names the binding's type")
+        self.assertIn("bolt-direct", message, "and the type it was asked for")
+
+    def test_a_command_line_type_agreeing_with_the_binding_runs(self):
+        self.assertEqual(
+            loop.refuse_type_disagreement({"schema": "bolt-direct"}, "bolt-direct"),
+            "bolt-direct")
+
+    def test_a_bolt_with_no_binding_still_honours_the_flag(self):
+        # There is no recorded approval for it to contradict, and refusing
+        # would leave an unbound bolt unable to run at all.
+        self.assertEqual(loop.refuse_type_disagreement({}, "bolt-direct"),
+                         "bolt-direct")
+        self.assertEqual(loop.refuse_type_disagreement(None, "bolt-direct"),
+                         "bolt-direct")
+
+    def test_the_binding_is_used_when_no_type_is_named(self):
+        self.assertEqual(
+            loop.refuse_type_disagreement({"schema": "bolt-adversarial"}, None),
+            "bolt-adversarial")
+        self.assertEqual(loop.refuse_type_disagreement({}, None), "bolt-quick")
 
     def test_a_clean_binding_passes_the_config_through(self):
         default = loop.load_type("bolt-default", ROOT)
@@ -938,9 +992,12 @@ class StageLabelTest(unittest.TestCase):
     # -- the type that runs no verify --------------------------------------
 
     def direct(self, tracker):
-        return self.worked(tracker, type_name="bolt-direct", config=loop.LoopConfig(
-            name="bolt-direct", strategy="ff",
-            stages=("spec", "build", "merge", "land")))
+        # The REAL schema, not a config built here. A config constructed in a
+        # test asserts what its author believed; the point is to hold what the
+        # plugin ships, so a schema edited to add `verify` back to bolt-direct
+        # fails this cycle test too and not only the declaration tests above.
+        return self.worked(tracker, type_name="bolt-direct",
+                           config=loop.load_type("bolt-direct", ROOT))
 
     def test_a_bolt_direct_cycle_launches_no_verify_session(self):
         snapshot = self.a_ready_item()
@@ -1061,6 +1118,54 @@ class LandingTest(unittest.TestCase):
         self.assertIn("abc1234", upgraded[0][2])
         self.assertEqual(tracker.reasons, [(1, inbox.CLOSED_DONE),
                                            (2, inbox.CLOSED_DONE)])
+
+    def with_unit(self, parent=9, kind=inbox.UNIT, milestone="bolt/x"):
+        return Snapshot(
+            items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS, parent_batch=parent),
+                   item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS, parent_batch=parent)],
+            batches=[Batch(number=parent, kind=kind, status=inbox.STATUS_READY,
+                           sub_issues=(1, 2), milestone=milestone)],
+            milestone="bolt/x")
+
+    def test_the_landing_closes_the_releases_unit_parent(self):
+        # Nothing closed one before, so a born-ready bolt's parent stayed
+        # open at Status Ready and its milestone reported a job forever.
+        snapshot = self.with_unit()
+        program, tracker = self.program("Landing: merge", ancestor=0,
+                                        tracker=FakeTracker(snapshot))
+        self.assertEqual(program.land_stage(snapshot).status, "done")
+        closes = [w for w in tracker.writes if w[0] == "close"]
+        self.assertEqual([w[1] for w in closes], [9])
+        self.assertIn((9, inbox.CLOSED_DONE), tracker.reasons,
+                      "a container closes with one reason like anything else")
+
+    def test_closing_the_parent_touches_no_sub_issue(self):
+        # The assertions' closes belong to the merge boundary and to the
+        # upgrade; a container's close is not a cascade.
+        snapshot = self.with_unit()
+        program, tracker = self.program("Landing: merge", ancestor=0,
+                                        tracker=FakeTracker(snapshot))
+        program.land_stage(snapshot)
+        self.assertEqual([w[1] for w in tracker.writes if w[0] == "close"], [9])
+        self.assertEqual([w[1] for w in tracker.writes if w[0] == "reclose"], [1, 2],
+                         "the sub-issues are upgraded, never closed a second time")
+
+    def test_an_elaboration_on_the_milestone_is_not_closed_by_a_landing(self):
+        snapshot = self.with_unit(kind=inbox.ELABORATION)
+        program, tracker = self.program("Landing: merge", ancestor=0,
+                                        tracker=FakeTracker(snapshot))
+        program.land_stage(snapshot)
+        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
+
+    def test_a_handoff_parent_off_the_bolt_milestone_is_reached_by_parentage(self):
+        # The handoff path puts the parent on `intent/<slug>` deliberately —
+        # it is born before any assertion has moved to a bolt — so the only
+        # handle is a landed item's own parent.
+        snapshot = self.with_unit(milestone="intent/x")
+        program, tracker = self.program("Landing: merge", ancestor=0,
+                                        tracker=FakeTracker(snapshot))
+        program.land_stage(snapshot)
+        self.assertEqual([w[1] for w in tracker.writes if w[0] == "close"], [9])
 
     def test_a_pull_request_landing_upgrades_nothing(self):
         program, tracker = self.program("Landing: pr", ancestor=1)

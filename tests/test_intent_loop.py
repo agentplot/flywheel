@@ -993,6 +993,33 @@ class LandingTest(unittest.TestCase):
         self.assertEqual(runner.closed, ["research-x"],
                          "every item collected, so the session may be torn down")
 
+    def test_a_worktree_bearing_session_merges_once_when_its_last_item_lands(self):
+        # `land`'s other completion tests all use `research`, whose type has
+        # no worktree, so `merge_session` is never reached on this path —
+        # only on the resume path. A writeback session bears one, so the
+        # teardown merge and the pane close both have to fire, exactly once.
+        only = item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done")
+        snap = Snapshot(items=[only])
+        tracker = FakeTracker(snapshot=snap, comments={
+            1: [{"body": intent.format_dispatch("writeback-x", 1000.0)}]})
+        run = FakeRun()
+        runner = ScriptedRunner()
+        spec = sessions.SessionSpec(name="writeback-x", cwd="/tmp/wt-x", order="go",
+                                    profile="flywheel-design-session")
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, run=run, snapshot=snap)
+        report = intent.Report(slug="x")
+
+        intent.land(intent.DesignBatch("writeback", (only,)), spec, handle,
+                    writer, runner, tracker, config(apply=True), snap,
+                    Clock(), report)
+
+        merges = [c for c in run.calls if c[:2] == ["wt", "merge"]]
+        self.assertEqual(len(merges), 1, f"exactly one merge, got {merges}")
+        self.assertIn("/tmp/wt-x", merges[0], "and it merges the session's worktree")
+        self.assertEqual(runner.closed, ["writeback-x"])
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+
     def test_the_flip_written_during_the_session_is_seen(self):
         """The pane path, which is the primary one.
 

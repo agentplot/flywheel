@@ -81,7 +81,7 @@ def build_loop(args):
 
     change_dir = Path(worktree) / "openspec" / "changes" / args.slug
     binding = loop.read_binding(change_dir)
-    type_name = args.type_name or binding.get("schema") or "bolt-quick"
+    type_name = loop.refuse_type_disagreement(binding, args.type_name)
     config = loop.refuse_stage_declaration(
         binding, loop.load_type(type_name, repo_dir).validate())
     declared = loop.plan_mode_declared(binding, description, args.plan_mode)

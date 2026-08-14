@@ -168,8 +168,33 @@ class Writer:
         self.tracker = tracker
         self.apply = apply
         self._run = run or _subprocess_run
-        self.snapshot = snapshot
         self.writes = []
+        self._added = {}
+        self._removed = {}
+        self.snapshot = snapshot
+
+    # -- the snapshot, and the cache that may not outlive it ----------------
+
+    @property
+    def snapshot(self):
+        return self._snapshot
+
+    @snapshot.setter
+    def snapshot(self, snapshot):
+        """Replacing the snapshot invalidates **both** halves of the cache.
+
+        A re-read is the loop learning what the world now says, so a cache of
+        this writer's own earlier writes must not survive it. `_removed`
+        outliving a re-read would re-report a label as absent; `_added`
+        outliving one makes the surface answer from a state that no longer
+        exists — on the normal pane path, dispatch writes `stage:in-session`,
+        the pane's own `stage:done` removes it on GitHub, and a stale
+        addition then sends one redundant `--remove-label` per collect.
+
+        Both directions go together because a cache with one direction
+        invalidated is a cache whose rule nobody can state.
+        """
+        self._snapshot = snapshot
         self._added = {}
         self._removed = {}
 

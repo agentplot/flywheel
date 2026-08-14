@@ -243,6 +243,7 @@ class Batch:
     status: str = None        # board Status: Backlog | Ready
     sub_issues: tuple = ()
     milestone: str = None
+    milestone_state: str = "open"
 
     @property
     def at_ready(self):
@@ -304,7 +305,8 @@ class TrackerSnapshot:
                 Batch(number=b["number"], kind=b.get("kind"),
                       status=b.get("status"),
                       sub_issues=tuple(b.get("sub_issues", ())),
-                      milestone=b.get("milestone", milestone))
+                      milestone=b.get("milestone", milestone),
+                      milestone_state=b.get("milestone_state", "open"))
                 for b in raw.get("batches", ())
             ],
             closed_milestones=raw.get("closed_milestones", ()),
@@ -353,8 +355,14 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
     def add(milestone, kind, why):
         jobs.setdefault((milestone, kind), Job(milestone, kind, why))
 
+    # Bounded by the milestone being open — the same test the per-item loop
+    # below makes. Without it a unit parent left open at Ready keeps its
+    # milestone reporting a job on every sweep: before the landing, after it,
+    # and after the operator closes the milestone, where it collides with the
+    # `archive` job this same sweep adds for that milestone.
     ready_batch_milestones = {
-        b.milestone for b in snapshot.batches if b.at_ready and b.milestone
+        b.milestone for b in snapshot.batches
+        if b.at_ready and b.milestone and b.milestone_state == "open"
     }
 
     for item in snapshot.items:
@@ -790,18 +798,30 @@ def set_stage(tracker, number, stage):
     `closed:merged` are written at the same boundary but are not the same
     act, and the closure vocabulary has its own writer.
 
-    Idempotent, and cheaply so: an item already at the target carries no
-    other stage by this function's own invariant, so the sweep is paid only
-    on a real transition. Takes any of the four-method label surfaces —
-    `Tracker`, `BoltTracker`, the intent loop's `Writer` — as its other two
-    writes here do.
+    Idempotent, and reports whether it wrote: an item already at the target
+    **and carrying no other stage** is left alone and nothing is recorded,
+    which is what keeps a second cycle over an unchanged tracker writing
+    nothing.
+
+    The early return is deliberately narrow. Returning on the target alone
+    would assume every stage label on the tracker was written through here,
+    and that assumption is not one this function is entitled to: the
+    capability explicitly permits the operator to add `stage:done` by hand on
+    GitHub, which sweeps nothing. So the sweep runs whenever the item's stage
+    set is not already exactly the target, and an item carrying the target
+    plus another ends carrying the target alone.
+
+    Takes any of the four-method label surfaces — `Tracker`, `BoltTracker`,
+    the intent loop's `Writer` — as its other two writes here do.
     """
-    if tracker.has_label(number, stage):
+    stale = [other for other in STAGE_LABELS
+             if other != stage and tracker.has_label(number, other)]
+    if not stale and tracker.has_label(number, stage):
         return False
-    for other in STAGE_LABELS:
-        if other != stage and tracker.has_label(number, other):
-            tracker.remove_label(number, other)
-    tracker.add_label(number, stage)
+    for other in stale:
+        tracker.remove_label(number, other)
+    if not tracker.has_label(number, stage):
+        tracker.add_label(number, stage)
     return True
 
 
@@ -984,6 +1004,7 @@ class Tracker:
                     status=row.get("status"),
                     sub_issues=tuple(self.sub_issues(item.number)) if with_edges else (),
                     milestone=item.milestone,
+                    milestone_state=item.milestone_state,
                 ))
 
         # A batch's Ready flip is the approval, and a batch may sit on the
@@ -1007,10 +1028,20 @@ class Tracker:
 
     # -- the small writes --------------------------------------------------
 
-    def has_label(self, number, label):
+    def labels(self, number):
+        """Every label on the item, as a set of names. One read.
+
+        `has_label` is the four-method surface's question and answers one
+        name at a time; a caller that wants to *name* what an item carries —
+        `flywheel-stage` reporting which stage it replaced — would otherwise
+        ask once per candidate or reach past this class for the payload.
+        """
         raw = self._gh(self.token, "api",
                        f"/repos/{self.org}/{self.repo}/issues/{number}")
-        return any(l.get("name") == label for l in raw.get("labels", ()))
+        return {l.get("name") for l in raw.get("labels", ())}
+
+    def has_label(self, number, label):
+        return label in self.labels(number)
 
     def closed_with(self, number, label):
         """Is this item CLOSED and carrying `label`? One read, both fields.

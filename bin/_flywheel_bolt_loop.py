@@ -398,6 +398,44 @@ def refuse_stage_declaration(binding, config):
     return config
 
 
+def refuse_type_disagreement(binding, type_name):
+    """A command-line `--type` that contradicts the binding is refused.
+
+    The same rule `refuse_stage_declaration` states, closing the other route
+    to it: **the bolt type is the scrutiny the release approved, and no
+    program downgrades it.** The declaration door is shut, but the entry
+    point resolves the type as the flag first and the binding second, so a
+    flag alone could resolve a bolt bound to `bolt-default` as `bolt-direct`
+    and drop verify with nothing recorded anywhere — the bolt merging and
+    landing with no `stage:verified` while its binding still says otherwise.
+
+    This is also what `read_binding`'s own docstring already claims: the
+    binding on disk is what the loop believes, ahead of anything it was told
+    on the command line.
+
+    The disagreement is refused rather than the precedence reversed.
+    Reversing it would make `--type` silently useless, which is a worse kind
+    of quiet than the one being fixed. The legitimate need behind the flag —
+    a bolt whose binding is wrong — is met by correcting the binding, which
+    is a recorded act on disk, unlike a flag that leaves no trace.
+
+    Where the binding records no schema the flag is honoured: there is no
+    approval for it to contradict, and refusing would leave an unbound bolt
+    unable to run at all. Returns the name to use, so callers can use it
+    inline.
+    """
+    bound = (binding or {}).get("schema")
+    if type_name and bound and type_name != bound:
+        raise LoopError(
+            f"the binding records type {bound!r} but {type_name!r} was named on "
+            f"the command line — the binding on disk is what the loop believes, "
+            f"ahead of anything it was told on the command line. The bolt type "
+            f"is the scrutiny the release approved, and no program downgrades "
+            f"it; correct the binding, which is a recorded act, rather than "
+            f"passing a flag that leaves no trace on the tracker.")
+    return type_name or bound or "bolt-quick"
+
+
 def resolve_plan_mode(declared, config):
     """Permitted only where the bound type says `plan_mode: available`.
 
@@ -1769,7 +1807,53 @@ class BoltLoop:
                 was=inbox.CLOSED_MERGED if inbox.CLOSED_MERGED in item.labels
                     else None,
                 now=inbox.CLOSED_DONE)
+        self.close_unit_parents(snapshot, items, sha)
         return StageOutcome("land", "done", f"landed as {sha}", report=outcome.report)
+
+    def close_unit_parents(self, snapshot, items, sha):
+        """Close the release's unit parent at the landing. Containers only.
+
+        By here the bar is full and every assertion has been upgraded to
+        `closed:done`, so the release the parent carries is finished and
+        there is nothing further the container can gate. Nothing closed one
+        before, so a born-ready bolt's parent stayed open at Status Ready and
+        its milestone reported a job on every server sweep — before the
+        landing, after it, and after the operator closed the milestone, where
+        it collided with the `archive` job the same sweep adds.
+
+        **No sub-issue is touched.** The assertions' own closes belong to the
+        merge boundary and to the upgrade above; a container's close is not a
+        cascade, and the tracker's rule that whoever holds the evidence closes
+        with exactly one reason is not relaxed for a container.
+
+        Two handles, because the two release paths put the parent in
+        different places. The born-ready parent sits on this bolt's milestone
+        and is in the snapshot's own batches. The handoff parent sits on the
+        `intent/<slug>` milestone — deliberately, since it is born before any
+        assertion has moved — so it is reachable only through a landed item's
+        `parent_batch`, and only when the snapshot carries the edge at all.
+        Where it does not, the server's Ready-batch condition is what keeps a
+        stale parent from naming a job forever; the two answer the same
+        finding from opposite ends.
+        """
+        landed = {i.number for i in items}
+        numbers = {b.number for b in snapshot.batches
+                   if b.kind == inbox.UNIT and b.milestone == self.params.milestone}
+        numbers |= {i.parent_batch for i in items
+                    if i.is_assertion and i.parent_batch}
+        for number in sorted(numbers - landed):
+            batch = snapshot.batch(number)
+            if batch is not None and batch.kind == inbox.ELABORATION:
+                continue           # an elaboration authorizes design, not this release
+            item = snapshot.item(number)
+            if item is not None and not item.is_open:
+                continue                              # already closed; never re-closed
+            self.tracker.close(
+                number,
+                f"The release this unit carries is finished: "
+                f"bolt/{self.params.slug} landed on {self.params.main_branch} as "
+                f"{sha}, and every assertion it released is closed:done.",
+                reason=inbox.CLOSED_DONE)
 
     # -- the cycle ---------------------------------------------------------
 

@@ -48,7 +48,7 @@ The object-graph rules are the shared copy at
 beside it. Your contract:
 
 - **You receive**: item numbers of the coupled decisions the page carries, `type:interactive`, flipped `state:in-progress` by the intent loop.
-- **You leave**: one comment per item — what the operator chose, with a pointer to the page in your session directory. The loop closes items on your evidence. The operator's word is the completion signal, and it is one label: told in the pane that an item is done, move that item to `stage:done` — the same `gh issue edit` removing `stage:in-session`, since an item carries exactly one `stage:*` — and settle. The loop reads the label and does the rest.
+- **You leave**: one comment per item — what the operator chose, with a pointer to the page in your session directory. The loop closes items on your evidence. The operator's word is the completion signal, and it is one label: told in the pane that an item is done, move that item to `stage:done` — the one call `flywheel-stage <n> --org <org> --repo <tracker> --stage stage:done`, which sweeps whatever stage the item carried, since an item carries exactly one `stage:*` — and settle. The loop reads the label and does the rest.
 - New work the round surfaces is a queued item on the milestone.
 
 ## What you report
