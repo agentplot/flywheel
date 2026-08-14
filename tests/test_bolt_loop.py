@@ -258,13 +258,25 @@ class StatelessResumeTest(unittest.TestCase):
 
     def test_a_merged_in_progress_item_awaits_the_landing(self):
         shell = FakeShell(answers={("git", "merge-base"): Result(0),
-                                   ("git", "rev-parse"): Result(0)})
+                                   ("git", "rev-parse"): Result(0, "abc\n"),
+                                   ("git", "rev-list"): Result(0, "1\n")})
         l = a_loop(FakeTracker(self._snap()), shell=shell)
         result = l.cycle(1)
         self.assertIn("awaiting the landing", result.stopped)
         box = inbox.bolt_inbox(self._snap(), "x")
         self.assertTrue(l.landing_wanted("auto", box,
                                          list(self._snap().items)))
+
+    def test_an_empty_branch_is_nothing_to_merge_never_merged(self):
+        # #164, observed live: build/stage-labels-133's tip was the very
+        # commit it was cut at, so bare ancestry read the never-worked
+        # branch as "merged" and the loop went looking for a landing.
+        shell = FakeShell(answers={("git", "merge-base"): Result(0),
+                                   ("git", "rev-parse"): Result(0, "abc\n"),
+                                   ("git", "rev-list"): Result(0, "0\n")})
+        l = a_loop(FakeTracker(self._snap()), shell=shell)
+        result = l.cycle(1)
+        self.assertNotIn("awaiting the landing", result.stopped or "")
 
 
 class ContainerRoutingTest(unittest.TestCase):
@@ -594,6 +606,20 @@ class StageTest(unittest.TestCase):
         outcome = a_loop(tracker, shell=shell).build_stage(self.batch(1))
         self.assertEqual(outcome.status, "done")
 
+    def test_settle_never_clears_a_needs_operator_it_did_not_raise(self):
+        # #165, observed live 4x: the andon's escalation was read as "my
+        # stall notice already fired" and cleared when the next session
+        # over the same items settled. A label this watch did not set
+        # outlives its settle.
+        tracker = FakeTracker(comments={1: [{"body": "built it"}]})
+        tracker.add_label(1, inbox.NEEDS_OPERATOR)   # the andon's, not ours
+        tracker.writes.clear()
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        outcome = a_loop(tracker, shell=shell).build_stage(self.batch(1))
+        self.assertEqual(outcome.status, "done")
+        self.assertNotIn(("remove_label", 1, inbox.NEEDS_OPERATOR),
+                         tracker.writes)
+
     def test_verify_pauses_the_item_when_the_same_finding_survives_two_rounds(self):
         tracker = FakeTracker(comments={1: [{"body": "built it"}]})
         runner = ScriptedRunner(
@@ -674,10 +700,41 @@ class LandingTest(unittest.TestCase):
     def program(self, criteria, ancestor=0, runner=None, tracker=None):
         tracker = tracker or FakeTracker(self.snapshot())
         shell = FakeShell({("git", "merge-base"): Result(ancestor),
-                           ("git", "rev-parse"): Result(0, "abc1234\n")})
+                           ("git", "rev-parse"): Result(0, "abc1234\n"),
+                           ("git", "rev-list"): Result(0, "1\n")})
         program = a_loop(tracker, runner=runner or ScriptedRunner(), shell=shell)
         program.merge_criteria = lambda: criteria
         return program, tracker
+
+    def test_a_work_less_bolt_branch_lands_nothing_and_closes_nothing(self):
+        # #164, observed live: bolt/stage-labels carried only the scaffold,
+        # already on main — ancestry was vacuously true, and the loop
+        # declared "landed" and closed #96–#99 over a standing andon.
+        tracker = FakeTracker(self.snapshot())
+        shell = FakeShell({("git", "merge-base"): Result(0),
+                           ("git", "rev-parse"): Result(0, "abc1234\n"),
+                           ("git", "rev-list"): Result(0, "0\n")})
+        program = a_loop(tracker, shell=shell)
+        program.merge_criteria = lambda: "Landing: merge"
+        outcome = program.land_stage(self.snapshot())
+        self.assertEqual(outcome.status, "failed")
+        self.assertIn("nothing to land", outcome.detail)
+        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
+
+    def test_a_live_wait_on_any_item_holds_the_landing(self):
+        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+                                    inbox.NEEDS_OPERATOR)],
+                        milestone="bolt/x")
+        tracker = FakeTracker(snap)
+        shell = FakeShell({("git", "merge-base"): Result(0),
+                           ("git", "rev-parse"): Result(0, "abc1234\n"),
+                           ("git", "rev-list"): Result(0, "1\n")})
+        program = a_loop(tracker, shell=shell)
+        program.merge_criteria = lambda: "Landing: merge"
+        outcome = program.land_stage(snap)
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn("#1", outcome.detail)
+        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
 
     def test_every_item_closes_with_the_landing_sha(self):
         program, tracker = self.program("Landing: merge", ancestor=0)

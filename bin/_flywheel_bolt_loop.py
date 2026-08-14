@@ -716,18 +716,62 @@ class BoltLoop:
         made = self.shell(argv, cwd=self.params.repo_dir)
         if made.returncode != 0:
             return None, False
+        if not exists:
+            self.record_base(branch, base)
         rows = self._wt_rows()
         for row in rows or ():
             if row.get("branch") == branch and row.get("path"):
                 return row["path"], True
         return None, False
 
+    def record_base(self, branch, base):
+        """The cut point, recorded where git keeps durable facts — a ref,
+        written once at creation. `branch_advanced` reads it to tell an
+        empty branch from a merged one, which bare ancestry cannot."""
+        sha = (self.git("rev-parse", base,
+                        cwd=self.params.repo_dir).stdout or "").strip()
+        if sha:
+            self.git("update-ref", f"refs/flywheel/base/{branch}", sha,
+                     cwd=self.params.repo_dir)
+
+    def branch_base(self, branch):
+        """The recorded cut point; merge-base with main when the branch
+        predates the refs. The fallback reads a merged-but-unrecorded
+        branch as empty — the safe direction, since re-driving green work
+        costs a no-op session and a false "merged" costs a false landing."""
+        ref = self.git("rev-parse", "--verify", "--quiet",
+                       f"refs/flywheel/base/{branch}", cwd=self.params.repo_dir)
+        sha = (ref.stdout or "").strip()
+        if ref.returncode == 0 and sha:
+            return sha
+        fallback = self.git("merge-base", branch, self.params.main_branch,
+                            cwd=self.params.repo_dir)
+        return (fallback.stdout or "").strip() or None
+
+    def branch_advanced(self, branch):
+        """Commits beyond the cut point — the fact that makes ancestry mean
+        something. An empty branch's tip is an ancestor of everything it
+        was cut from, so bare ancestry reads it as merged, landed and done
+        (#164, observed live); an empty branch is "nothing to merge",
+        never "merged"."""
+        base = self.branch_base(branch)
+        if not base:
+            return False
+        proc = self.git("rev-list", "--count", f"{base}..{branch}",
+                        cwd=self.params.repo_dir)
+        out = (proc.stdout or "").strip()
+        return out.isdigit() and int(out) > 0
+
     def batch_merged(self, batch):
         """Git's answer to "does this batch still need driving": a build
-        branch fully an ancestor of the bolt branch awaits only the
-        landing. A branch that does not exist is work not yet started."""
+        branch that advanced past its cut point and is fully an ancestor
+        of the bolt branch awaits only the landing. A branch that does not
+        exist is work not yet started; one that never advanced is work
+        never done."""
         branch = f"build/{batch.slug}"
         if self.git("rev-parse", "--verify", "--quiet", branch).returncode != 0:
+            return False
+        if not self.branch_advanced(branch):
             return False
         return self.git("merge-base", "--is-ancestor", branch,
                         self.params.bolt_branch).returncode == 0
@@ -876,7 +920,11 @@ class BoltLoop:
         watch = sessions.supervise(
             runner, handle, on_notify=on_notify, clock=self._clock, origin=origin,
             notified=self._already_notified(numbers))
-        if watch.notified and watch.state != sessions.WaitState.STALLED:
+        # Clear only the notice THIS watch raised. `watch.notified` is also
+        # true when the label pre-existed — an andon escalation or an earlier
+        # run's notice — and clearing on that read ate a live andon four
+        # times (#165). A label this watch did not set outlives its settle.
+        if notified["fired"] and watch.state != sessions.WaitState.STALLED:
             for number in numbers:
                 inbox.clear_needs_operator(self.tracker, number)
         if watch.state == sessions.WaitState.STALLED:
@@ -1517,6 +1565,23 @@ class BoltLoop:
         mode = self.landing_mode()
         items = [i for i in snapshot.on(self.params.milestone) if i.is_open]
         numbers = [i.number for i in items]
+        # Two refusals before anything is driven or closed. A live wait on
+        # any item means a question is standing — landing over it is how
+        # #96–#99 got closed over an unanswered andon (#164). And a bolt
+        # branch that never advanced past its cut point has nothing to
+        # land: its ancestry into main is vacuously true.
+        waiting = [i.number for i in items
+                   if inbox.NEEDS_OPERATOR in i.labels]
+        if waiting:
+            return StageOutcome("land", "paused",
+                                "a live wait stands on "
+                                + ", ".join(f"#{n}" for n in waiting)
+                                + " — the landing waits for the operator")
+        if not self.branch_advanced(self.params.bolt_branch):
+            return StageOutcome("land", "failed",
+                                f"{self.params.bolt_branch} carries no work "
+                                f"beyond its cut point — nothing to land, "
+                                f"nothing closed")
         name = session_name("land", self.params.slug)
         order = sessions.work_order(
             f"Land bolt/{self.params.slug} per its bolt.md.",

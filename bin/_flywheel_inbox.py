@@ -570,6 +570,9 @@ def dispatch_inbox(snapshot):
 
 ANDON_OPEN = "<!-- flywheel:andon -->"
 ANDON_CLOSE = "<!-- /flywheel:andon -->"
+ANDON_ANSWERED = "<!-- flywheel:andon-answered -->"
+_ANDON_ANSWERED = re.compile(
+    r"^" + re.escape(ANDON_ANSWERED) + r"[ \t]*$", re.MULTILINE)
 
 _ANDON = re.compile(
     r"^" + re.escape(ANDON_OPEN) + r"[ \t]*$(?P<body>.*?)^" + re.escape(ANDON_CLOSE),
@@ -636,13 +639,23 @@ def find_andon(comments):
     expressible in the filters is a design smell. So the loop learns that a
     session stopped from `needs-operator` and item state the way it learns
     everything else, and reads the marker only to find out why.
+
+    An `ANDON_ANSWERED` marker retires every andon raised before it — the
+    operator (or their proxy) writes it in the comment that answers, and
+    the batch resumes; without it an answered andon re-pauses the batch on
+    every cycle forever (#166). Same strictness: a literal marker line,
+    never prose. An answer comment that quotes the old andon does not
+    re-raise it.
     """
+    found = None
     for comment in comments or ():
         body = comment.get("body") if isinstance(comment, dict) else comment
-        found = parse_andon(body)
-        if found:
-            return found
-    return None
+        if body and _ANDON_ANSWERED.search(body):
+            found = None
+            continue
+        if found is None:
+            found = parse_andon(body)
+    return found
 
 
 # ---------------------------------------------------------------------------

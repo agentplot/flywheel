@@ -382,6 +382,26 @@ class AndonTest(unittest.TestCase):
                          "the spec contradicts its decision")
         self.assertIsNone(inbox.find_andon([{"body": "nothing here"}]))
 
+    def test_an_answer_marker_retires_every_earlier_andon(self):
+        # #166: markers were never retired, so an answered andon re-paused
+        # the batch on every cycle forever.
+        comments = [{"body": inbox.format_andon("the spec contradicts the tree")},
+                    {"body": "Ruling: amend the requirement.\n\n"
+                             + inbox.ANDON_ANSWERED}]
+        self.assertIsNone(inbox.find_andon(comments))
+
+    def test_an_andon_raised_after_the_answer_is_live(self):
+        comments = [{"body": inbox.format_andon("the first stop")},
+                    {"body": inbox.ANDON_ANSWERED},
+                    {"body": inbox.format_andon("a new stop")}]
+        self.assertEqual(inbox.find_andon(comments).reason, "a new stop")
+
+    def test_an_answer_quoting_the_old_andon_does_not_re_raise_it(self):
+        comments = [{"body": inbox.format_andon("the first stop")},
+                    {"body": "Answering:\n" + inbox.format_andon("the first stop")
+                             + "\n" + inbox.ANDON_ANSWERED}]
+        self.assertIsNone(inbox.find_andon(comments))
+
 
 # ---------------------------------------------------------------------------
 # The label that means a live wait
