@@ -22,6 +22,14 @@ cycle runs them. The loop SHALL NOT write a stage label from a session's
 prose: each write follows the same objective check the loop already makes
 at that boundary, and a session saying "green" is not evidence.
 
+A boundary's label SHALL be written only when that stage actually **ran**.
+A stage can fail to happen two ways, and both SHALL write nothing: it can
+**fail**, which stops the cycle there, and it can be **skipped**, which the
+cycle carries on past. The second is the easier one to get wrong, precisely
+because the cycle continues and the stage reports no error — a stage whose
+outcome is "skipped" is not a stage whose outcome is "clean", and treating
+the two alike writes a label asserting a boundary nobody crossed.
+
 #### Scenario: A batch runs the full sequence
 
 - **WHEN** a batch is specced, built, verified and merged in one cycle
@@ -33,6 +41,14 @@ at that boundary, and a session saying "green" is not evidence.
 - **WHEN** the spec stage fails and the cycle does not reach build
 - **THEN** the batch's items carry `stage:planned` at most, and no
   `stage:built`
+
+#### Scenario: A stage that was skipped writes no label
+
+- **WHEN** a type declares a stage that this bolt's path skips — the
+  plan-mode path skipping the stage a spec-driven change would have run —
+  and the cycle carries on past it
+- **THEN** no label for that stage is written, and the stages that did run
+  keep theirs
 
 #### Scenario: A session's report is not the evidence
 
@@ -75,14 +91,33 @@ Every cycle, before it works anything, the bolt loop SHALL re-derive
 `stage:built` and `stage:merged` for the milestone's open items from the
 repository, and reconcile the labels to what it finds:
 
-- an item whose branch is an ancestor of the bolt branch SHALL carry
-  `stage:merged`;
+- an item whose branch is an ancestor of the bolt branch **and holds work of
+  its own** SHALL carry `stage:merged`;
 - otherwise, an item whose branch holds a commit beyond the bolt branch
   SHALL carry `stage:built`.
 
-The re-derivation SHALL use the same two checks the loop already makes at
-those boundaries — the ancestry test and the commit count against the bolt
-branch — so that the label and the boundary write cannot disagree.
+**Ancestry alone SHALL NOT be read as merged.** A branch that was cut and
+never worked has a tip that is an ancestor of everything it was cut from, so
+bare ancestry answers "merged" for a batch on which nothing happened. The
+merged test SHALL therefore require, in addition to the ancestry relation,
+that the branch exists and that real work stands behind it — the same
+strengthened predicate the landing path is already held to, and not a second
+implementation of it. Where the repository already carries such a predicate,
+the re-derivation SHALL call it rather than re-deriving the weaker test at
+its own call site.
+
+The re-derivation SHALL use the same checks the loop makes at those
+boundaries, so that the label and the boundary write cannot disagree.
+
+This requirement is stronger than what a reading of "an item whose branch is
+an ancestor of the bolt branch is merged" would give, and deliberately so.
+The re-derivation guard does not only write a label: at the merged edge it
+also **closes** the item with `closed:merged`, and a `closed:merged` item
+leaves every open-issue filter. A false merged answer from bare ancestry
+therefore does not merely mislabel a batch — it closes the batch out of the
+loop's own inbox, and the bolt stops being driven at all. That is a strictly
+worse failure than the mis-landing the same weakness caused before, which is
+why the guard may not be the one caller left on the weak test.
 
 This is what makes the labels **self-heal**: the loop is stateless by
 construction, every cycle re-reads the tracker and the records, and a
@@ -98,10 +133,30 @@ without knowing anything about the process that died.
 - **THEN** the first cycle of the new process writes `stage:built` from the
   commit it finds, with no record of the earlier run consulted
 
+#### Scenario: A branch cut but never worked is not merged
+
+- **WHEN** the guard runs over an item whose branch was created from the
+  bolt branch and carries no commit of its own
+- **THEN** no `stage:merged` is written and the item is not closed
+  `closed:merged`, even though its tip is an ancestor of the bolt branch
+
+#### Scenario: A branch that does not exist is not merged
+
+- **WHEN** the guard runs over an item whose branch is absent from the
+  repository
+- **THEN** no `stage:merged` is written and the item is not closed
+
+#### Scenario: One predicate answers the merged question
+
+- **WHEN** the repository is searched for the test that decides whether a
+  batch's work has reached the bolt branch
+- **THEN** the guard and the boundary write are found to consult the same
+  strengthened predicate, and no caller is left on bare ancestry
+
 #### Scenario: A label ahead of the tree is corrected
 
-- **WHEN** an item carries `stage:merged` but its branch is not an ancestor
-  of the bolt branch
+- **WHEN** an item carries `stage:merged` but its branch does not satisfy
+  the merged test
 - **THEN** the cycle reconciles the label down to what the tree bears out
 
 #### Scenario: The re-derivation is idempotent
