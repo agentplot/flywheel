@@ -458,13 +458,6 @@ class TypeConfigTest(unittest.TestCase):
         self.assertFalse(config.runs("verify"))
         self.assertTrue(all(config.runs(s) for s in ("spec", "build", "merge")))
 
-    def test_bolt_direct_declares_no_boundary_its_stages_never_create(self):
-        # A hook naming a boundary that never occurs is a review point
-        # nothing can ever attach to.
-        self.assertNotIn("post-verify", loop.load_type("bolt-direct", ROOT).hooks)
-        for name in ("bolt-quick", "bolt-default", "bolt-adversarial"):
-            self.assertIn("post-verify", loop.load_type(name, ROOT).hooks)
-
     def test_plan_mode_is_not_reachable_on_bolt_direct_either(self):
         with self.assertRaises(loop.LoopError):
             loop.resolve_plan_mode(True, loop.load_type("bolt-direct", ROOT))

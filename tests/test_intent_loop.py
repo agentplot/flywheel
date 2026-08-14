@@ -55,10 +55,9 @@ class FakeRun:
 class FakeTracker:
     """The four-method write surface, plus the reads the loop makes."""
 
-    def __init__(self, snapshot=None, comments=None, board=()):
+    def __init__(self, snapshot=None, comments=None):
         self.snapshot_obj = snapshot
         self._comments = comments or {}
-        self._board = list(board)
         self.labels = {}
         self.calls = []
 
@@ -70,9 +69,6 @@ class FakeTracker:
 
     def comments(self, number):
         return self._comments.get(number, [])
-
-    def board_items(self):
-        return self._board
 
     # writes
     def has_label(self, number, label):
