@@ -1154,3 +1154,55 @@ class ConfigTest(unittest.TestCase):
 
     def test_a_run_with_no_slug_stops_before_reading_anything(self):
         self.assertIn("no intent slug", intent.config_fault(config(slug="")))
+
+
+class WriterCacheTest(unittest.TestCase):
+    """A cached label surface may not outlive the snapshot behind it.
+
+    `Writer.has_label` answers from the cycle's snapshot plus what this
+    writer has already written. Both halves of that cache are invalidated
+    when the snapshot is replaced, because a re-read is the loop learning
+    what the world now says.
+    """
+
+    def test_an_addition_does_not_survive_a_re_read(self):
+        # The normal pane path: dispatch writes `stage:in-session`, the pane
+        # session's own `stage:done` removes it on GitHub. A stale addition
+        # makes the surface answer from a state that no longer exists, and
+        # sends one redundant `--remove-label` per collect.
+        writer = intent.Writer(tracker=None, apply=False,
+                               snapshot=Snapshot(items=[item(1)]))
+        writer.add_label(1, "stage:in-session")
+        self.assertTrue(writer.has_label(1, "stage:in-session"))
+
+        writer.snapshot = Snapshot(items=[item(1, "stage:done")])
+        self.assertFalse(writer.has_label(1, "stage:in-session"),
+                         "the re-read is what the surface answers from now")
+        self.assertTrue(writer.has_label(1, "stage:done"))
+
+    def test_a_removal_does_not_survive_a_re_read_either(self):
+        # The direction that was already invalidated. Both go together: a
+        # cache with one direction invalidated is a cache whose rule nobody
+        # can state.
+        writer = intent.Writer(tracker=None, apply=False,
+                               snapshot=Snapshot(items=[item(1, "needs-operator")]))
+        writer.remove_label(1, "needs-operator")
+        self.assertFalse(writer.has_label(1, "needs-operator"))
+
+        writer.snapshot = Snapshot(items=[item(1, "needs-operator")])
+        self.assertTrue(writer.has_label(1, "needs-operator"),
+                        "the operator put it back; the cycle's own write is stale")
+
+    def test_within_one_snapshot_the_cache_still_answers(self):
+        # The invalidation must not cost the read-your-writes property the
+        # dry cycle depends on.
+        writer = intent.Writer(tracker=None, apply=False,
+                               snapshot=Snapshot(items=[item(1)]))
+        writer.add_label(1, "stage:collected")
+        self.assertTrue(writer.has_label(1, "stage:collected"))
+        writer.remove_label(1, "stage:collected")
+        self.assertFalse(writer.has_label(1, "stage:collected"))
+
+
+if __name__ == "__main__":
+    unittest.main()

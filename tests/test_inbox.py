@@ -5,6 +5,7 @@ The filters are pure, so these run against the repo's own declared contract
 No network, no `gh`, no token.
 """
 
+import os
 import re
 import tempfile
 import unittest
@@ -606,6 +607,18 @@ class RecordConsistencyTest(unittest.TestCase):
             flat = " ".join(self.read("skills", skill, "SKILL.md").split())
             self.assertIn("flywheel-stage", flat, skill)
             self.assertNotIn("--remove-label stage:", flat, skill)
+
+    def test_the_pane_command_writes_through_the_one_implementation(self):
+        # "reachable from a pane without importing the loops' internals" is
+        # the requirement's own wording, and both halves are checkable on
+        # the source — which is how this suite already holds `flywheel-setup`.
+        source = (BIN / "flywheel-stage").read_text()
+        self.assertIn("set_stage", source,
+                      "the command writes through the one implementation")
+        self.assertNotIn("_flywheel_bolt_loop", source)
+        self.assertNotIn("_flywheel_intent", source)
+        self.assertTrue(os.access(BIN / "flywheel-stage", os.X_OK),
+                        "bin/ goes on an installed user's PATH; it must run")
 
     def test_the_reference_gives_the_flip_as_the_call(self):
         # `herdr.md` is where the profiles send a session for the invocation.
