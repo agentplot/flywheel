@@ -46,23 +46,23 @@ adding a stronger predicate beside the weak one, not by hardening the weak
 one, so the rebase resolves cleanly and silently leaves `guard_stages` on
 bare ancestry. Do not write a second predicate here; port the call.
 
-- [ ] 2.1 Establish that this branch has `main`'s `#164` fix available —
+- [x] 2.1 Establish that this branch has `main`'s `#164` fix available —
       `main` an ancestor of `HEAD`, and `batch_merged` / `branch_advanced` /
       `refs/flywheel/base` present in `bin/_flywheel_bolt_loop.py`. If the
       rebase has not happened, **stop and raise the andon**: writing the
       predicate here creates the conflicting duplicate the finding warns
       against, and no further round inside this batch fixes that.
-- [ ] 2.2 Point `guard_stages`' merged test at that predicate. It already
+- [x] 2.2 Point `guard_stages`' merged test at that predicate. It already
       iterates the batches `analyse(...)` returns, so the object the
       predicate takes is in hand at the call site.
-- [ ] 2.3 Re-word `guard_stages`' docstring, which says an item whose branch
+- [x] 2.3 Re-word `guard_stages`' docstring, which says an item whose branch
       is an ancestor of the bolt branch is merged. Say what the guard now
       asks, and say why bare ancestry is not it — an untouched branch's tip
       is an ancestor of everything it was cut from.
-- [ ] 2.4 Check the boundary write in `cycle` against the same question. It
+- [x] 2.4 Check the boundary write in `cycle` against the same question. It
       is downstream of real merge work so it is likely already sound;
       confirm it rather than assume it, and record which it was.
-- [ ] 2.5 Pin it: a batch whose branch exists, is an ancestor of the bolt
+- [x] 2.5 Pin it: a batch whose branch exists, is an ancestor of the bolt
       branch, and carries no work of its own gets **no** `stage:merged` and
       is **not** closed `closed:merged`. Add the absent-branch case beside
       it. Done when both fail against the pre-2.2 code.

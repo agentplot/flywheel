@@ -1005,9 +1005,18 @@ class StageLabelTest(unittest.TestCase):
     """#96 — a label at each boundary, one at a time, re-derived from git."""
 
     #: A tree that says: the item's branch holds commits, and (by default)
-    #: is an ancestor of the bolt branch.
+    #: is an ancestor of the bolt branch. No rev-parse answer: the branch's
+    #: base ref stays unresolved, so the cycle tests' batches never read as
+    #: already merged before the merge stage runs.
     def shell(self, commits="3\n", ancestor=0):
         return FakeShell({("git", "rev-list"): Result(0, commits),
+                          ("git", "merge-base"): Result(ancestor)})
+
+    #: The re-derivation tree: the branch exists, its base ref resolves,
+    #: and `commits` counts past the cut point — what `batch_merged` asks.
+    def reshell(self, commits="3\n", ancestor=0):
+        return FakeShell({("git", "rev-list"): Result(0, commits),
+                          ("git", "rev-parse"): Result(0, "abc1234\n"),
                           ("git", "merge-base"): Result(ancestor)})
 
     def worked(self, tracker, **overrides):
@@ -1094,8 +1103,37 @@ class StageLabelTest(unittest.TestCase):
 
     def test_ancestry_of_the_bolt_branch_supplies_stage_merged(self):
         tracker, actions = self.reconcile(self.in_flight(),
-                                          self.shell(ancestor=0))
+                                          self.reshell(ancestor=0))
         self.assertIn(("add_label", 1, inbox.STAGE_MERGED), tracker.writes)
+
+    def test_an_untouched_branch_gets_no_stage_and_no_close(self):
+        # #173 — #164 re-entered at this guard: an untouched branch's tip
+        # is an ancestor of everything it was cut from, so bare ancestry
+        # read it as merged and closed its items. Advancement is the fact
+        # that makes ancestry mean something.
+        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+                                    inbox.IN_PROGRESS, change="add-thing")],
+                        milestone="bolt/x")
+        tracker = FakeTracker(snap)
+        actions = []
+        a_loop(tracker, shell=self.reshell(commits="0\n", ancestor=0)) \
+            .guard_stages(snap, actions)
+        self.assertEqual([w for w in tracker.writes if w[0] == "add_label"],
+                         [], "an empty branch witnesses nothing")
+        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
+
+    def test_an_absent_branch_gets_no_stage(self):
+        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+                                    inbox.IN_PROGRESS, change="add-thing")],
+                        milestone="bolt/x")
+        tracker = FakeTracker(snap)
+        shell = FakeShell({("git", "rev-parse"): Result(1),
+                           ("git", "rev-list"): Result(128),
+                           ("git", "merge-base"): Result(0)})
+        actions = []
+        a_loop(tracker, shell=shell).guard_stages(snap, actions)
+        self.assertEqual([w for w in tracker.writes if w[0] == "add_label"],
+                         [], "work not yet started is not merged")
 
     def test_a_label_ahead_of_the_tree_is_walked_back(self):
         tracker, actions = self.reconcile(
@@ -1168,7 +1206,7 @@ class StageLabelTest(unittest.TestCase):
         """R10: the guard ends the item at whichever half a dead process
         left undone. The label half survived; the state half did not."""
         snapshot, tracker = self.torn_close()
-        program = a_loop(tracker, shell=self.shell())
+        program = a_loop(tracker, shell=self.reshell())
         actions = []
         program.guard_stages(snapshot, actions)
         self.assertIn(1, tracker.closed, "the close is finished, not re-skipped")
@@ -1180,7 +1218,7 @@ class StageLabelTest(unittest.TestCase):
         `close_merged` skipped on the label already being there — an action
         every cycle, forever, for a write that never happened."""
         snapshot, tracker = self.torn_close()
-        program = a_loop(tracker, shell=self.shell())
+        program = a_loop(tracker, shell=self.reshell())
         first = []
         program.guard_stages(snapshot, first)
         self.assertTrue(any("closed" in a for a in first), first)

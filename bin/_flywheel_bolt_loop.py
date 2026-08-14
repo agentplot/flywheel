@@ -1222,12 +1222,15 @@ class BoltLoop:
         The loop is stateless by construction, so a process killed between
         an apply and its label write leaves an item whose git state is
         built and whose label is not. This repairs that without knowing
-        anything about the process that died: an item whose branch is an
-        ancestor of the bolt branch is merged, and otherwise an item whose
-        branch holds a commit beyond the bolt branch is built. Both use the
-        same two checks the boundary writes use — `branch_merged` and
-        `branch_has_commits` — so the label and the boundary cannot
-        disagree.
+        anything about the process that died: an item whose branch advanced
+        past its cut point AND is fully an ancestor of the bolt branch is
+        merged — `batch_merged`, the same predicate the landing trusts —
+        and otherwise an item whose branch holds a commit beyond the bolt
+        branch is built, per `branch_has_commits`. Bare ancestry is not
+        the merged test: an untouched branch's tip is an ancestor of
+        everything it was cut from, so ancestry alone reads a never-worked
+        branch as merged and closes its items (#164, re-entered here as
+        #173).
 
         **`stage:planned` and `stage:verified` are deliberately left
         out.** Neither has a witness the tree can answer. A validated spec
@@ -1262,7 +1265,7 @@ class BoltLoop:
             return
         for batch in analyse(items, snapshot, self.params.slug):
             branch = f"build/{batch.slug}"
-            if self.branch_merged(branch):
+            if self.batch_merged(batch):
                 target = inbox.STAGE_MERGED
             elif self.branch_has_commits(branch):
                 target = inbox.STAGE_BUILT
