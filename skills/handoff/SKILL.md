@@ -28,10 +28,13 @@ as `bolt-plan.md` and fill it from the assertion records themselves —
 never re-derived from memory. One section per bolt — a handoff cuts
 more than one when assertions land in unrelated repos or warrant
 different bolt types. Each section carries: the bolt (`bolt/<slug>`,
-new milestone or a live bolt joined), the **bolt type** — `bolt-quick`,
+new milestone or a live bolt joined), the **bolt type** — `bolt-direct`, `bolt-quick`,
 `bolt-default`, `bolt-adversarial`, the `bolt-*` schema member the
 change will bind, which is what sets the review steps the bolt's loop
-schedules —
+schedules, and for `bolt-direct` the stage set too: it runs no verify
+stage, so pick it only where the spec and the repo's merge gate settle
+correctness between them (the gate itself is never a function of the
+type) —
 the **landing mode** (merge to main, or a pull request), the
 **owner** read from the items' assignee, the repos,
 the assertions by item number and record path, the sequencing to wire,
@@ -75,6 +78,10 @@ copy at `skills/_reference/tracker.md`, which also walks this flow
 issue by issue as the literal forgot-password graph. Read it before
 your first tracker write; when a situation is not covered there or by
 your work order, queue a question — never invent tracker structure.
+
+The operator's word is the completion signal, and it is one label: told in the pane that an item is done, move that item to `stage:done` — the one call `flywheel-stage <n> --org <org> --repo <tracker> --stage stage:done`, which sweeps whatever stage the item carried, since an item carries exactly one `stage:*` — and settle. The loop reads the label and does the rest. Custody transferring is not
+completion: the operator says when this item is done, and the flip is
+what the loop consumes.
 
 ## What you report
 

@@ -63,6 +63,11 @@ class FakeTracker:
         self.calls = []
 
     # reads
+    def snapshot(self, milestone=None, with_edges=True):
+        """The loop re-reads the tracker mid-cycle, so the double must be
+        the source of truth rather than a bag of writes."""
+        return self.snapshot_obj if self.snapshot_obj is not None else Snapshot()
+
     def comments(self, number):
         return self._comments.get(number, [])
 
@@ -90,6 +95,10 @@ class FakeTracker:
     def create_issue(self, title, body, labels=(), milestone=None):
         self.calls.append(("create_issue", title, tuple(labels), milestone))
         return 999
+
+    def attach_sub_issue(self, parent, number):
+        self.calls.append(("attach_sub_issue", parent, number))
+        return True
 
     def close_issue(self, number, comment=None, reason=None):
         self.calls.append(("close_issue", number, reason))
@@ -157,15 +166,32 @@ class HandoffGuardTest(unittest.TestCase):
             item(2, "type:assertion", "state:queued"),
         ])
         writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap, "x")
-        self.assertEqual([w.kind for w in writer.writes], ["issue"])
+        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
+                             config())
+        self.assertEqual([w.kind for w in writer.writes], ["issue", "command"])
         self.assertEqual(intent.parse_handoff_set(intent.handoff_body("x", (1, 2))),
                          (1, 2))
 
+    def test_birth_composes_one_unit_over_the_handoff_and_its_assertions(self):
+        # Every release creates exactly one unit parent, handoff birth and
+        # born-ready alike; the unit is the board row and the progress bar.
+        run = FakeRun()
+        snap = Snapshot(items=[item(1, "type:assertion", "state:queued"),
+                               item(2, "type:assertion", "state:queued")])
+        writer = intent.Writer(apply=True, run=run,
+                               tracker=FakeTracker(), snapshot=snap)
+        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
+                             config(apply=True))
+        argv = run.calls[0]
+        self.assertEqual(argv[argv.index("--kind") + 1], "unit")
+        self.assertEqual(argv[-3:], ["999", "1", "2"],
+                         "the handoff item and the released assertions")
+        self.assertNotIn("Ready", argv,
+                         "composing is not releasing — the flip seals it")
+
     def test_amend_is_silent_when_the_set_is_unchanged(self):
-        # THE dry-cycle crux. The assertions stay open and unbatched on the
-        # milestone until the handoff SESSION makes the custody move, so
-        # birth-on-cycle-N is seen as amend-on-cycle-N+1 forever. An amend that
+        # THE dry-cycle crux. Birth-on-cycle-N is seen as amend-on-cycle-N+1
+        # for as long as an assertion stays unbatched, so an amend that
         # rewrote an unchanged body would make every cycle wet.
         snap = Snapshot(items=[
             item(1, "type:assertion", "state:queued"),
@@ -175,20 +201,29 @@ class HandoffGuardTest(unittest.TestCase):
         plan = inbox.handoff_plan(snap, "x")
         self.assertEqual(plan.action, "amend")
         writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, plan, snap, "x")
+        intent.apply_handoff(writer, plan, snap, config())
         self.assertEqual(writer.writes, [],
                          "an unchanged set must write nothing at all")
 
-    def test_amend_rewrites_the_body_when_a_newcomer_joins(self):
-        snap = Snapshot(items=[
-            item(1, "type:assertion", "state:queued"),
-            item(2, "type:assertion", "state:queued"),
-            item(9, "type:handoff", "state:queued",
-                 body=intent.handoff_body("x", (1,))),
-        ])
-        writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap, "x")
-        self.assertEqual([w.kind for w in writer.writes], ["body", "comment"])
+    def test_amend_extends_the_set_and_attaches_the_newcomer_to_the_unit(self):
+        # #1 is already a sub-issue of the handoff's unit, so it is no
+        # longer "settled and unbolted" and the plan names only #2. The
+        # body must name the UNION, or the amend would drop #1.
+        snap = Snapshot(
+            items=[item(1, "type:assertion", "state:queued", parent_batch=10),
+                   item(2, "type:assertion", "state:queued"),
+                   item(9, "type:handoff", "state:queued", parent_batch=10,
+                        body=intent.handoff_body("x", (1,)))],
+            batches=[Batch(number=10, kind="unit", status="Backlog",
+                           sub_issues=(9, 1), milestone="intent/x")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
+                             config())
+        self.assertEqual([w.kind for w in writer.writes],
+                         ["body", "comment", "sub-issue"])
+        body = next(w for w in writer.writes if w.kind == "body")
+        self.assertEqual(writer.writes[-1].detail, "-> #10")
+        self.assertEqual(body.target, "#9")
 
     def test_a_handoff_body_round_trips_its_set(self):
         self.assertEqual(
@@ -269,34 +304,394 @@ class DryCycleTest(unittest.TestCase):
                            sub_issues=(1,), milestone="intent/x")],
         )
         self.assertEqual(
-            [w.kind for w in self._guards(cycle1)], ["label", "label", "issue"],
-            "the flip releases #1 and handoff birth claims #2")
+            [w.kind for w in self._guards(cycle1)],
+            ["label", "label", "issue", "command"],
+            "the flip releases #1; handoff birth claims #2 and composes "
+            "the unit that carries the release")
 
-        # #1 flipped, #9 born. The newborn handoff is an orphan, so this cycle
-        # composes it — a real change, not churn.
+        # #1 flipped; #9 born inside unit #10 with #2 as its other
+        # sub-issue. Nothing is an orphan, and nothing is settled-unbolted.
         cycle2 = Snapshot(
             items=[item(1, "state:ready", parent_batch=4),
-                   item(2, "type:assertion", "state:queued"),
-                   item(9, "type:handoff", "state:queued",
-                        body=intent.handoff_body("x", (2,)))],
-            batches=cycle1.batches,
-        )
-        self.assertEqual([w.kind for w in self._guards(cycle2)], ["command"])
-
-        # #9 batched at Backlog, awaiting the operator's flip. Settled.
-        cycle3 = Snapshot(
-            items=[item(1, "state:ready", parent_batch=4),
-                   item(2, "type:assertion", "state:queued"),
+                   item(2, "type:assertion", "state:queued", parent_batch=10),
                    item(9, "type:handoff", "state:queued", parent_batch=10,
                         body=intent.handoff_body("x", (2,)))],
             batches=list(cycle1.batches) + [
-                Batch(number=10, kind="elaboration", status="Backlog",
-                      sub_issues=(9,), milestone="intent/x")],
+                Batch(number=10, kind="unit", status="Backlog",
+                      sub_issues=(9, 2), milestone="intent/x")],
         )
-        self.assertEqual(self._guards(cycle3), (),
+        self.assertEqual(self._guards(cycle2), (),
                          "a settled tracker must produce no write at all")
-        self.assertEqual(self._guards(cycle3), (),
+        self.assertEqual(self._guards(cycle2), (),
                          "and must keep producing none")
+
+
+class ResumeCollectTest(unittest.TestCase):
+    """A flip the loop was not there to see.
+
+    Dispatch takes an item out of the ready set for good, so without this
+    an item flipped after its session ended is invisible to every filter
+    and its milestone keeps a job forever.
+    """
+
+    def flipped(self):
+        return Snapshot(items=[
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            item(2, "type:research", inbox.IN_PROGRESS, "stage:in-session"),
+        ])
+
+    def test_the_filter_names_a_flipped_in_progress_item(self):
+        box = inbox.intent_inbox(self.flipped(), "x")
+        self.assertEqual([i.number for i in box.to_collect], [1])
+        self.assertEqual(box.ready, (), "it is not ready, and never will be")
+        self.assertFalse(box.empty)
+
+    def test_an_already_collected_item_is_not_named_again(self):
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:collected")])
+        self.assertEqual(inbox.collect_plan(snap, "x"), ())
+
+    def test_it_collects_closes_and_says_there_was_no_pane(self):
+        snap = self.flipped()
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        report = intent.Report(slug="x")
+        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer, None,
+                                      config(apply=True), snap, report)
+        self.assertTrue(wrote)
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+        self.assertEqual([c for c in tracker.calls
+                          if c[0] == "close_issue" and c[1] == 2], [],
+                         "#2 is not flipped and is untouched")
+        self.assertTrue(any("no pane" in n or "after the fact" in n
+                            for n in report.notes))
+
+    def test_it_writes_nothing_when_no_item_is_flipped(self):
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:in-session")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        report = intent.Report(slug="x")
+        self.assertFalse(intent.resume_collect(
+            inbox.intent_inbox(snap, "x"), writer, None, config(), snap, report))
+        self.assertEqual(writer.writes, [])
+
+    def test_dispatch_never_walks_the_operators_flip_back(self):
+        # A resumed batch may hold an item already at stage:done; writing
+        # stage:in-session over it would erase the completion signal.
+        flipped = item(1, "type:research", inbox.READY, "stage:done")
+        snap = Snapshot(items=[flipped])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        intent.dispatch_batch(intent.DesignBatch("research", (flipped,)),
+                              writer, None, config(), Clock())
+        self.assertNotIn("+stage:in-session",
+                         [w.detail for w in writer.writes])
+        self.assertNotIn("-stage:done", [w.detail for w in writer.writes])
+
+
+class PausedBatchTest(unittest.TestCase):
+    """A pause must survive the next cycle.
+
+    `land` returns on a stall or an andon and closes nothing — but
+    returning is not a halt. These drive `run` across cycles, which is the
+    pass the earlier tests never reached: they called `land` directly, so
+    the next cycle's `resume_collect` was never exercised.
+    """
+
+    def paused(self):
+        # #1 flipped by the operator; #3 raised the andon, so the batch is
+        # paused and every item on it carries needs-operator.
+        return Snapshot(items=[
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done",
+                 inbox.NEEDS_OPERATOR),
+            item(3, "type:research", inbox.IN_PROGRESS, inbox.NEEDS_OPERATOR),
+        ])
+
+    def test_a_flipped_sibling_of_a_paused_batch_is_not_collectable(self):
+        self.assertEqual(inbox.collect_plan(self.paused(), "x"), ())
+        self.assertEqual(inbox.intent_inbox(self.paused(), "x").to_collect, ())
+
+    def test_a_run_over_a_paused_batch_closes_nothing(self):
+        snap = self.paused()
+        tracker = FakeTracker(snapshot=snap)
+        report = intent.run(config(slug="x", apply=True), tracker=tracker,
+                            runner=ScriptedRunner(), clock=Clock())
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [],
+                         "the pane is open and the batch is paused")
+        self.assertEqual([c for c in tracker.calls
+                          if c[0] == "add_label" and c[2] == "stage:collected"],
+                         [])
+        self.assertEqual(report.status, "ok")
+
+    def test_an_andon_stops_the_collect_even_with_no_needs_operator(self):
+        # The stronger signal, in case the label write did not land.
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:done")])
+        tracker = FakeTracker(snapshot=snap, comments={
+            1: [{"body": inbox.format_andon("the spec contradicts its decision")}]})
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        wrote = intent.resume_collect(inbox.intent_inbox(snap, "x"), writer, None,
+                                      config(apply=True), snap,
+                                      intent.Report(slug="x"))
+        self.assertFalse(wrote)
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+
+    def test_an_unpaused_flip_is_still_collected(self):
+        # The exclusion must not swallow the case it was added for.
+        snap = Snapshot(items=[item(1, "type:research", inbox.IN_PROGRESS,
+                                    "stage:done")])
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        self.assertTrue(intent.resume_collect(
+            inbox.intent_inbox(snap, "x"), writer, None, config(apply=True),
+            snap, intent.Report(slug="x")))
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+
+
+class ResumeMergeTest(unittest.TestCase):
+    """The staggered flip must not strand the session's branch.
+
+    `land` runs only for batches dispatched in the same cycle, and a
+    dispatched item never re-enters the ready set — so a flip arriving
+    later is `resume_collect`'s. Collecting the item without merging its
+    branch made the tracker read finished while the deliverables sat on a
+    branch nobody would look for.
+    """
+
+    def session_of(self, *items, name="writeback-x"):
+        snap = Snapshot(items=list(items))
+        run = FakeRun(stdout="worktree /tmp/sess-x\nbranch refs/heads/sess/writeback-x\n")
+        # PRODUCTION SHAPE: dispatch writes its marker on every item, and
+        # that marker is the only record of which session an item belongs
+        # to. A fixture without it pins a state the loop cannot produce.
+        tracker = FakeTracker(snapshot=snap, comments={
+            i.number: [{"body": intent.format_dispatch(name, 1000.0)}]
+            for i in items})
+        writer = intent.Writer(tracker=tracker, apply=True, run=run,
+                               snapshot=snap)
+        report = intent.Report(slug="x")
+        runner = ScriptedRunner()
+        intent.resume_collect(inbox.intent_inbox(snap, "x"), writer, runner,
+                              config(apply=True), snap, report)
+        return run, report, runner
+
+    def test_the_last_flip_merges_the_session_branch_and_closes_the_pane(self):
+        run, report, runner = self.session_of(
+            item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done"))
+        merges = [c for c in run.calls if c[:2] == ["wt", "merge"]]
+        self.assertEqual(len(merges), 1, run.calls)
+        for suppressor in ("--yes", "--no-hooks", "--no-verify"):
+            self.assertNotIn(suppressor, merges[0])
+        self.assertEqual(runner.closed, ["writeback-x"])
+
+    def test_a_half_flipped_session_merges_nothing(self):
+        # Session-scoped, exactly as on the live path: a branch merged
+        # while a sibling is still open merges a half-finished tree.
+        run, report, runner = self.session_of(
+            item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done"),
+            item(2, "type:writeback", inbox.IN_PROGRESS, "stage:in-session"))
+        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
+        self.assertEqual(runner.closed, [])
+        self.assertTrue(any("#2 still open" in n for n in report.notes),
+                        report.notes)
+
+    def test_a_type_that_gets_no_worktree_merges_nothing(self):
+        # Research edits no files, so it gets no worktree and there is no
+        # branch to merge — the resume path must not invent one.
+        self.assertFalse(intent.TYPES["research"].worktree)
+        run, report, runner = self.session_of(
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            name="research-x")
+        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
+
+    def test_a_type_that_gets_no_worktree_still_has_its_pane_closed(self):
+        """No branch to merge is not no pane to close.
+
+        The two session-scoped acts are independent: the merge is
+        conditional on the type having a worktree, the close never is.
+        `land` gets this right on the live path — `if
+        TYPES[batch.type].worktree: merge_session(...)` and then
+        `runner.close(handle)` unconditionally — and the resume path was
+        gating BOTH behind the same `continue`.
+
+        `session_name` is deterministic and `launch` reuses a running
+        agent, so an unclosed pane is not merely untidy: the next research
+        batch is dispatched into an orphaned, already-settled pane.
+        """
+        run, report, runner = self.session_of(
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            name="research-x")
+        self.assertEqual(runner.closed, ["research-x"],
+                         "the pane closes even though nothing merged")
+
+    def test_a_half_flipped_no_worktree_session_keeps_its_pane_open(self):
+        # The close is unconditional on TYPE, never on completeness: a
+        # session with an item still open keeps its pane, worktree or not.
+        run, report, runner = self.session_of(
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            item(2, "type:research", inbox.IN_PROGRESS, "stage:in-session"),
+            name="research-x")
+        self.assertEqual(runner.closed, [])
+        self.assertTrue(any("#2 still open" in n for n in report.notes),
+                        report.notes)
+
+
+class SessionMembershipTest(unittest.TestCase):
+    """The loop must be able to name the set of items a session carries.
+
+    Both defects here had one root: the session-scoped teardown was keyed
+    on the batch (which a later batch of the same type is not) and on
+    type+slug (which is a NAME, not a membership). The dispatch marker is
+    now written on every item, and is that membership.
+    """
+
+    def test_dispatch_records_the_session_on_every_item(self):
+        items = [item(1, "type:writeback", inbox.READY),
+                 item(2, "type:writeback", inbox.READY)]
+        snap = Snapshot(items=items)
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        intent.dispatch_batch(intent.DesignBatch("writeback", tuple(items)),
+                              writer, ScriptedRunner(), config(apply=True),
+                              Clock())
+        marked = [c[1] for c in tracker.calls if c[0] == "comment"]
+        self.assertEqual(sorted(marked), [1, 2], "not just batch.first")
+
+    def test_the_marker_round_trips_its_session_name(self):
+        body = intent.format_dispatch("writeback-x", 1000.0)
+        self.assertEqual(intent.session_named([{"body": body}]), "writeback-x")
+        self.assertIsNone(intent.session_named([{"body": "no marker here"}]))
+
+    def test_a_later_batch_in_the_same_session_holds_the_teardown(self):
+        # `launch` is idempotent and reuses the agent running under the
+        # name, so a second same-type batch joins THIS pane and branch.
+        # Tearing them down on the first batch's completion cut it off.
+        first = item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done")
+        later = item(2, "type:writeback", inbox.IN_PROGRESS, "stage:in-session")
+        snap = Snapshot(items=[first, later])
+        tracker = FakeTracker(snapshot=snap, comments={
+            n: [{"body": intent.format_dispatch("writeback-x", 1000.0)}]
+            for n in (1, 2)})
+        run = FakeRun()
+        runner = ScriptedRunner()
+        spec = sessions.SessionSpec(name="writeback-x", cwd="/tmp", order="go",
+                                    profile="flywheel-design-session")
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, run=run,
+                               snapshot=snap)
+        report = intent.Report(slug="x")
+        intent.land(intent.DesignBatch("writeback", (first,)), spec, handle,
+                    writer, runner, tracker, config(apply=True), snap,
+                    Clock(), report)
+        self.assertEqual(runner.closed, [],
+                         "#2 is still in session; the pane is not ours to close")
+        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [],
+                         "and its branch is not ours to merge")
+        self.assertTrue(any("#2" in n for n in report.notes), report.notes)
+
+
+class PauseMarksTheBatchTest(unittest.TestCase):
+    """A pause must mark every item, because the label IS the guard.
+
+    `collect_plan` excludes a paused item by its `needs-operator` label. A
+    pause that labelled only the raising item — or, on a stall, nothing —
+    left the next cycle free to collect and close a flipped sibling of the
+    very batch it had paused.
+    """
+
+    def _land(self, items, states=(), comments=None):
+        snap = Snapshot(items=items)
+        tracker = FakeTracker(snapshot=snap, comments=comments or {})
+        runner = ScriptedRunner(states=list(states))
+        spec = sessions.SessionSpec(name="research-x", cwd="/tmp", order="go",
+                                    profile="flywheel-design-session")
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        clock = Clock()
+        if states:
+            class Ticking(Clock):
+                def __call__(s):
+                    v = s.now
+                    s.now += sessions.WAIT_CHUNK_S
+                    return v
+            clock = Ticking()
+        intent.land(intent.DesignBatch("research", tuple(items)), spec, handle,
+                    writer, runner, tracker, config(apply=True), snap, clock,
+                    intent.Report(slug="x"))
+        return tracker
+
+    def paused_items(self, tracker):
+        return sorted(c[1] for c in tracker.calls
+                      if c[0] == "add_label" and c[2] == inbox.NEEDS_OPERATOR)
+
+    def test_an_andon_pauses_every_item_of_the_batch(self):
+        items = [item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+                 item(3, "type:research", inbox.IN_PROGRESS)]
+        tracker = self._land(items, comments={
+            3: [{"body": inbox.format_andon("the spec contradicts its decision")}]})
+        self.assertEqual(self.paused_items(tracker), [1, 3],
+                         "the flipped sibling must be paused too, or the next "
+                         "cycle collects it")
+
+    def test_a_stall_pauses_every_item_of_the_batch(self):
+        items = [item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+                 item(3, "type:research", inbox.IN_PROGRESS)]
+        tracker = self._land(items, states=[WaitState.WORKING] * 40)
+        self.assertEqual(self.paused_items(tracker), [1, 3])
+
+    def test_the_pause_then_makes_the_sibling_uncollectable(self):
+        # The two halves together: the label the pause writes is exactly
+        # what `collect_plan` reads.
+        paused = Snapshot(items=[
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done",
+                 inbox.NEEDS_OPERATOR),
+            item(3, "type:research", inbox.IN_PROGRESS, inbox.NEEDS_OPERATOR)])
+        self.assertEqual(inbox.collect_plan(paused, "x"), ())
+
+
+class HandoffReleaseTest(unittest.TestCase):
+    """The flip that charges a handoff must not escalate its own batch.
+
+    `apply_handoff` attaches the assertions to the unit, so the operator's
+    flip to Ready relabels every one of them `state:ready` via
+    `flip_consume_plan`. `batch_ready` then reports them undispatchable —
+    correctly, they are not a design type — and the loop used to write
+    `needs-operator` on each. The old code avoided this only by attaching
+    no sub-issues at all.
+    """
+
+    def released(self):
+        return Snapshot(
+            items=[item(1, "type:handoff", inbox.READY, parent_batch=10),
+                   item(2, "type:assertion", inbox.READY, parent_batch=10),
+                   item(3, "type:assertion", inbox.READY, parent_batch=10)],
+            batches=[Batch(number=10, kind="unit", status=inbox.STATUS_READY,
+                           sub_issues=(1, 2, 3), milestone="intent/x")])
+
+    def test_the_assertions_arrive_undispatchable_by_design(self):
+        snap = self.released()
+        batches, undispatchable = intent.batch_ready(snap, snap.items)
+        self.assertEqual([b.type for b in batches], ["handoff"])
+        self.assertEqual(sorted(k for _, k in undispatchable), ["assertion"] * 2)
+
+    def test_the_release_that_charges_a_handoff_escalates_nothing(self):
+        snap = self.released()
+        tracker = FakeTracker(snapshot=snap)
+        intent.run(config(slug="x", apply=True), tracker=tracker,
+                   runner=ScriptedRunner(), clock=Clock())
+        self.assertEqual(
+            [c for c in tracker.calls
+             if c[0] == "add_label" and c[2] == inbox.NEEDS_OPERATOR], [],
+            "the assertions are guard 2's and construction's, not a fault")
+
+    def test_a_genuinely_untyped_item_is_still_escalated(self):
+        # The exclusion is for assertions only; an item the loop cannot
+        # type at all is still the operator's to answer.
+        snap = Snapshot(items=[item(1, inbox.READY)])
+        tracker = FakeTracker(snapshot=snap)
+        intent.run(config(slug="x", apply=True), tracker=tracker,
+                   runner=ScriptedRunner(), clock=Clock())
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.calls)
 
 
 class ParentageTest(unittest.TestCase):
@@ -440,55 +835,63 @@ class SessionSpecTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 4 · completion — the R1 seam. Three candidates, no default.
+# 4 · completion — one label, per item, nothing to configure
 # ---------------------------------------------------------------------------
 
 class CompletionTest(unittest.TestCase):
 
-    def setUp(self):
-        self.batch = intent.DesignBatch("research", (item(1), item(2)))
+    def test_the_operators_stage_done_is_what_the_filter_reads(self):
+        snap = Snapshot(items=[item(1, "stage:done"), item(2)])
+        self.assertTrue(intent.is_done(1, snap))
+        self.assertFalse(intent.is_done(2, snap))
 
-    def test_no_signal_configured_is_unknown_rather_than_incomplete(self):
-        ctx = intent.CompletionContext(snapshot=Snapshot(items=[item(1)]))
-        self.assertIsNone(intent.is_complete(self.batch, config(), ctx))
+    def test_an_item_off_the_snapshot_is_not_read_as_done(self):
+        self.assertFalse(intent.is_done(7, Snapshot(items=[item(1)])))
 
-    def test_closed_means_every_item_is_gone_from_the_open_snapshot(self):
-        ctx = intent.CompletionContext(snapshot=Snapshot(items=[item(1)]))
-        cfg = config(completion_signal="closed")
-        self.assertFalse(intent.is_complete(self.batch, cfg, ctx))
-        ctx.snapshot = Snapshot(items=[])
-        self.assertTrue(intent.is_complete(self.batch, cfg, ctx))
+    def test_stage_collected_is_what_guards_a_second_collect(self):
+        snap = Snapshot(items=[item(1, "stage:done", "stage:collected"),
+                               item(2, "stage:done")])
+        self.assertTrue(intent.is_collected(1, snap))
+        self.assertFalse(intent.is_collected(2, snap))
 
-    def test_label_means_every_open_item_carries_it(self):
-        cfg = config(completion_signal="label", done_label="state:done")
-        ctx = intent.CompletionContext(
-            snapshot=Snapshot(items=[item(1, "state:done"), item(2)]),
-            done_label="state:done")
-        self.assertFalse(intent.is_complete(self.batch, cfg, ctx))
-        ctx.snapshot = Snapshot(items=[item(1, "state:done"),
-                                       item(2, "state:done")])
-        self.assertTrue(intent.is_complete(self.batch, cfg, ctx))
+    def test_the_board_is_not_consulted_for_completion(self):
+        # Per-item session state lives in labels; the board's Status is the
+        # operator's batch-approval surface and nothing else. The filter
+        # takes no board at all, so no Status can make an item complete.
+        import inspect
+        self.assertEqual(list(inspect.signature(intent.is_done).parameters),
+                         ["number", "snapshot"])
 
-    def test_board_means_every_row_is_at_the_done_status(self):
-        cfg = config(completion_signal="board", done_status="Done")
-        ctx = intent.CompletionContext(
-            snapshot=Snapshot(items=[item(1), item(2)]),
-            board={1: {"status": "Done"}, 2: {"status": "Ready"}},
-            done_status="Done")
-        self.assertFalse(intent.is_complete(self.batch, cfg, ctx))
-        ctx.board[2] = {"status": "Done"}
-        self.assertTrue(intent.is_complete(self.batch, cfg, ctx))
+    def test_the_intent_loop_moves_the_leading_edge_like_the_bolt_loop(self):
+        # One vocabulary means one rule about the set: writing a stage
+        # removes the previous one, in BOTH loops. Accumulating them made
+        # `stage_of(..., DESIGN_STAGES)` answer `stage:in-session` for a
+        # finished item, because it returns the first match in order.
+        snap = Snapshot(items=[item(1, "stage:in-session", "stage:done")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        intent.set_stage(writer, 1, "stage:collected")
+        self.assertEqual([w.detail for w in writer.writes],
+                         ["-stage:in-session", "-stage:done",
+                          "+stage:collected"])
+        self.assertTrue(writer.has_label(1, "stage:collected"))
+        self.assertFalse(writer.has_label(1, "stage:in-session"),
+                         "the writer must not report a label it just removed")
 
-    def test_a_signal_that_needs_a_name_and_lacks_one_stops_the_run(self):
-        self.assertIn("--done-label",
-                      intent.config_fault(config(completion_signal="label")))
-        self.assertIn("--done-status",
-                      intent.config_fault(config(completion_signal="board")))
+    def test_moving_to_a_stage_the_item_already_holds_writes_nothing(self):
+        snap = Snapshot(items=[item(1, "stage:collected")])
+        writer = intent.Writer(apply=False, snapshot=snap)
+        self.assertFalse(intent.set_stage(writer, 1, "stage:collected"))
+        self.assertEqual(writer.writes, [])
 
-    def test_an_unknown_signal_stops_the_run_before_it_reads_anything(self):
-        report = intent.run(config(completion_signal="vibes"))
-        self.assertEqual(report.status, "stopped")
-        self.assertIn("unknown completion signal", report.failure)
+    def test_nothing_names_a_completion_signal_any_more(self):
+        # The state in which no signal is configured, and completion is
+        # therefore *unknown* rather than false, has ceased to exist.
+        self.assertFalse(hasattr(intent, "COMPLETION_SIGNALS"))
+        self.assertFalse(hasattr(intent, "R1_UNRESOLVED"))
+        self.assertNotIn("completion_signal", Config.__dataclass_fields__)
+        self.assertNotIn("done_label", Config.__dataclass_fields__)
+        self.assertNotIn("done_status", Config.__dataclass_fields__)
+        self.assertIsNone(intent.config_fault(config()))
 
 
 # ---------------------------------------------------------------------------
@@ -504,9 +907,16 @@ class CycleTest(unittest.TestCase):
         self.assertEqual(report.status, "ok")
         kinds = [w.split()[0] for w in report.writes]
         self.assertEqual(kinds.count("issue"), 1, "handoff birth for #202")
-        self.assertEqual(kinds.count("command"), 2,
-                         "flywheel-batch for #203, and one wt switch")
+        self.assertEqual(kinds.count("command"), 3,
+                         "the unit over #202's handoff, flywheel-batch for "
+                         "#203, and one wt switch")
         self.assertEqual(report.dispatched, ("planning-sandbox-design — #201",))
+
+    def test_dispatch_puts_the_batchs_items_in_session(self):
+        report = intent.run(config(
+            slug="sandbox-design",
+            fixture=str(FIXTURES / "intent-tracker.json")))
+        self.assertIn("label #201 — +stage:in-session", report.writes)
 
     def test_a_dry_run_records_its_plan_and_performs_none_of_it(self):
         tracker = FakeTracker()
@@ -531,11 +941,15 @@ class CycleTest(unittest.TestCase):
         self.assertTrue(any("#202" in line for line in report.resting))
         self.assertTrue(any("batch #204" in line for line in report.resting))
 
-    def test_the_r1_note_is_on_every_run_that_names_no_signal(self):
+    def test_a_run_naming_no_signal_reports_no_unresolved_note(self):
+        # There is one filter and nothing to configure, so a run against a
+        # milestone with no completion signal named anywhere is ordinary.
         report = intent.run(config(
             slug="sandbox-design",
             fixture=str(FIXTURES / "intent-tracker.json")))
-        self.assertTrue(any("R1 unresolved" in n for n in report.notes))
+        self.assertEqual(report.status, "ok")
+        self.assertFalse(any("unresolved" in n.lower() for n in report.notes),
+                         report.notes)
 
 
 # ---------------------------------------------------------------------------
@@ -544,31 +958,38 @@ class CycleTest(unittest.TestCase):
 
 class LandingTest(unittest.TestCase):
 
-    def _land(self, cfg, tracker, runner=None, clock=None):
-        batch = intent.DesignBatch("research", (item(1),))
+    def _land(self, cfg, tracker, runner=None, clock=None, items=None,
+              batch=None):
+        items = items or [item(1)]
+        batch = batch or intent.DesignBatch("research", tuple(items))
         spec = sessions.SessionSpec(name="research-x", cwd="/tmp", order="go",
                                     profile="flywheel-design-session")
         runner = runner or ScriptedRunner()
         handle = runner.launch(spec)
-        writer = intent.Writer(tracker=tracker, apply=True,
-                               snapshot=Snapshot(items=[item(1)]))
+        snapshot = Snapshot(items=items)
+        if tracker.snapshot_obj is None:
+            tracker.snapshot_obj = snapshot
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snapshot)
         report = intent.Report(slug="x")
         intent.land(batch, spec, handle, writer, runner, tracker, cfg,
-                    Snapshot(items=[item(1)]), clock or Clock(), report)
+                    snapshot, clock or Clock(), report)
         return writer, report, runner
 
     def test_a_settled_session_is_not_a_finished_one(self):
+        # A settled pane is still not a finished session — and it is now
+        # `stage:done` that decides.
         tracker = FakeTracker()
         writer, report, runner = self._land(config(apply=True), tracker)
         self.assertEqual(runner.closed, [],
                          "the operator may iterate a round as often as they like")
-        self.assertTrue(any("R1 unresolved" in n for n in report.notes))
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+        self.assertTrue(any("not yet marked done" in n for n in report.notes))
 
     def test_an_andon_pauses_the_batch_and_merges_nothing(self):
         tracker = FakeTracker(comments={
             1: [{"body": inbox.format_andon("the spec contradicts its decision")}]})
         writer, report, runner = self._land(
-            config(apply=True, completion_signal="closed"), tracker)
+            config(apply=True), tracker, items=[item(1, "stage:done")])
         self.assertIn(("add_label", 1, "needs-operator"), tracker.calls)
         self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
         self.assertEqual(runner.closed, [])
@@ -577,22 +998,125 @@ class LandingTest(unittest.TestCase):
     def test_prose_about_stopping_is_not_an_andon(self):
         tracker = FakeTracker(comments={
             1: [{"body": "I nearly raised the andon but did not."}]})
-        writer, report, runner = self._land(
-            config(apply=True, completion_signal="closed"), tracker)
+        writer, report, runner = self._land(config(apply=True), tracker)
         self.assertNotIn(("add_label", 1, "needs-operator"), tracker.calls)
 
-    def test_a_complete_batch_closes_its_items_closed_done(self):
+    def test_a_flipped_item_is_collected_marked_and_closed(self):
         tracker = FakeTracker()
         writer, report, runner = self._land(
-            config(apply=True, completion_signal="label",
-                   done_label="state:done"), tracker)
-        # #1 carries no done label, so nothing closes
+            config(apply=True), tracker, items=[item(1, "stage:done")])
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+        self.assertEqual(runner.closed, ["research-x"],
+                         "every item collected, so the session may be torn down")
+
+    def test_a_worktree_bearing_session_merges_once_when_its_last_item_lands(self):
+        # `land`'s other completion tests all use `research`, whose type has
+        # no worktree, so `merge_session` is never reached on this path —
+        # only on the resume path. A writeback session bears one, so the
+        # teardown merge and the pane close both have to fire, exactly once.
+        only = item(1, "type:writeback", inbox.IN_PROGRESS, "stage:done")
+        snap = Snapshot(items=[only])
+        tracker = FakeTracker(snapshot=snap, comments={
+            1: [{"body": intent.format_dispatch("writeback-x", 1000.0)}]})
+        run = FakeRun()
+        runner = ScriptedRunner()
+        spec = sessions.SessionSpec(name="writeback-x", cwd="/tmp/wt-x", order="go",
+                                    profile="flywheel-design-session")
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, run=run, snapshot=snap)
+        report = intent.Report(slug="x")
+
+        intent.land(intent.DesignBatch("writeback", (only,)), spec, handle,
+                    writer, runner, tracker, config(apply=True), snap,
+                    Clock(), report)
+
+        merges = [c for c in run.calls if c[:2] == ["wt", "merge"]]
+        self.assertEqual(len(merges), 1, f"exactly one merge, got {merges}")
+        self.assertIn("/tmp/wt-x", merges[0], "and it merges the session's worktree")
+        self.assertEqual(runner.closed, ["writeback-x"])
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+
+    def test_the_flip_written_during_the_session_is_seen(self):
+        """The pane path, which is the primary one.
+
+        The session writes `stage:done` to its own item and settles WHILE
+        the loop is blocked in `supervise`, so the picture the cycle opened
+        with cannot contain it. Reading the stale snapshot meant the pane
+        path could never see its own write — and there is no next pass,
+        because dispatch already took the item out of the ready set.
+        """
+        before = Snapshot(items=[item(1, "stage:in-session")])
+        after = Snapshot(items=[item(1, "stage:in-session", "stage:done")])
+        tracker = FakeTracker(snapshot=after)          # the tracker as it is NOW
+        batch = intent.DesignBatch("research", (item(1, "stage:in-session"),))
+        spec = sessions.SessionSpec(name="research-x", cwd="/tmp", order="go",
+                                    profile="flywheel-design-session")
+        runner = ScriptedRunner()
+        handle = runner.launch(spec)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=before)
+        report = intent.Report(slug="x")
+        intent.land(batch, spec, handle, writer, runner, tracker,
+                    config(apply=True), before, Clock(), report)
+        self.assertIn(("close_issue", 1, "closed:done"), tracker.calls)
+        self.assertIn(("add_label", 1, "stage:collected"), tracker.calls)
+        self.assertEqual(runner.closed, ["research-x"],
+                         "the session is torn down once its item is collected")
+
+    def test_an_unflipped_item_is_still_not_collected_after_the_re_read(self):
+        # The re-read must not turn "not done" into "done".
+        unchanged = Snapshot(items=[item(1, "stage:in-session")])
+        tracker = FakeTracker(snapshot=unchanged)
+        writer, report, runner = self._land(
+            config(apply=True), tracker, items=[item(1, "stage:in-session")])
         self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+        self.assertEqual(runner.closed, [])
+
+    def test_a_collected_item_ends_carrying_one_stage_label(self):
+        tracker = FakeTracker()
+        writer, report, runner = self._land(
+            config(apply=True), tracker,
+            items=[item(1, "stage:in-session", "stage:done")])
+        self.assertIn(("remove_label", 1, "stage:in-session"), tracker.calls)
+        self.assertIn(("remove_label", 1, "stage:done"), tracker.calls)
+        self.assertEqual(tracker.labels[1] & {"stage:in-session", "stage:done",
+                                              "stage:collected"},
+                         {"stage:collected"})
+
+    def test_two_of_three_flipped_collects_exactly_those_two(self):
+        tracker = FakeTracker()
+        items = [item(1, "stage:done"), item(2, "stage:done"), item(3)]
+        writer, report, runner = self._land(config(apply=True), tracker,
+                                            items=items)
+        closed = [c[1] for c in tracker.calls if c[0] == "close_issue"]
+        self.assertEqual(closed, [1, 2])
+        self.assertNotIn(("add_label", 3, "stage:collected"), tracker.calls)
+
+    def test_the_session_scoped_acts_wait_for_the_third_item(self):
+        run = FakeRun()
+        tracker = FakeTracker()
+        items = [item(1, "stage:done"), item(2, "stage:done"), item(3)]
+        runner = ScriptedRunner()
+        writer, report, runner = self._land(
+            config(apply=True), tracker, runner=runner, items=items)
+        self.assertEqual(runner.closed, [],
+                         "a pane closed under a running session destroys it")
+        self.assertEqual([w for w in writer.writes if w.kind == "command"], [],
+                         "a branch merged mid-session merges a half tree")
+        self.assertTrue(any("#3" in n for n in report.notes))
+
+    def test_an_already_collected_item_is_not_collected_twice(self):
+        tracker = FakeTracker()
+        items = [item(1, "stage:done", "stage:collected")]
+        writer, report, runner = self._land(config(apply=True), tracker,
+                                            items=items)
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
+        self.assertEqual(runner.closed, ["research-x"],
+                         "already collected still completes the session")
 
     def test_a_stalled_session_keeps_its_pane_as_evidence(self):
         tracker = FakeTracker()
         runner = ScriptedRunner(states=[WaitState.WORKING] * 40)
-        clock = Clock()
 
         class Ticking(Clock):
             def __call__(self):
@@ -601,10 +1125,11 @@ class LandingTest(unittest.TestCase):
                 return value
 
         writer, report, runner = self._land(
-            config(apply=True, completion_signal="closed"), tracker,
-            runner=runner, clock=Ticking())
+            config(apply=True), tracker,
+            runner=runner, clock=Ticking(), items=[item(1, "stage:done")])
         self.assertTrue(any("stalled" in n for n in report.notes))
         self.assertEqual(runner.closed, [])
+        self.assertEqual([c for c in tracker.calls if c[0] == "close_issue"], [])
 
 
 # ---------------------------------------------------------------------------
@@ -646,3 +1171,55 @@ class ConfigTest(unittest.TestCase):
 
     def test_a_run_with_no_slug_stops_before_reading_anything(self):
         self.assertIn("no intent slug", intent.config_fault(config(slug="")))
+
+
+class WriterCacheTest(unittest.TestCase):
+    """A cached label surface may not outlive the snapshot behind it.
+
+    `Writer.has_label` answers from the cycle's snapshot plus what this
+    writer has already written. Both halves of that cache are invalidated
+    when the snapshot is replaced, because a re-read is the loop learning
+    what the world now says.
+    """
+
+    def test_an_addition_does_not_survive_a_re_read(self):
+        # The normal pane path: dispatch writes `stage:in-session`, the pane
+        # session's own `stage:done` removes it on GitHub. A stale addition
+        # makes the surface answer from a state that no longer exists, and
+        # sends one redundant `--remove-label` per collect.
+        writer = intent.Writer(tracker=None, apply=False,
+                               snapshot=Snapshot(items=[item(1)]))
+        writer.add_label(1, "stage:in-session")
+        self.assertTrue(writer.has_label(1, "stage:in-session"))
+
+        writer.snapshot = Snapshot(items=[item(1, "stage:done")])
+        self.assertFalse(writer.has_label(1, "stage:in-session"),
+                         "the re-read is what the surface answers from now")
+        self.assertTrue(writer.has_label(1, "stage:done"))
+
+    def test_a_removal_does_not_survive_a_re_read_either(self):
+        # The direction that was already invalidated. Both go together: a
+        # cache with one direction invalidated is a cache whose rule nobody
+        # can state.
+        writer = intent.Writer(tracker=None, apply=False,
+                               snapshot=Snapshot(items=[item(1, "needs-operator")]))
+        writer.remove_label(1, "needs-operator")
+        self.assertFalse(writer.has_label(1, "needs-operator"))
+
+        writer.snapshot = Snapshot(items=[item(1, "needs-operator")])
+        self.assertTrue(writer.has_label(1, "needs-operator"),
+                        "the operator put it back; the cycle's own write is stale")
+
+    def test_within_one_snapshot_the_cache_still_answers(self):
+        # The invalidation must not cost the read-your-writes property the
+        # dry cycle depends on.
+        writer = intent.Writer(tracker=None, apply=False,
+                               snapshot=Snapshot(items=[item(1)]))
+        writer.add_label(1, "stage:collected")
+        self.assertTrue(writer.has_label(1, "stage:collected"))
+        writer.remove_label(1, "stage:collected")
+        self.assertFalse(writer.has_label(1, "stage:collected"))
+
+
+if __name__ == "__main__":
+    unittest.main()

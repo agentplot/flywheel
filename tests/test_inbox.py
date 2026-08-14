@@ -5,11 +5,13 @@ The filters are pure, so these run against the repo's own declared contract
 No network, no `gh`, no token.
 """
 
+import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
 
-from context import FIXTURES, inbox
+from context import BIN, FIXTURES, inbox
 
 Item = inbox.Item
 Batch = inbox.Batch
@@ -58,6 +60,55 @@ class FixtureContractTest(unittest.TestCase):
         birth = {i.number for i in box.handoff.assertions}
         compose = {i.number for i in box.orphan_queued}
         self.assertEqual(birth & compose, set())
+
+
+# ---------------------------------------------------------------------------
+# The vocabulary — one enumeration, and the two copies of it cannot drift
+# ---------------------------------------------------------------------------
+
+class VocabularyTest(unittest.TestCase):
+    """One enumeration. The constants here and `flywheel-setup`'s `LABELS`
+    table cannot drift, because a loop writing a label the repo does not
+    define is a failed `gh issue edit`, not a created label."""
+
+    def setup_labels(self):
+        source = (BIN / "flywheel-setup").read_text()
+        return set(re.findall(r'^\s*"(stage:[a-z-]+)":', source, re.MULTILINE))
+
+    def test_the_stage_set_is_exactly_seven_names(self):
+        self.assertEqual(set(inbox.STAGE_LABELS), {
+            "stage:planned", "stage:built", "stage:verified", "stage:merged",
+            "stage:in-session", "stage:done", "stage:collected"})
+        self.assertEqual(len(inbox.STAGE_LABELS), 7, "and no duplicates")
+
+    def test_every_stage_constant_is_defined_in_flywheel_setups_labels(self):
+        self.assertEqual(self.setup_labels(), set(inbox.STAGE_LABELS))
+
+    def test_every_closed_constant_is_defined_in_flywheel_setups_labels(self):
+        source = (BIN / "flywheel-setup").read_text()
+        defined = set(re.findall(r'^\s*"(closed:[a-z-]+)":', source, re.MULTILINE))
+        self.assertEqual(defined, set(inbox.CLOSED_REASONS))
+        self.assertIn("closed:merged", defined,
+                      "the loop cannot write a label the repo does not define")
+
+    def test_the_construction_stages_are_in_the_order_the_cycle_runs_them(self):
+        self.assertEqual(inbox.CONSTRUCTION_STAGES,
+                         ("stage:planned", "stage:built", "stage:verified",
+                          "stage:merged"))
+
+    def test_stage_of_reads_one_stage_and_can_be_narrowed_to_a_phase(self):
+        labels = frozenset({"state:in-progress", "stage:built"})
+        self.assertEqual(inbox.stage_of(labels), "stage:built")
+        self.assertEqual(
+            inbox.stage_of(labels, inbox.CONSTRUCTION_STAGES), "stage:built")
+        self.assertIsNone(
+            inbox.stage_of(labels, inbox.DESIGN_STAGES))
+
+    def test_a_stage_label_never_stands_in_for_a_state_label(self):
+        # The four inbox filters all read `state:*`; an item whose state
+        # label were displaced would go invisible to the loop that owns it.
+        found = Snapshot(items=[item(1, "state:in-progress", "stage:built")])
+        self.assertTrue(found.items[0].in_progress)
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +171,63 @@ class ServerInboxTest(unittest.TestCase):
                                        milestone="bolt/a")])
         self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
                          [("bolt/a", "run")])
+
+    def test_a_ready_batch_on_a_closed_milestone_is_not_a_run_job(self):
+        # The same test the per-item condition above already makes. Without
+        # it a unit parent left open at Ready keeps its milestone reporting a
+        # job forever — including after the operator closes the milestone,
+        # where it collides with the `archive` job this same sweep adds.
+        snap = Snapshot(batches=[Batch(9, kind=inbox.UNIT,
+                                       status=inbox.STATUS_READY,
+                                       milestone="bolt/a",
+                                       milestone_state="closed")])
+        self.assertEqual(
+            [j for j in inbox.server_inbox(snap) if j.kind == "run"], [])
+
+    def test_a_merge_closed_item_keeps_its_milestone_in_the_job_list(self):
+        # Closing at merge takes an item out of every filter that reads open
+        # issues — including this one. Without the merge-closed branch, a
+        # loop killed between the last merge and the landing is never
+        # restarted, and the bolt never lands.
+        snap = Snapshot(items=[
+            Item(number=1, milestone="bolt/a", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))])
+        self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
+                         [("bolt/a", "run")])
+
+    def test_only_a_bolt_milestone_gets_a_job_from_a_merge_closed_item(self):
+        # `closed:merged` is the construction loop's label and the landing
+        # is a bolt's act; an intent milestone has no landing to wait for,
+        # so a stray one there must not keep an intent loop alive forever.
+        snap = Snapshot(items=[
+            Item(number=1, milestone="intent/a", state="closed",
+                 labels=frozenset({inbox.CLOSED_MERGED}))])
+        self.assertEqual(inbox.server_inbox(snap), [])
+
+    def test_a_landed_item_gives_its_milestone_no_job(self):
+        snap = Snapshot(items=[
+            Item(number=1, milestone="bolt/a", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_DONE}))])
+        self.assertEqual([j for j in inbox.server_inbox(snap) if j.kind == "run"],
+                         [])
+
+    def test_a_merge_closed_item_is_never_in_the_bolt_loops_ready_set(self):
+        # The set that must not change: a closed item is not ready, and the
+        # ready set is what the cycle works.
+        snap = Snapshot(items=[
+            Item(number=1, milestone="bolt/a", state="closed",
+                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED,
+                                   inbox.READY}))])
+        self.assertEqual(inbox.bolt_inbox(snap, "a").ready, ())
+
+    def test_a_merge_closed_item_is_in_flight_and_not_finished(self):
+        merged = Item(number=1, state="closed",
+                      labels=frozenset({inbox.CLOSED_MERGED}))
+        landed = Item(number=2, state="closed",
+                      labels=frozenset({inbox.CLOSED_DONE}))
+        self.assertTrue(merged.merge_closed)
+        self.assertFalse(merged.is_open)
+        self.assertFalse(landed.merge_closed)
 
     def test_a_queued_batch_parent_is_not_composable_work(self):
         # A unit or elaboration parent is a container, never compose's work;
@@ -332,6 +440,28 @@ class DispatchInboxTest(unittest.TestCase):
                                item(2, milestone=None, state="closed")])
         self.assertTrue(inbox.dispatch_inbox(snap).empty)
 
+    def test_a_merge_closed_escalation_is_still_relayed(self):
+        # The landing can now find every assertion already closed, so its
+        # pause lands on a closed item. A needs-operator nobody reads is
+        # the same silence as one never written.
+        snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR,
+                                    inbox.CLOSED_MERGED, state="closed",
+                                    milestone="bolt/x")])
+        self.assertEqual([i.number for i in inbox.dispatch_inbox(snap).relay], [1])
+
+    def test_a_landed_escalation_drops_out_of_the_relay(self):
+        # Bounded: the landing upgrades the reason and the item is gone
+        # from this filter for good.
+        snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR,
+                                    inbox.CLOSED_DONE, state="closed",
+                                    milestone="bolt/x")])
+        self.assertTrue(inbox.dispatch_inbox(snap).empty)
+
+    def test_a_merge_closed_item_is_never_triage(self):
+        snap = Snapshot(items=[item(1, inbox.CLOSED_MERGED, state="closed",
+                                    milestone=None)])
+        self.assertEqual(inbox.dispatch_inbox(snap).triage, ())
+
 
 # ---------------------------------------------------------------------------
 # The andon cord — code, not judgment
@@ -451,6 +581,144 @@ class NeedsOperatorTest(unittest.TestCase):
         self.assertTrue(inbox.clear_needs_operator(tracker, 75))
         self.assertNotIn(inbox.NEEDS_OPERATOR, tracker.labels)
         self.assertFalse(inbox.clear_needs_operator(tracker, 75))
+
+
+# ---------------------------------------------------------------------------
+# The prose surfaces the loops' docstrings cite as their definition
+# ---------------------------------------------------------------------------
+
+class RecordConsistencyTest(unittest.TestCase):
+    """A behaviour with no record is a behaviour the next reader undoes.
+
+    These pin the sentences that describe THIS change's behaviour in the
+    files a session or a loop actually reads — not every mention, just the
+    propositions the change retires, which can be written without the
+    literal label name.
+    """
+
+    ROOT = BIN.parent
+
+    def read(self, *parts):
+        return (self.ROOT.joinpath(*parts)).read_text()
+
+    def test_the_record_and_the_construction_skill_know_about_the_merge_close(self):
+        for parts in (("design", "loop-programs.md"),
+                      ("skills", "construction", "SKILL.md"),
+                      ("skills", "_reference", "tracker.md"),
+                      ("skills", "_reference", "herdr.md")):
+            self.assertIn("closed:merged", self.read(*parts), str(parts))
+
+    def test_no_reader_still_says_items_close_at_the_landing(self):
+        record = self.read("design", "loop-programs.md")
+        self.assertNotIn("Items close at landing with the SHA", record)
+
+    def test_the_records_server_filter_carries_the_merge_closed_condition(self):
+        # `server_inbox`'s docstring cites this record as its definition.
+        record = self.read("design", "loop-programs.md")
+        server = record.split("- **server**", 1)[1].split("- **bolt loop", 1)[0]
+        self.assertIn("closed:merged", server)
+
+    def test_milestone_closure_carves_out_merge_closed_items_everywhere(self):
+        for parts in (("skills", "construction", "SKILL.md"),
+                      ("skills", "_reference", "tracker.md")):
+            text = self.read(*parts)
+            window = text.split("all closed", 1)
+            self.assertGreater(len(window), 1, str(parts))
+            self.assertIn("closed:merged", window[1][:400], str(parts))
+
+    def test_every_design_surface_names_the_operators_flip(self):
+        # Task 4.6: the pane half of the flip, in the skills a design
+        # session loads as well as in the profiles that host them.
+        for skill in ("planning", "research", "writeback", "interactive",
+                      "prototype", "handoff"):
+            self.assertIn("stage:done",
+                          self.read("skills", skill, "SKILL.md"), skill)
+        for profile in ("flywheel-design-session", "flywheel-interactive-session"):
+            self.assertIn("stage:done",
+                          self.read("agents", f"{profile}.md"), profile)
+
+    def test_the_pane_written_flip_goes_through_the_one_implementation(self):
+        # The one path the loop cannot fix for itself. What is held is that
+        # the profile names the CALL — not merely that it mentions a removal.
+        # A profile spelling out its own two-label edit satisfied the old
+        # check and was the defect: it hard-codes one predecessor, which is
+        # wrong wherever the item's actual predecessor is another stage.
+        for profile in ("flywheel-design-session", "flywheel-interactive-session"):
+            flat = " ".join(self.read("agents", f"{profile}.md").split())
+            self.assertIn("flywheel-stage", flat, profile)
+            self.assertNotIn("--remove-label stage:", flat, profile)
+
+    def test_no_design_surface_spells_out_a_hand_built_stage_edit(self):
+        # "The rule is stated once and copied nowhere": every surface a
+        # session reads points at the call, and none of them hands it a
+        # label edit to copy.
+        for skill in ("planning", "research", "writeback", "interactive",
+                      "prototype", "handoff"):
+            flat = " ".join(self.read("skills", skill, "SKILL.md").split())
+            self.assertIn("flywheel-stage", flat, skill)
+            self.assertNotIn("--remove-label stage:", flat, skill)
+
+    def test_the_pane_command_writes_through_the_one_implementation(self):
+        # "reachable from a pane without importing the loops' internals" is
+        # the requirement's own wording, and both halves are checkable on
+        # the source — which is how this suite already holds `flywheel-setup`.
+        source = (BIN / "flywheel-stage").read_text()
+        self.assertIn("set_stage", source,
+                      "the command writes through the one implementation")
+        self.assertNotIn("_flywheel_bolt_loop", source)
+        self.assertNotIn("_flywheel_intent", source)
+        self.assertTrue(os.access(BIN / "flywheel-stage", os.X_OK),
+                        "bin/ goes on an installed user's PATH; it must run")
+
+    def test_the_reference_gives_the_flip_as_the_call(self):
+        # `herdr.md` is where the profiles send a session for the invocation.
+        flat = " ".join(self.read("skills", "_reference", "herdr.md").split())
+        self.assertIn("flywheel-stage", flat)
+        self.assertNotIn("--remove-label stage:in-session", flat)
+        # The sentence the recipe carried must survive the replacement.
+        self.assertIn("REPLACES the previous stage", flat)
+
+
+class SetStageTest(unittest.TestCase):
+    """The one implementation of the one-stage rule."""
+
+    def test_it_moves_the_leading_edge(self):
+        tracker = FakeTracker({inbox.STAGE_BUILT})
+        self.assertTrue(inbox.set_stage(tracker, 1, inbox.STAGE_VERIFIED))
+        self.assertEqual(tracker.labels, {inbox.STAGE_VERIFIED})
+
+    def test_a_clean_item_already_at_the_target_writes_nothing(self):
+        # The dry-cycle property depends on this: a second cycle over an
+        # unchanged tracker writes nothing.
+        tracker = FakeTracker({inbox.STAGE_DONE})
+        self.assertFalse(inbox.set_stage(tracker, 1, inbox.STAGE_DONE))
+        self.assertEqual(tracker.writes, [])
+
+    def test_an_item_at_the_target_carrying_another_stage_is_swept(self):
+        # The early return may not be taken on the strength of the target
+        # alone. The operator adding `stage:done` by hand on GitHub sweeps
+        # nothing, and this capability permits exactly that — so an item can
+        # reach this function carrying the target AND a predecessor.
+        tracker = FakeTracker({inbox.STAGE_COLLECTED, inbox.STAGE_DONE})
+        self.assertTrue(inbox.set_stage(tracker, 1, inbox.STAGE_DONE))
+        self.assertEqual(tracker.labels, {inbox.STAGE_DONE})
+        self.assertIn(("remove", inbox.STAGE_COLLECTED), tracker.writes)
+        # ...and the target it already carried is not re-added.
+        self.assertNotIn(("add", inbox.STAGE_DONE), tracker.writes)
+
+    def test_an_item_picked_up_at_collected_is_flipped_done(self):
+        # The case the hard-coded recipe got wrong. `dispatch_batch` leaves
+        # an item at `stage:collected` alone when a later session picks it
+        # up, so a flip removing only `stage:in-session` left it carrying
+        # `stage:collected` and `stage:done` at once.
+        tracker = FakeTracker({inbox.STAGE_COLLECTED})
+        self.assertTrue(inbox.set_stage(tracker, 1, inbox.STAGE_DONE))
+        self.assertEqual(tracker.labels, {inbox.STAGE_DONE})
+
+    def test_it_touches_no_closure_label(self):
+        tracker = FakeTracker({inbox.STAGE_BUILT, inbox.CLOSED_MERGED})
+        inbox.set_stage(tracker, 1, inbox.STAGE_MERGED)
+        self.assertIn(inbox.CLOSED_MERGED, tracker.labels)
 
 
 if __name__ == "__main__":

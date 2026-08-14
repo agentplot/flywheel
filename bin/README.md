@@ -50,6 +50,11 @@ skipping the `../tools/` split:
 - `flywheel-intent-loop` — run the design loop for one `intent/<slug>`
   milestone: guards, typed design sessions, `sess/*` merges, STOP.
   `--dry-run` plans every write and applies none.
+- `flywheel-stage` — move one item to one `stage:*` label, removing any
+  other. The one implementation of the one-stage rule, reachable from a
+  pane: a design session told by the operator that an item is done runs
+  this rather than a hand-built two-label edit, because which stage
+  precedes the flip depends on where the item was picked up.
 - `install-schemas` — publish the plugin's OpenSpec schemas as user
   schemas, moving any existing copy aside as `<name>.replaced`.
 

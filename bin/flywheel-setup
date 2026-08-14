@@ -12,8 +12,9 @@ What it converges, as the app identity (`GH_TOKEN`, or minted by the
 sibling `flywheel-token` from `FLYWHEEL_GH_*`):
 
   - the tracker labels on the repo: `type:*` for the session types,
-    `state:*` for the queue lifecycle, `closed:*` for the end reasons,
-    `unit` and `elaboration` for the two batch kinds, and
+    `state:*` for the queue lifecycle, `stage:*` for where inside
+    `state:in-progress` an item has reached, `closed:*` for the end
+    reasons, `unit` and `elaboration` for the two batch kinds, and
     `needs-operator` for items blocked on the operator's word;
   - the org Project (default title "Flywheel"), linked to the repo —
     copied from the hand-built template project (--template, default
@@ -71,7 +72,28 @@ LABELS = {
     "state:queued": ("ededed", "identified, awaiting release"),
     "state:ready": ("0e8a16", "approved by the operator; work may start"),
     "state:in-progress": ("fbca04", "a session is working it"),
+    # `stage:*` refines `state:in-progress` and never replaces it: an item
+    # carries its `state:*` label and, while a loop is working it, exactly
+    # one `stage:*` naming the leading edge. Four are the bolt loop's, two
+    # the intent loop's, and `stage:done` is the OPERATOR's — the one signal
+    # the intent loop's completion filter consumes.
+    "stage:planned": ("c2e0c6", "its spec validates, or its plan is approved"),
+    "stage:built": ("c2e0c6", "the change is applied; a commit is on the "
+                              "item's branch"),
+    "stage:verified": ("c2e0c6", "verify came back clean"),
+    "stage:merged": ("c2e0c6", "the work is on the bolt branch, not yet "
+                               "landed"),
+    "stage:in-session": ("f9d0c4", "a design session is carrying it"),
+    "stage:done": ("f9d0c4", "the operator has marked it finished; the "
+                             "intent loop collects on this"),
+    "stage:collected": ("f9d0c4", "its deliverables are gathered"),
     "closed:done": ("2da44e", "finished; evidence on the item"),
+    # A construction sub-issue closes at merge-back so the unit parent's
+    # native bar advances there, and the landing upgrades the reason to
+    # closed:done with the SHA. Invariant 5 stands verbatim: exactly one
+    # closed:* reason on a closed item, at every moment.
+    "closed:merged": ("1a7f37", "merged to the bolt branch; awaiting the "
+                                "landing"),
     "closed:declined": ("b60205", "not doing it; reason on the item"),
     "closed:superseded": ("d93f0b", "overtaken by another item"),
     "closed:parked": ("c5def5", "waiting on an external event; reopenable"),

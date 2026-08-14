@@ -26,12 +26,18 @@ what you put on the tracker.
 3. **An item on a running bolt** — construction-scoped work a live bolt
    covers: queue it on the bolt's milestone.
 4. **A quick bolt** — small, fully defined work gets a `bolt/<slug>`
-   milestone and one ready item on the operator's word at triage, put
-   on the board at Status Ready
-   (`"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-board`) — the lone item
-   carries the approval where a batch would. Something that is
-   genuinely one shell command is still one shell command; run it and
-   say so.
+   milestone and its items born `state:ready` on the operator's word at
+   triage, released under **one `unit` parent** whose sub-issues they
+   are (`"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-batch --kind unit`), and
+   that parent goes on the board at Status **Ready** from birth
+   (`"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-board --status Ready
+   <parent>`) — the operator's word at triage IS the approval, so there
+   is nothing left to approve. The parent is the board row and carries
+   GitHub's native sub-issue progress bar; the released items are not
+   added to the board themselves. One item or four, the parent is
+   created either way. Something that is
+   genuinely two shell commands is still two shell commands; run them
+   and say so.
 5. **Dropped** — say so; record nothing.
 
 The loops are processes `flywheel server` starts and stops from its

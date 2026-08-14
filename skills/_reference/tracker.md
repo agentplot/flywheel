@@ -25,9 +25,16 @@ queue a question — never invent tracker structure.**
   roadmap.
 - **the board** — the org Project: Status lanes, Team = host, roadmap
   fields. A view, never a second store. **Whatever carries the
-  approval sits on the board**: units and elaborations (at Backlog,
-  flipped to Ready by the operator), and a quick bolt's lone
-  born-ready item (at Ready from birth, via `flywheel-board`).
+  approval sits on the board**: units and elaborations — at Backlog,
+  flipped to Ready by the operator, except a born-ready release's unit
+  parent, which is at Ready from birth (via `flywheel-board`) because
+  the operator's word at triage is itself the approval. Sub-issues do
+  not appear beside their parent: one row per bolt is what the parent
+  buys, and the progress on that row is GitHub's own sub-issue "n of
+  m", never a figure the flywheel computes or stores.
+  Status is the batch-approval surface and holds no other state — the
+  per-item state of a running session lives in `stage:*` labels, with
+  every other signal the loops read.
 
 ## The invariants
 
@@ -63,6 +70,33 @@ queue a question — never invent tracker structure.**
    born-ready at triage when the work IS the operator's word; the
    loop flips `in-progress` as a session starts; whoever holds
    the evidence closes, always with one `closed:*` reason.
+   **`stage:*` refines `in-progress` and never replaces a `state:*`
+   label.** An item being worked carries its `state:*` and exactly one
+   `stage:*` naming its leading edge, and writing a stage removes the
+   previous one. The bolt loop writes `stage:planned` (its spec
+   validates, or its plan is approved), `stage:built` (a commit on the
+   item's branch), `stage:verified` (verify clean — never on a
+   `bolt-direct` item, whose type runs no verify stage) and
+   `stage:merged` (on the bolt branch), and re-derives the last two
+   from git every cycle so they survive a restart. The intent loop
+   writes `stage:in-session` at launch and `stage:collected` once an
+   item's deliverables are gathered; between them the **operator**
+   writes `stage:done`, which is the one signal that loop's completion
+   filter consumes. No `stage:*` write touches a `closed:*` label:
+   `stage:merged` (on the bolt branch) and `closed:done` (landed on
+   main) are two different facts, written at the same boundary but not
+   the same act.
+   **A construction assertion closes at the merge-back, with
+   `closed:merged`**, because GitHub's native sub-issue bar counts
+   closed sub-issues and `#98` puts the check-off at merge; the
+   landing then **upgrades** that reason to `closed:done` with the
+   landing SHA in its closing comment, on an item that is already
+   closed. The one-reason rule above holds at every moment — never
+   both, never neither — which is why the check-off is a new reason
+   rather than a close with none. A `closed:merged` item is still in
+   flight: its bolt has not landed, the loop's picture of its
+   milestone carries it, and the server counts its milestone as a job
+   until the landing.
 6. **The handoff birth condition is computable.** An assertion is
    settled and unbolted when its item is open on `intent/<slug>`, has
    no parent batch, and has no open blockers. Whenever such assertions
@@ -91,7 +125,10 @@ queue a question — never invent tracker structure.**
    milestone's items are all closed, its loop proposes closure and
    stops; the operator closes the milestone on GitHub — the archive
    signal — and the server's next pass runs a one-shot session to
-   `openspec archive` the change. A loop process stops whenever its
+   `openspec archive` the change. A bolt milestone is **not** finished
+   while any of its items sits at `closed:merged`: those items are
+   closed and still in flight, and the landing is what finishes them.
+   A loop process stops whenever its
    milestone has no job, and a fresh one starts when a job appears and
    re-reads the tracker and the records; no process is ever the memory.
 10. Sub-issues and dependency relations take the **database id**, not
@@ -104,7 +141,8 @@ through GitHub issues, and each consumer has an exact filter:
 
 - **server** — milestones with a job: any open `intent/*` or `bolt/*`
   milestone holding an open item labelled `state:ready` or
-  `state:in-progress`, or a batch at board Status **Ready**; plus closed
+  `state:in-progress`, or a `closed:merged` item still awaiting its
+  landing, or a batch at board Status **Ready**; plus closed
   milestones whose change still sits in `openspec/changes/` (archive).
 - **bolt loop for `bolt/<slug>`** — open items on that milestone
   labelled `state:ready`, plus that bolt's units at board Status Ready
@@ -204,7 +242,10 @@ then makes the custody move:
     #102  milestone intent/auth-hardening → bolt/forgot-password · state:ready
 
 The server starts the bolt loop; construction accrues on
-#102 as comments; it closes `closed:done` with the landing SHA. #105's
+#102 as comments and as its one `stage:*` label. When its branch reaches
+the bolt branch the loop closes it `closed:merged` with the merge SHA —
+which is what checks it off on #105's bar — and the landing upgrades that
+to `closed:done` with the landing SHA. #105's
 checklist keeps tracking it across the move (invariant 2), and
 `intent/auth-hardening` is free to close when design and writebacks
 are done.
@@ -217,7 +258,14 @@ Small, fully defined, no intent behind it. Dispatch creates:
     milestone bolt/rename-gateway-env
     #40  Rename GATEWAY_URL to GATEWAY_BASE_URL across the built repos
          type:assertion · state:ready — born ready on the operator's word
-         on the board at Status Ready — the lone item carries the approval
+    #41  [unit] Rename the gateway env var   sub-issues: #40
+         on the board at Status Ready from birth — the parent carries the
+         approval, and its native sub-issue bar is the bolt's progress
+
+Every release creates one unit parent, this one included: a release of a
+single item still gets one, because a special case for one item would put
+the bolt back to having no container and no bar. #40 is not added to the
+board itself — the parent is the row.
 
 There is no assertion record file — with no intent, the item body IS
 the claim. The server sees a `bolt/*` milestone with a ready item and
@@ -236,10 +284,15 @@ loop asks an approver session whether the plan does what the item's
 claim says and drives the plan dialog on the one line it answers with;
 two returns on one batch pause it with `needs-operator`. The plan-mode
 call rides the bolt type: it exists only where the
-operator already chose `bolt-quick` — on `bolt-default` and
+operator already chose `bolt-quick` — on `bolt-direct`, `bolt-default`
+and
 `bolt-adversarial` every item is specced through a spec-driven change,
 because the bolt type is the scrutiny the release approved, and a
 declaration against those types is refused rather than honoured
-quietly. Everything else is unchanged:
-the item's comments carry the stages, the merge gate runs unweakened,
-the landing SHA closes the item `closed:done`.
+quietly. The same rule runs the other way for `bolt-direct`'s missing
+verify stage: it is that type's alone, and a bolt on another type
+cannot declare its way out of verify. Everything else is unchanged:
+the item's comments and its one `stage:*` label carry the stages, the
+merge gate runs unweakened, the merge-back closes the item
+`closed:merged` with the merge SHA, and the landing upgrades it to
+`closed:done` with the landing SHA.

@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# The vocabulary. One enumeration, bin/flywheel-setup:57-90.
+# The vocabulary. One enumeration, the `LABELS` table in bin/flywheel-setup.
 # ---------------------------------------------------------------------------
 
 READY = "state:ready"
@@ -47,10 +47,58 @@ ELABORATION = "elaboration"
 TYPE_ASSERTION = "type:assertion"
 TYPE_HANDOFF = "type:handoff"
 
+#: The stage names. A `stage:*` label is ADDITIONAL to the item's `state:*`
+#: label and never a substitute for it — every one of the four inbox filters
+#: reads `state:*`, so an item whose state label was displaced would go
+#: invisible to the loop that owns it. An item carries at most one `stage:*`
+#: at a time, naming its leading edge.
+STAGE_PLANNED = "stage:planned"
+STAGE_BUILT = "stage:built"
+STAGE_VERIFIED = "stage:verified"
+STAGE_MERGED = "stage:merged"
+STAGE_IN_SESSION = "stage:in-session"
+STAGE_DONE = "stage:done"
+STAGE_COLLECTED = "stage:collected"
+
+#: The bolt loop's four, in the order its cycle reaches them. The order is
+#: read by the stage reconciliation, which must never walk a label BACK past
+#: a stage the tree cannot witness.
+CONSTRUCTION_STAGES = (STAGE_PLANNED, STAGE_BUILT, STAGE_VERIFIED,
+                       STAGE_MERGED)
+
+#: The intent loop's two, plus the operator's `stage:done` between them.
+DESIGN_STAGES = (STAGE_IN_SESSION, STAGE_DONE, STAGE_COLLECTED)
+
+#: Every stage name there is — what "remove any other stage label" sweeps.
+STAGE_LABELS = CONSTRUCTION_STAGES + DESIGN_STAGES
+
+
+def stage_of(labels, among=STAGE_LABELS):
+    """The one stage label a set of labels carries, or None.
+
+    `among` narrows it to a phase — the bolt loop asks about its four and
+    is not confused by a design stage left over from the item's life on an
+    intent milestone.
+    """
+    for stage in among:
+        if stage in labels:
+            return stage
+    return None
+
+
 CLOSED_DONE = "closed:done"
+#: Merged to the bolt branch, awaiting the landing. A construction
+#: sub-issue closes here so the unit parent's native bar — which counts
+#: CLOSED sub-issues — advances at merge rather than at the landing, and
+#: the landing upgrades the reason to `closed:done` with the SHA. Invariant
+#: 5 stands verbatim: exactly one `closed:*` reason, at every moment.
+CLOSED_MERGED = "closed:merged"
 CLOSED_DECLINED = "closed:declined"
 CLOSED_SUPERSEDED = "closed:superseded"
 CLOSED_PARKED = "closed:parked"
+
+CLOSED_REASONS = (CLOSED_DONE, CLOSED_MERGED, CLOSED_DECLINED,
+                  CLOSED_SUPERSEDED, CLOSED_PARKED)
 
 STATUS_BACKLOG = "Backlog"
 STATUS_READY = "Ready"
@@ -105,6 +153,15 @@ class Item:
     @property
     def is_assertion(self):
         return TYPE_ASSERTION in self.labels
+
+    @property
+    def merge_closed(self):
+        """Closed at merge-back and still in flight until the bolt lands.
+
+        Not `is_open`, and not finished either — the landing still owes it
+        an upgrade to `closed:done` and the landing SHA.
+        """
+        return not self.is_open and CLOSED_MERGED in self.labels
 
     @classmethod
     def from_fixture(cls, raw, milestone=None):
@@ -186,6 +243,7 @@ class Batch:
     status: str = None        # board Status: Backlog | Ready
     sub_issues: tuple = ()
     milestone: str = None
+    milestone_state: str = "open"
 
     @property
     def at_ready(self):
@@ -247,7 +305,8 @@ class TrackerSnapshot:
                 Batch(number=b["number"], kind=b.get("kind"),
                       status=b.get("status"),
                       sub_issues=tuple(b.get("sub_issues", ())),
-                      milestone=b.get("milestone", milestone))
+                      milestone=b.get("milestone", milestone),
+                      milestone_state=b.get("milestone_state", "open"))
                 for b in raw.get("batches", ())
             ],
             closed_milestones=raw.get("closed_milestones", ()),
@@ -296,14 +355,37 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
     def add(milestone, kind, why):
         jobs.setdefault((milestone, kind), Job(milestone, kind, why))
 
+    # Bounded by the milestone being open — the same test the per-item loop
+    # below makes. Without it a unit parent left open at Ready keeps its
+    # milestone reporting a job on every sweep: before the landing, after it,
+    # and after the operator closes the milestone, where it collides with the
+    # `archive` job this same sweep adds for that milestone.
     ready_batch_milestones = {
-        b.milestone for b in snapshot.batches if b.at_ready and b.milestone
+        b.milestone for b in snapshot.batches
+        if b.at_ready and b.milestone and b.milestone_state == "open"
     }
 
     for item in snapshot.items:
-        if not item.is_open or item.milestone_state != "open":
+        if item.milestone_state != "open":
             continue
         if milestone_slug(item.milestone) is None:
+            continue
+        if item.merge_closed:
+            # Closed at merge-back and NOT finished: its bolt still has to
+            # land, and the landing is what upgrades the reason and comments
+            # the SHA. Without this a loop killed between the last merge and
+            # the landing is never restarted, because every other test here
+            # reads open items.
+            #
+            # Bolt milestones only. `closed:merged` is the construction
+            # loop's label and the landing is a bolt's act; an intent
+            # milestone has no landing to wait for, so a stray one there
+            # must not keep an intent loop alive forever.
+            if item.milestone.startswith(BOLT_PREFIX):
+                add(item.milestone, "run",
+                    f"#{item.number} merged, awaiting the landing")
+            continue
+        if not item.is_open:
             continue
         if item.ready or item.in_progress:
             add(item.milestone, "run", f"#{item.number} {item.state or ''}".strip())
@@ -438,11 +520,12 @@ class IntentInbox:
     queued_to_flip: tuple = ()
     handoff: HandoffPlan = None
     orphan_queued: tuple = ()
+    to_collect: tuple = ()
 
     @property
     def empty(self):
-        return not (self.ready or self.queued_to_flip
-                    or self.handoff or self.orphan_queued)
+        return not (self.ready or self.queued_to_flip or self.handoff
+                    or self.orphan_queued or self.to_collect)
 
 
 def handoff_plan(snapshot, slug):
@@ -514,6 +597,41 @@ def compose_plan(snapshot, slug, handoff=None):
     )
 
 
+def collect_plan(snapshot, slug):
+    """Items the operator flipped that the loop has not yet collected.
+
+    **The ready filter cannot see these, and that is the hole.** Dispatch
+    relabels an item `state:in-progress`, so once a session is launched the
+    item is out of `ready` for good. A process killed between that dispatch
+    and the collect — or one whose operator flips long after the pane is
+    gone — leaves an item `state:in-progress` carrying `stage:done`, which
+    no filter here would name and no cycle would work. The flip would never
+    be consumed, and the milestone would keep a job forever.
+
+    `flywheel-design-session-completion` requires the opposite in so many
+    words: the loop "consumes the flip on its next pass", and an item
+    flipped "on a later pass" is collected then. This names that set.
+
+    **A paused item is not in it.** `needs-operator` marks a live wait —
+    the andon the session raised, or a stall, or a question — and the same
+    spec says a stalled or andon-raising session is untouched: "its pane is
+    left open and nothing is merged or closed". `land` honours that by
+    returning, but returning is not a halt: the run's next cycle reaches
+    this filter first, and without the exclusion it would collect and close
+    a flipped sibling out from under the very batch `land` had just paused,
+    with a comment claiming the session had ended while its pane is open.
+    The exclusion belongs here rather than at the call site because this is
+    the function that says what "collectable" means.
+    """
+    milestone = f"{INTENT_PREFIX}{slug}"
+    return tuple(
+        i for i in snapshot.on(milestone)
+        if i.is_open and i.in_progress
+        and STAGE_DONE in i.labels and STAGE_COLLECTED not in i.labels
+        and NEEDS_OPERATOR not in i.labels
+    )
+
+
 def intent_inbox(snapshot, slug):
     """The bolt filter's shape on an intent milestone, plus the two guard
     sweeps the record names: handoff birth and compose."""
@@ -531,6 +649,7 @@ def intent_inbox(snapshot, slug):
         queued_to_flip=flip_consume_plan(snapshot, milestone),
         handoff=handoff,
         orphan_queued=compose_plan(snapshot, slug, handoff),
+        to_collect=collect_plan(snapshot, slug),
     )
 
 
@@ -556,11 +675,19 @@ def dispatch_inbox(snapshot):
     running bolt has a milestone and still needs relaying. Narrowing this to
     unmilestoned issues is a tempting tidy-up that silently breaks the one
     path the operator hears about live work on.
+
+    For the same reason it has no *open* condition either, quite: it relays
+    an item that is closed at `closed:merged`, because such an item is still
+    in flight — its bolt has not landed — and the landing is exactly where a
+    pause can now find every assertion already closed. A `needs-operator`
+    nobody reads is the same silence as one never written. The condition
+    stays bounded: the landing upgrades the reason to `closed:done`, and the
+    item drops out of this filter for good.
     """
-    open_items = [i for i in snapshot.items if i.is_open]
+    live = [i for i in snapshot.items if i.is_open or i.merge_closed]
     return DispatchInbox(
-        triage=tuple(i for i in open_items if not i.milestone),
-        relay=tuple(i for i in open_items if NEEDS_OPERATOR in i.labels),
+        triage=tuple(i for i in live if i.is_open and not i.milestone),
+        relay=tuple(i for i in live if NEEDS_OPERATOR in i.labels),
     )
 
 
@@ -676,6 +803,50 @@ def set_needs_operator(tracker, number, comment=None):
     return True
 
 
+def set_stage(tracker, number, stage):
+    """Move an item to one `stage:*` label, removing any other. True on a write.
+
+    An item carries exactly ONE stage label, naming its **leading edge** —
+    the shape the tracker already uses for `state:*` — so that "the items at
+    `stage:built`" is a question with an answer rather than a set that also
+    holds everything further along.
+
+    **Both loops write through here**, which is what makes the vocabulary
+    one vocabulary: the bolt loop owns four of the names, the intent loop
+    two and the operator one, and a rule about the set that only one loop
+    obeyed would be a rule about that loop instead.
+
+    Nothing here touches a `closed:*` label. `stage:merged` and
+    `closed:merged` are written at the same boundary but are not the same
+    act, and the closure vocabulary has its own writer.
+
+    Idempotent, and reports whether it wrote: an item already at the target
+    **and carrying no other stage** is left alone and nothing is recorded,
+    which is what keeps a second cycle over an unchanged tracker writing
+    nothing.
+
+    The early return is deliberately narrow. Returning on the target alone
+    would assume every stage label on the tracker was written through here,
+    and that assumption is not one this function is entitled to: the
+    capability explicitly permits the operator to add `stage:done` by hand on
+    GitHub, which sweeps nothing. So the sweep runs whenever the item's stage
+    set is not already exactly the target, and an item carrying the target
+    plus another ends carrying the target alone.
+
+    Takes any of the four-method label surfaces — `Tracker`, `BoltTracker`,
+    the intent loop's `Writer` — as its other two writes here do.
+    """
+    stale = [other for other in STAGE_LABELS
+             if other != stage and tracker.has_label(number, other)]
+    if not stale and tracker.has_label(number, stage):
+        return False
+    for other in stale:
+        tracker.remove_label(number, other)
+    if not tracker.has_label(number, stage):
+        tracker.add_label(number, stage)
+    return True
+
+
 def clear_needs_operator(tracker, number):
     """Remove it. "Whoever applies the answer removes the label."
 
@@ -757,6 +928,28 @@ class Tracker:
             if "pull_request" not in raw
         ]
 
+    def merge_closed_issues(self):
+        """Closed issues carrying `closed:merged` — work still in flight.
+
+        Closing an item at merge-back takes it out of `open_issues()`, and
+        every filter downstream reads that. But a merge-closed item is not
+        finished: its bolt has not landed, the landing still has to upgrade
+        its reason and comment the SHA, and the server still has to start a
+        loop for its milestone. So the snapshot carries them beside the open
+        ones, and the filters that must not see them — every one built on
+        `is_open`, the ready set above all — are unaffected.
+        """
+        pages = self._gh(
+            self.token, "api",
+            f"/repos/{self.org}/{self.repo}/issues"
+            f"?state=closed&labels={CLOSED_MERGED}&per_page=100",
+            "--paginate", "--slurp",
+        )
+        return [
+            raw for page in pages for raw in page
+            if "pull_request" not in raw
+        ]
+
     def closed_milestones(self):
         pages = self._gh(
             self.token, "api",
@@ -828,8 +1021,11 @@ class Tracker:
         and parentage edges, and those are per-issue calls. The server's pass
         wants none of that: it over-approximates on purpose and calls this
         with `with_edges=False`.
+
+        Open issues **plus** the `closed:merged` ones, which are closed and
+        still in flight — see `merge_closed_issues`.
         """
-        raws = self.open_issues()
+        raws = self.open_issues() + self.merge_closed_issues()
         if milestone:
             raws = [r for r in raws
                     if (r.get("milestone") or {}).get("title") == milestone]
@@ -853,6 +1049,7 @@ class Tracker:
                     status=row.get("status"),
                     sub_issues=tuple(self.sub_issues(item.number)) if with_edges else (),
                     milestone=item.milestone,
+                    milestone_state=item.milestone_state,
                 ))
 
         # A batch's Ready flip is the approval, and a batch may sit on the
@@ -876,10 +1073,33 @@ class Tracker:
 
     # -- the small writes --------------------------------------------------
 
-    def has_label(self, number, label):
+    def labels(self, number):
+        """Every label on the item, as a set of names. One read.
+
+        `has_label` is the four-method surface's question and answers one
+        name at a time; a caller that wants to *name* what an item carries —
+        `flywheel-stage` reporting which stage it replaced — would otherwise
+        ask once per candidate or reach past this class for the payload.
+        """
         raw = self._gh(self.token, "api",
                        f"/repos/{self.org}/{self.repo}/issues/{number}")
-        return any(l.get("name") == label for l in raw.get("labels", ()))
+        return {l.get("name") for l in raw.get("labels", ())}
+
+    def has_label(self, number, label):
+        return label in self.labels(number)
+
+    def closed_with(self, number, label):
+        """Is this item CLOSED and carrying `label`? One read, both fields.
+
+        Closing is two writes — the reason label, then the state — so
+        "already closed with this reason" is a two-field question, and
+        asking only the label half calls a torn close finished. The same
+        payload carries both, so this costs exactly what `has_label` costs.
+        """
+        raw = self._gh(self.token, "api",
+                       f"/repos/{self.org}/{self.repo}/issues/{number}")
+        return (raw.get("state") == "closed"
+                and any(l.get("name") == label for l in raw.get("labels", ())))
 
     def add_label(self, number, label):
         self._gh(self.token, "issue", "edit", str(number),
@@ -888,6 +1108,24 @@ class Tracker:
     def remove_label(self, number, label):
         self._gh(self.token, "issue", "edit", str(number),
                  "--repo", f"{self.org}/{self.repo}", "--remove-label", label)
+
+    def swap_label(self, number, add, remove=None):
+        """Put one label on and take another off in ONE call.
+
+        For the invariants written "at every moment": a label pair swapped
+        by `add_label` then `remove_label` is two API calls with a window
+        between them, and in that window the item carries both — or, done
+        the other way round, neither. `gh issue edit` accepts both flags
+        and applies them in a single PATCH, so the window does not exist.
+
+        `remove` may be None or equal to `add`, in which case this is a
+        plain add — the caller does not have to special-case it.
+        """
+        args = ["issue", "edit", str(number),
+                "--repo", f"{self.org}/{self.repo}", "--add-label", add]
+        if remove and remove != add:
+            args += ["--remove-label", remove]
+        self._gh(self.token, *args)
 
     def comment(self, number, body):
         self._gh(self.token, "issue", "comment", str(number),
@@ -915,6 +1153,24 @@ class Tracker:
         text = out if isinstance(out, str) else str(out or "")
         tail = text.strip().rsplit("/", 1)[-1]
         return int(tail) if tail.isdigit() else None
+
+    def attach_sub_issue(self, parent, number):
+        """Attach #number as a sub-issue of #parent. True when it wrote.
+
+        Invariant 10: the endpoint takes the issue's DATABASE id, not its
+        number. Invariant 2: an item joins exactly one batch ever, and
+        GitHub answers 422 to an attempt on a parented sub-issue — so one
+        that already has a parent is SKIPPED rather than retried, which is
+        what lets a guard applied twice converge instead of crashing.
+        """
+        raw = self._gh(self.token, "api",
+                       f"/repos/{self.org}/{self.repo}/issues/{number}")
+        if raw.get("parent_issue_url"):
+            return False
+        self._gh(self.token, "api",
+                 f"/repos/{self.org}/{self.repo}/issues/{parent}/sub_issues",
+                 "--input", "-", input_json={"sub_issue_id": raw["id"]})
+        return True
 
     def close_issue(self, number, comment=None, reason=CLOSED_DONE):
         if reason:

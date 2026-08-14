@@ -36,7 +36,9 @@ through GitHub issues, and each consumer has an exact filter:
 
 - **server**: milestones with a job — any open `intent/*` or `bolt/*`
   milestone holding an open item labelled `state:ready` or
-  `state:in-progress`, or a batch at board Status Ready; plus closed
+  `state:in-progress`, or a bolt milestone holding a `closed:merged`
+  item still awaiting its landing, or a batch at board Status Ready;
+  plus closed
   milestones whose change still sits in openspec/changes/ (archive).
 - **bolt loop for bolt/<slug>**: open items on that milestone
   labelled `state:ready`, plus that bolt's units at board Status
@@ -79,9 +81,12 @@ without one.)
   `Landing: pr`. A failing criterion births one born-ready fix item,
   idempotently; the same criterion failing after its fix landed
   pauses the bolt and sets needs-operator.
-- Items close at landing with the SHA; STOP when nothing is ready and
-  the guards wrote nothing; all items closed -> propose closure; the
-  operator's milestone close is the archive signal.
+- Each assertion closes `closed:merged` with the merge SHA at the
+  merge-back — which is what checks it off on its unit parent's native
+  bar — and the landing upgrades that reason to `closed:done` with the
+  landing SHA; STOP when nothing is ready and the guards wrote nothing;
+  all items closed AND none left at `closed:merged` -> propose closure;
+  the operator's milestone close is the archive signal.
 
 ## The bolt types — named configs of the same program
 
@@ -97,13 +102,27 @@ without one.)
 - **bolt-adversarial** (renames bolt-deep) — strategy
   `new+continue`: stepwise artifact generation, a review point after
   each artifact when extensions arrive, and the persona battery.
+- **bolt-direct** — strategy `ff`, and the stage set `spec, build,
+  merge, land`: no verify stage, no verify session, and
+  `stage:verified` never on one of its items. For work whose
+  correctness the spec and the repo's merge gate settle between them.
+  Skipping verify is a property of this type alone and is not
+  reachable by a per-bolt declaration on another, exactly as plan mode
+  is bolt-quick's alone. The repo's merge gate is not a function of
+  the type and runs unweakened here as everywhere: what a type varies
+  is how much review the flywheel schedules, never what the repo's
+  hooks assert about the tree that lands.
 
 Types live in schema.yaml (`loop:` block per schema); a repo
 customizes by shadowing the schema; the handoff plan overrides per
-bolt (it already carries type and landing). Hook names follow the
+bolt (it already carries type and landing). A type declares the
+stages its cycle runs, which is what makes a type that varies the
+sequence a named config rather than a branch in the loop's code.
+Hook names follow the
 real command boundaries — post-new, post-artifact, post-spec,
 post-apply, post-verify, pre-merge, pre-land — so each strategy
-exposes exactly the review points its commands create.
+exposes exactly the review points its commands create, and a type
+declares only the boundaries its own stages create.
 
 ## The intent loop — its own program
 
@@ -111,14 +130,26 @@ exposes exactly the review points its commands create.
     typed design sessions -> collect deliverables ->
     merge sess/* branches -> re-query ... STOP
 
-Design-session completion is OPERATOR-DRIVEN, one path: the operator
-marks done — by saying so in the session (the session then records it
-on the tracker and settles) or by changing the item state on GitHub
-directly — and the loop reacts to the tracker change: collects the
-deliverables (session directory, drafts, item comments), merges the
-session branch, closes the pane. The loop never infers completion
-from a round artifact, because the operator may iterate a plannotator
-or lavish round as many times as they want. Construction sessions are
+Design-session completion is OPERATOR-DRIVEN, one path, and the signal
+is the `stage:done` label: the operator marks an item done — by saying
+so in the session (the session then writes `stage:done` to that item
+and settles) or by adding the label on GitHub directly — and the loop
+reacts to the tracker change: collects that item's deliverables
+(session directory, drafts, item comments), marks it
+`stage:collected`, and closes it. There is one flip and one filter,
+and no parameter names which signal is in use. The loop never infers
+completion from a round artifact, because the operator may iterate a
+plannotator or lavish round as many times as they want.
+
+Each item's stages advance independently — an operator who marks two
+of a session's three items done gets those two collected and closed.
+The session-scoped acts wait for the whole session: the `sess/*`
+branch is merged and the pane is closed once every item the session
+carries has reached `stage:collected`, because a branch merged
+mid-session merges a half-finished tree and a pane closed under a
+running session destroys the work in it.
+
+Construction sessions are
 the opposite: completion is objective — settle plus the deliverable
 contract (change validates, commit on branch, comment on item);
 settle without deliverables is one re-prompt, then needs-operator.
@@ -177,11 +208,21 @@ server config plus dispatch. The trigger phrase and launch-prompt
 machinery. The churn-call machinery (verify's go-fix conversation and
 the two-round pause replace it). The bolt-deep name.
 
-## Open questions (three)
+## Resolved
 
-- R1 The exact GitHub signal for "operator marks a design session
-  done": a state label the operator sets, a board Status, or closing
-  the items — pick one so the loop has one filter.
+- R1 The GitHub signal for "operator marks a design session done" is
+  **the `stage:done` label, set by the operator** — in the pane (the
+  session writes it to its own item and settles) or on GitHub
+  directly, one flip either way. The intent loop consumes that label
+  and has no other completion signal and no parameter naming one.
+  Taken over a board Status, because per-item session state lives in
+  labels with every other signal the loops read and a Status would be
+  a second store; and over closing the items, because closing is the
+  loop's own act on collection. Board Status keeps its one meaning:
+  the operator's batch-approval surface.
+
+## Open questions (two)
+
 - R2 Verify's go-fix rounds: is two-then-pause right, and does the
   operator want the session's questions relayed live (dispatch DM) or
   batched on the item?

@@ -6,9 +6,11 @@ description: Run the flywheel construction loop — the bolt loop drives release
 # Flywheel construction — the bolt loop
 
 One bolt = one construction iteration = one OpenSpec change bound to a
-bolt schema member — `bolt-default`, `bolt-quick`, `bolt-adversarial`,
+bolt schema member — `bolt-direct`, `bolt-default`, `bolt-quick`,
+`bolt-adversarial`,
 where **the member picked at creation IS the bolt type**, setting the
-review steps the loop schedules — plus the tracker
+review steps the loop schedules and the stages it runs (`bolt-direct`
+declares spec, build, merge, land — no verify) — plus the tracker
 milestone `bolt/<slug>` holding its items. The items are the released
 assertions, moved there at release; **the assertion is the proposal**,
 and every spec derives from the assertion record and the decisions it
@@ -77,9 +79,14 @@ A released assertion carries `type:assertion`, and it is the one
 tracked object for its whole construction: the stages below create no
 items of their own — the dynamic workflow decides those moves, and the
 item's comments record them. Each item's progress is its comment
-history — spec landed, review verdict, build done, merge SHA — and its
-label stays `state:in-progress` from first spec work until it closes
-`closed:done` with the landing SHA in the closing comment. Only
+history — spec landed, review verdict, build done, merge SHA — plus the
+one `stage:*` label naming its leading edge. Its
+label stays `state:in-progress` from first spec work until the
+merge-back, where the loop closes it `closed:merged` with the merge SHA
+so the unit parent's native bar advances there; the landing then
+upgrades that reason to `closed:done` with the landing SHA in the
+closing comment. A closed item carries exactly one `closed:*` reason at
+every moment. Only
 discoveries become new items: findings, readiness gaps, design-level
 faults queued to the source intent.
 
@@ -109,10 +116,15 @@ is the practice shared by every stage the loop does run:
   honoured quietly.
 - **Merging**: session branch to bolt branch through the gate
   (`wt merge <bolt-branch> --no-remove -C <worktree>`, never
-  `--yes`); bolt branch to main through the merge gate, one
-  writer at a time, when `bolt.md`'s merge criteria hold. Comment the
-  SHA, close the item, archive the built repo's spec-driven change,
-  and comment the source intent's assertion item so the intent
+  `--yes`). At that merge-back the loop closes each assertion
+  `closed:merged` with the merge SHA — which is what checks it off on
+  its unit parent's native bar. Bolt branch to main through the merge
+  gate, one
+  writer at a time, when `bolt.md`'s merge criteria hold: the landing
+  comments the landing SHA and **upgrades** each item's reason from
+  `closed:merged` to `closed:done` on the already-closed item, archives
+  the built repo's spec-driven change,
+  and comments the source intent's assertion item so the intent
   records the landing.
 
 ## State claims
@@ -155,7 +167,9 @@ elsewhere.
 At the merge, a merged-back session's pane, worktree and branch go — no
 word needed, it is all reproducible — and the bolt branch is
 reclaimed the moment it lands on main. When the milestone's items are
-all closed, the loop proposes closure and stops; the operator closes
+all closed **and none is left at `closed:merged`** — a merge-closed item
+is closed and still in flight, and the landing is what finishes it —
+the loop proposes closure and stops; the operator closes
 the milestone on GitHub (directly, or through dispatch), and the
 server's next pass runs the archive itself — `openspec archive <slug>
 --yes --json`, committed by pathspec. It needs no session because it

@@ -352,8 +352,28 @@ GH_TOKEN=$tok gh issue create --repo <org>/<tracker> --title "<the work, imperat
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
   --remove-label state:ready --add-label state:in-progress
 GH_TOKEN=$tok gh issue comment <n> --repo <org>/<tracker> --body "<what happened>"
+# A stage move REPLACES the previous stage — an item carries exactly one
+# `stage:*`, naming its leading edge. The operator's flip, written by a
+# design session on their word, is a move like any other. Name the stage you
+# want and let the one implementation sweep whatever came before: which
+# label that is depends on where the item was picked up, so a hand-built
+# two-label edit naming one predecessor gets it wrong exactly when the
+# predecessor is a different stage.
+GH_TOKEN=$tok <plugin-root>/bin/flywheel-stage <n> \
+  --org <org> --repo <tracker> --stage stage:done
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label closed:done
 GH_TOKEN=$tok gh issue close <n> --repo <org>/<tracker> --comment "<landing SHA / outcome>"
+```
+
+A construction assertion closes twice over, and the bolt loop does both —
+never a session. At the merge-back it closes `closed:merged` with the merge
+SHA, which is what advances the unit parent's native bar; at the landing the
+reason is **upgraded** on the already-closed item, so it never carries both
+reasons or neither:
+
+```bash
+GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
+  --add-label closed:done --remove-label closed:merged
 ```
 
 Blocked on the operator's word — comment the one-line question, label it,
@@ -385,12 +405,21 @@ sessions:
   --milestone "bolt/<slug>" --title "<the batch, imperatively>" <item> <item> ...
 ```
 
-A quick bolt's lone born-ready item goes on the board itself — the
-approval-carrier where a batch would be:
+Every release creates one unit parent, the born-ready one included. On a
+born-ready release the operator's word at triage IS the approval, so the
+parent goes to Ready from birth — `flywheel-batch` puts it at Backlog and
+never writes Ready, so the Ready move belongs here, in the release path:
 
 ```bash
-<plugin-root>/bin/flywheel-board --org <org> --repo <tracker> --status Ready <item>
+<plugin-root>/bin/flywheel-batch --kind unit --org <org> --repo <tracker> \
+  --milestone "bolt/<slug>" --title "<the batch, imperatively>" <item> <item> ...
+<plugin-root>/bin/flywheel-board --org <org> --repo <tracker> \
+  --status Ready <the unit parent's number>
 ```
+
+The parent is the board row. The released items are NOT added to the
+board beside it — one row per bolt is what the parent buys, and it is
+lost if the sub-issues appear too.
 
 Finding the batches the operator has released:
 

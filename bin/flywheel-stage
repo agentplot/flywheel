@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""flywheel-stage — move one item to one `stage:*` label.
+
+  flywheel-stage --org ORG --repo REPO --stage stage:done ITEM_NUMBER
+
+An item carries exactly ONE `stage:*` label, naming its **leading edge**,
+so writing one removes every other. That rule has a single implementation —
+`_flywheel_inbox.set_stage`, the same one both loops write through — and
+this command is how a session in a pane reaches it without importing the
+loops' internals.
+
+It exists because the alternative was a recipe. A session told by the
+operator that an item is done used to be handed a hand-built
+`gh issue edit --remove-label stage:in-session --add-label stage:done`,
+copied into seven places. That obeys the invariant by hand and hard-codes
+one predecessor, so it is wrong wherever the item's actual predecessor is a
+different stage: an item picked up by a later session while at
+`stage:collected` keeps that label deliberately, and a flip removing only
+`stage:in-session` leaves it carrying `stage:collected` and `stage:done` at
+once — the state the one-stage rule says is unreachable. Naming the stage
+you want and letting the sweep find the predecessor cannot get that wrong.
+
+Idempotent: an item already at the target and carrying no other stage is
+left alone and nothing is written. Prints what it did, or "already at
+<stage>" when there was nothing to do.
+
+Touches no `closed:*` label — `stage:merged` and `closed:merged` are written
+at the same boundary and are not the same act — and no `state:*` label,
+which `stage:*` refines rather than replaces.
+
+Token: `GH_TOKEN`, or minted by the sibling `flywheel-token` from
+`FLYWHEEL_GH_*`.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _flywheel_gh import resolve_token
+from _flywheel_inbox import STAGE_LABELS, Tracker, set_stage, stage_of
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="flywheel-stage",
+        description="Move one item to one stage:* label, removing any other.")
+    parser.add_argument("number", type=int, metavar="ITEM_NUMBER",
+                        help="the issue number to move")
+    parser.add_argument("--org", required=True, help="the GitHub org")
+    parser.add_argument("--repo", required=True, help="the repository name")
+    parser.add_argument("--stage", required=True, choices=STAGE_LABELS,
+                        metavar="STAGE",
+                        help="the stage to move to: " + ", ".join(STAGE_LABELS))
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    tracker = Tracker(resolve_token(args.org), args.org, args.repo)
+
+    before = stage_of(tracker.labels(args.number), STAGE_LABELS)
+    if set_stage(tracker, args.number, args.stage):
+        moved = f"{before} -> {args.stage}" if before else f"-> {args.stage}"
+        print(f"#{args.number} {moved}")
+    else:
+        print(f"#{args.number} already at {args.stage}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

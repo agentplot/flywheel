@@ -343,11 +343,11 @@ class Server:
     def argv_for(self, job):
         """The loop process's command line.
 
-        **No `--completion-signal` is passed.** R1 — the exact GitHub signal
-        for "the operator marks a design session done" — is open, and the
-        intent loop is built to run every stage up to supervision and stop
-        before collecting, saying so. Defaulting one here would answer the
-        operator's open question on their behalf, in a daemon.
+        **Nothing here names a completion signal, because there is nothing
+        to name.** The intent loop consumes one label — the operator's
+        `stage:done` — and has no parameter selecting between candidates, so
+        a daemon cannot answer that question on the operator's behalf by
+        accident or otherwise.
         """
         slug = inbox.milestone_slug(job.milestone) or ""
         kind = milestone_kind(job.milestone)
