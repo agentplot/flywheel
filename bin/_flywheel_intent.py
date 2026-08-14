@@ -1074,7 +1074,7 @@ def merge_resumed(inbox, writer, runner, config, snapshot, report, collected):
             names.setdefault(found, []).append(item.number)
     for name, mine in sorted(names.items()):
         kind = next((k for k in TYPES if name.startswith(f"{k}-")), None)
-        if kind is None or not TYPES[kind].worktree:
+        if kind is None:
             continue
         members = session_members(tracker, snapshot, config.milestone, name,
                                   fallback=mine)
@@ -1086,13 +1086,21 @@ def merge_resumed(inbox, writer, runner, config, snapshot, report, collected):
                 f"`sess/{name}` is not merged yet — "
                 + ", ".join(f"#{n}" for n in outstanding) + " still open.",)
             continue
-        worktree = worktree_path(config.repo_dir, f"sess/{name}",
-                                 run=writer._run)
-        if not worktree:
-            report.notes += (f"no worktree for `sess/{name}` — nothing to "
-                             f"merge for the {kind} session.",)
-            continue
-        merge_session(writer, config, worktree)
+        # The two session-scoped acts are INDEPENDENT, exactly as they are
+        # on the live path: the merge is conditional on the type having a
+        # worktree, the pane close never is. Gating both behind the
+        # worktree test left every `research` session's pane open forever —
+        # and because `session_name` is deterministic and `launch` reuses a
+        # running agent, the next research batch is dispatched into an
+        # orphaned, already-settled pane.
+        if TYPES[kind].worktree:
+            worktree = worktree_path(config.repo_dir, f"sess/{name}",
+                                     run=writer._run)
+            if worktree:
+                merge_session(writer, config, worktree)
+            else:
+                report.notes += (f"no worktree for `sess/{name}` — nothing to "
+                                 f"merge for the {kind} session.",)
         if runner is not None:
             try:
                 runner.close(SessionHandle(name=name, runner="herdr"))

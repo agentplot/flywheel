@@ -474,17 +474,20 @@ class BoltTracker(inbox.Tracker):
 
         The landing's upgrade. It must not depend on the item being open —
         it was closed at merge-back — and it must never leave the item
-        carrying both reasons or neither, so the new label goes on before
-        the old one comes off. The `state: closed` PATCH is repeated because
-        an item that reached the landing without ever merging back (a bolt
-        landed by another path, an item closed by hand) still has to end
-        closed with the SHA on it.
+        carrying both reasons or neither. That is an "at every moment"
+        invariant, so the swap is ONE call: add-then-remove would satisfy
+        "never neither" and open a window in which the item carries both,
+        and a concurrent reader of the Landed view (`is:closed
+        label:closed:done`) would see it as landed early.
+
+        The `state: closed` PATCH is repeated because an item that reached
+        the landing without ever merging back (a bolt landed by another
+        path, an item closed by hand) still has to end closed with the SHA
+        on it.
         """
         if comment:
             self.comment(number, comment)
-        self.add_label(number, now)
-        if was and was != now:
-            self.remove_label(number, was)
+        self.swap_label(number, add=now, remove=was)
         self._api(f"/issues/{number}", "PATCH", {"state": "closed"})
 
     def create_item(self, title, body, labels=(), milestone=None):
@@ -506,8 +509,9 @@ class ReadOnlyTracker:
     by trusting the code is not one.
     """
 
-    WRITES = ("add_label", "remove_label", "comment", "set_milestone",
-              "clear_milestone", "close", "reclose", "create_item")
+    WRITES = ("add_label", "remove_label", "swap_label", "comment",
+              "set_milestone", "clear_milestone", "close", "reclose",
+              "create_item")
 
     def __init__(self, tracker):
         self._tracker = tracker
@@ -1183,12 +1187,23 @@ class BoltLoop:
         and the next snapshot cannot see it; a kept item is composed into a
         unit and is no longer an orphan. So a second cycle asks nothing and
         writes nothing.
+
+        **Batch parents are excluded**, the same way `compose_plan`,
+        `server_inbox` and `guard_stages` exclude them. A `unit` or
+        `elaboration` is a container, not composable work, and it matches
+        the orphan shape exactly — labelled `state:queued`, on the
+        milestone, nobody's sub-issue. Without this the born-ready release's
+        own parent is read as a discovery: it gets routed off the milestone,
+        or composed into a second unit which is itself a fresh orphan next
+        cycle. Neither converges, and the guard writing an action every pass
+        means `cycle`'s STOP can never fire.
         """
         claimed = parented(snapshot)
         orphans = [
             i for i in snapshot.on(self.params.milestone)
             if i.is_open and i.queued and i.number not in skip
             and i.parent_batch is None and i.number not in claimed
+            and not ({inbox.UNIT, inbox.ELABORATION} & i.labels)
         ]
         if not orphans:
             return None

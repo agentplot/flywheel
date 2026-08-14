@@ -487,6 +487,37 @@ class ResumeMergeTest(unittest.TestCase):
             name="research-x")
         self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
 
+    def test_a_type_that_gets_no_worktree_still_has_its_pane_closed(self):
+        """No branch to merge is not no pane to close.
+
+        The two session-scoped acts are independent: the merge is
+        conditional on the type having a worktree, the close never is.
+        `land` gets this right on the live path — `if
+        TYPES[batch.type].worktree: merge_session(...)` and then
+        `runner.close(handle)` unconditionally — and the resume path was
+        gating BOTH behind the same `continue`.
+
+        `session_name` is deterministic and `launch` reuses a running
+        agent, so an unclosed pane is not merely untidy: the next research
+        batch is dispatched into an orphaned, already-settled pane.
+        """
+        run, report, runner = self.session_of(
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            name="research-x")
+        self.assertEqual(runner.closed, ["research-x"],
+                         "the pane closes even though nothing merged")
+
+    def test_a_half_flipped_no_worktree_session_keeps_its_pane_open(self):
+        # The close is unconditional on TYPE, never on completeness: a
+        # session with an item still open keeps its pane, worktree or not.
+        run, report, runner = self.session_of(
+            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
+            item(2, "type:research", inbox.IN_PROGRESS, "stage:in-session"),
+            name="research-x")
+        self.assertEqual(runner.closed, [])
+        self.assertTrue(any("#2 still open" in n for n in report.notes),
+                        report.notes)
+
 
 class SessionMembershipTest(unittest.TestCase):
     """The loop must be able to name the set of items a session carries.

@@ -1020,6 +1020,24 @@ class Tracker:
         self._gh(self.token, "issue", "edit", str(number),
                  "--repo", f"{self.org}/{self.repo}", "--remove-label", label)
 
+    def swap_label(self, number, add, remove=None):
+        """Put one label on and take another off in ONE call.
+
+        For the invariants written "at every moment": a label pair swapped
+        by `add_label` then `remove_label` is two API calls with a window
+        between them, and in that window the item carries both — or, done
+        the other way round, neither. `gh issue edit` accepts both flags
+        and applies them in a single PATCH, so the window does not exist.
+
+        `remove` may be None or equal to `add`, in which case this is a
+        plain add — the caller does not have to special-case it.
+        """
+        args = ["issue", "edit", str(number),
+                "--repo", f"{self.org}/{self.repo}", "--add-label", add]
+        if remove and remove != add:
+            args += ["--remove-label", remove]
+        self._gh(self.token, *args)
+
     def comment(self, number, body):
         self._gh(self.token, "issue", "comment", str(number),
                  "--repo", f"{self.org}/{self.repo}", "--body", body)

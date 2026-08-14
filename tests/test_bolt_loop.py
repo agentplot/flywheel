@@ -475,6 +475,63 @@ class RoutingTest(unittest.TestCase):
                                     intents=("intent/y",))
         self.assertNotIn("set_milestone", tracker.kinds())
 
+    def test_a_born_ready_unit_parent_is_not_a_discovery_and_is_never_composed(self):
+        """A release's own container is not work the release discovered.
+
+        The born-ready unit parent this change introduces is labelled
+        `unit` + `state:queued`, sits on `bolt/<slug>`, and is nobody's
+        sub-issue — which is the orphan filter's shape exactly. Left in,
+        the guard composes a SECOND unit over the release's own container,
+        and that unit is itself a fresh orphan next cycle: it does not
+        converge, and `cycle`'s STOP can never fire because the guard
+        writes an action every pass.
+
+        The three sibling sweeps all carry this exclusion
+        (`_flywheel_inbox.compose_plan`, `server_inbox`, `guard_stages`);
+        this one is the outlier. It is the first sweep to meet a unit on a
+        bolt milestone, because on the handoff path the unit sits on the
+        intent milestone.
+        """
+        snapshot = Snapshot(
+            items=[item(9, inbox.UNIT, inbox.QUEUED, title="the release")],
+            milestone="bolt/x")
+        shell = FakeShell()
+        tracker = FakeTracker(snapshot)
+        program = a_loop(tracker, runner=ScriptedRunner(reports=["ROUTE: keep"]),
+                         shell=shell)
+        actions, failure = program.guards(snapshot)
+        self.assertIsNone(failure)
+        self.assertEqual(actions, [], "a container is not a discovery")
+        self.assertEqual([c for c, _ in shell.calls
+                          if "flywheel-batch" in c[0]], [],
+                         "and nothing composes a unit over a unit")
+
+    def test_an_elaboration_parent_is_excluded_on_the_same_grounds(self):
+        snapshot = Snapshot(
+            items=[item(8, inbox.ELABORATION, inbox.QUEUED)],
+            milestone="bolt/x")
+        shell = FakeShell()
+        program = a_loop(FakeTracker(snapshot),
+                         runner=ScriptedRunner(reports=["ROUTE: keep"]),
+                         shell=shell)
+        actions, _ = program.guards(snapshot)
+        self.assertEqual(actions, [])
+        self.assertEqual([c for c, _ in shell.calls
+                          if "flywheel-batch" in c[0]], [])
+
+    def test_a_real_discovery_beside_a_unit_parent_is_still_routed(self):
+        """The exclusion must not swallow the guard's actual job."""
+        snapshot = Snapshot(
+            items=[item(9, inbox.UNIT, inbox.QUEUED),
+                   item(5, inbox.QUEUED, title="a discovery")],
+            milestone="bolt/x")
+        tracker = FakeTracker(snapshot, milestones=[{"title": "intent/y"}])
+        program = a_loop(tracker, runner=ScriptedRunner(
+            reports=["ROUTE: intent/y\nWHY: no criterion needs it"]))
+        program.guards(snapshot)
+        self.assertIn(("set_milestone", 5, "intent/y"), tracker.writes)
+        self.assertNotIn(9, [w[1] for w in tracker.writes])
+
     def test_the_composed_unit_is_born_at_backlog_and_never_at_ready(self):
         snapshot = self.orphan_snapshot()
         shell = FakeShell()
@@ -1283,6 +1340,28 @@ class TrackerTest(unittest.TestCase):
             guarded.add_label(1, inbox.READY)
         self.assertEqual(guarded.refused[0][0], "add_label")
 
+    def test_every_write_on_the_tracker_is_named_in_the_dry_runs_refusal_set(self):
+        """`ReadOnlyTracker` refuses by NAME, so a new write method is a
+        hole in `--dry-run` until it is listed. Deriving the expected set
+        from the real tracker rather than restating it, so the next write
+        added to `Tracker`/`BoltTracker` fails here instead of silently
+        writing during a dry run."""
+        surfaces = (inbox.Tracker, loop.BoltTracker)
+        writes = {name for cls in surfaces for name in vars(cls)
+                  if name in ("add_label", "remove_label", "swap_label",
+                              "comment", "set_milestone", "clear_milestone",
+                              "close", "reclose", "create_item")}
+        missing = writes - set(loop.ReadOnlyTracker.WRITES)
+        self.assertEqual(missing, set(),
+                         f"unguarded write(s) in a dry run: {sorted(missing)}")
+
+    def test_the_atomic_label_swap_is_refused_in_a_dry_run(self):
+        guarded = loop.ReadOnlyTracker(FakeTracker())
+        with self.assertRaises(loop.LoopError):
+            guarded.swap_label(1, add=inbox.CLOSED_DONE,
+                               remove=inbox.CLOSED_MERGED)
+        self.assertEqual(guarded.refused[0][0], "swap_label")
+
     def test_a_fixture_file_can_be_the_tracker_for_a_whole_cycle(self):
         import json
         import tempfile
@@ -1326,6 +1405,73 @@ class ReadingTest(unittest.TestCase):
                          bolt_worktree=str(ROOT))
         self.assertIn("Landing: merge", program.merge_criteria())
         self.assertEqual(program.landing_mode(), "merge")
+
+
+class TrackerWriteTest(unittest.TestCase):
+    """The real `BoltTracker`, against a recording `gh`.
+
+    Everything else in this file drives `FakeTracker`, which implements
+    `reclose` itself — so the real one's API shape was never exercised.
+    That is exactly how a two-call label swap survived: the fake swapped
+    atomically because Python sets do, and the code underneath did not.
+    """
+
+    def tracker(self):
+        calls = []
+
+        def recorder(token, *args, **kw):
+            calls.append(list(args))
+            return {}
+
+        return loop.BoltTracker("tok", "o", "r", gh=recorder), calls
+
+    def label_edits(self, calls):
+        return [c for c in calls if c[:2] == ["issue", "edit"]]
+
+    def test_the_landings_upgrade_swaps_both_reasons_in_one_call(self):
+        """Invariant: exactly one `closed:*` reason AT EVERY MOMENT.
+
+        Add-then-remove satisfies "never neither" and violates "never
+        both" — there is a window, however short, in which the item is
+        closed:merged AND closed:done. A concurrent reader of the Landed
+        view (`is:closed label:closed:done`) sees it as landed early.
+
+        The repo's own reference already documents the atomic form and
+        gives this justification verbatim — `skills/_reference/herdr.md`,
+        `--add-label closed:done --remove-label closed:merged`.
+        """
+        tracker, calls = self.tracker()
+        tracker.reclose(1, was=inbox.CLOSED_MERGED, now=inbox.CLOSED_DONE)
+        edits = self.label_edits(calls)
+        self.assertEqual(len(edits), 1,
+                         f"one call, not two — got {edits}")
+        self.assertIn("--add-label", edits[0])
+        self.assertIn(inbox.CLOSED_DONE, edits[0])
+        self.assertIn("--remove-label", edits[0])
+        self.assertIn(inbox.CLOSED_MERGED, edits[0])
+
+    def test_an_item_that_never_merged_back_is_still_closed_done(self):
+        # `was=None` — nothing to remove, and the item must still end
+        # carrying closed:done. One call, no --remove-label.
+        tracker, calls = self.tracker()
+        tracker.reclose(1, was=None, now=inbox.CLOSED_DONE)
+        edits = self.label_edits(calls)
+        self.assertEqual(len(edits), 1)
+        self.assertIn(inbox.CLOSED_DONE, edits[0])
+        self.assertNotIn("--remove-label", edits[0])
+
+    def test_a_reason_swapped_for_itself_removes_nothing(self):
+        tracker, calls = self.tracker()
+        tracker.reclose(1, was=inbox.CLOSED_DONE, now=inbox.CLOSED_DONE)
+        edits = self.label_edits(calls)
+        self.assertEqual(len(edits), 1)
+        self.assertNotIn("--remove-label", edits[0])
+
+    def test_the_state_patch_still_runs_so_an_unmerged_item_ends_closed(self):
+        tracker, calls = self.tracker()
+        tracker.reclose(1, was=inbox.CLOSED_MERGED)
+        self.assertTrue(any(c[:1] == ["api"] and "--method" in c
+                            and "PATCH" in c for c in calls), calls)
 
 
 if __name__ == "__main__":
