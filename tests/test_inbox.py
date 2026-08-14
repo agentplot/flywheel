@@ -114,6 +114,36 @@ class VocabularyTest(unittest.TestCase):
 # 1 · server
 # ---------------------------------------------------------------------------
 
+class TokenRefreshTest(unittest.TestCase):
+
+    def test_a_bad_credentials_exit_re_mints_and_retries_once(self):
+        calls = []
+        def flaky(token, *args, **kw):
+            calls.append(token)
+            if len(calls) == 1:
+                raise SystemExit("flywheel: gh api x failed: gh: Bad credentials (HTTP 401)")
+            return {"ok": True}
+        t = inbox.Tracker("stale", "o", "r", gh=flaky, graphql=lambda *a, **k: {})
+        t_resolve = lambda org: "fresh"
+        import _flywheel_gh
+        old = _flywheel_gh.resolve_token
+        _flywheel_gh.resolve_token = t_resolve
+        try:
+            out = t._gh("stale", "api", "/x")
+        finally:
+            _flywheel_gh.resolve_token = old
+        self.assertEqual(out, {"ok": True})
+        self.assertEqual(calls, ["stale", "fresh"])
+        self.assertEqual(t.token, "fresh")
+
+    def test_any_other_exit_is_not_retried(self):
+        def broken(token, *args, **kw):
+            raise SystemExit("flywheel: gh api x failed: HTTP 502")
+        t = inbox.Tracker("tok", "o", "r", gh=broken, graphql=lambda *a, **k: {})
+        with self.assertRaises(SystemExit):
+            t._gh("tok", "api", "/x")
+
+
 class ServerInboxTest(unittest.TestCase):
 
     def test_a_ready_or_in_progress_item_gives_its_milestone_a_run_job(self):
@@ -468,6 +498,26 @@ class AndonTest(unittest.TestCase):
         self.assertEqual(inbox.find_andon(comments).reason,
                          "the spec contradicts its decision")
         self.assertIsNone(inbox.find_andon([{"body": "nothing here"}]))
+
+    def test_an_answer_marker_retires_every_earlier_andon(self):
+        # #166: markers were never retired, so an answered andon re-paused
+        # the batch on every cycle forever.
+        comments = [{"body": inbox.format_andon("the spec contradicts the tree")},
+                    {"body": "Ruling: amend the requirement.\n\n"
+                             + inbox.ANDON_ANSWERED}]
+        self.assertIsNone(inbox.find_andon(comments))
+
+    def test_an_andon_raised_after_the_answer_is_live(self):
+        comments = [{"body": inbox.format_andon("the first stop")},
+                    {"body": inbox.ANDON_ANSWERED},
+                    {"body": inbox.format_andon("a new stop")}]
+        self.assertEqual(inbox.find_andon(comments).reason, "a new stop")
+
+    def test_an_answer_quoting_the_old_andon_does_not_re_raise_it(self):
+        comments = [{"body": inbox.format_andon("the first stop")},
+                    {"body": "Answering:\n" + inbox.format_andon("the first stop")
+                             + "\n" + inbox.ANDON_ANSWERED}]
+        self.assertIsNone(inbox.find_andon(comments))
 
 
 # ---------------------------------------------------------------------------
