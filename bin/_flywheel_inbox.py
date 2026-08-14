@@ -1064,7 +1064,10 @@ class Tracker:
         for raw in raws:
             item = Item.from_api(raw)
             labels = item.labels
-            if with_edges:
+            # Blockers are only ever consulted for OPEN items (`unblocked`,
+            # `handoff_plan` both filter on is_open), so a merge-closed
+            # item's edges are a GET nobody reads.
+            if with_edges and item.is_open:
                 item = Item(
                     **{**item.__dict__,
                        "blocked_by": tuple(self.blocked_by(item.number))}

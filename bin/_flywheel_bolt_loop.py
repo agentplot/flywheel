@@ -503,10 +503,7 @@ class BoltTracker(inbox.Tracker):
         `reason` defaults to `closed:done` so every existing caller keeps
         its behaviour; the merge boundary passes `closed:merged`.
         """
-        if comment:
-            self.comment(number, comment)
-        self.add_label(number, reason)
-        self._api(f"/issues/{number}", "PATCH", {"state": "closed"})
+        self.reclose(number, comment, was=None, now=reason)
 
     def reclose(self, number, comment=None, was=None, now=inbox.CLOSED_DONE):
         """Swap one `closed:*` reason for another on an already-closed item.
@@ -978,6 +975,12 @@ class BoltLoop:
                             cwd=self.params.repo_dir)
         return (fallback.stdout or "").strip() or None
 
+    def _any_commits(self, spec, cwd=None):
+        """`git rev-list --count <spec>` read as "is there anything there"."""
+        proc = self.git("rev-list", "--count", spec, cwd=cwd)
+        out = (proc.stdout or "").strip()
+        return out.isdigit() and int(out) > 0
+
     def branch_advanced(self, branch):
         """Commits beyond the cut point — the fact that makes ancestry mean
         something. An empty branch's tip is an ancestor of everything it
@@ -987,10 +990,7 @@ class BoltLoop:
         base = self.branch_base(branch)
         if not base:
             return False
-        proc = self.git("rev-list", "--count", f"{base}..{branch}",
-                        cwd=self.params.repo_dir)
-        out = (proc.stdout or "").strip()
-        return out.isdigit() and int(out) > 0
+        return self._any_commits(f"{base}..{branch}", cwd=self.params.repo_dir)
 
     def batch_merged(self, batch):
         """Git's answer to "does this batch still need driving": a build
@@ -1025,10 +1025,7 @@ class BoltLoop:
         return proc.returncode == 0
 
     def branch_has_commits(self, branch):
-        proc = self.git("rev-list", "--count",
-                        f"{self.params.bolt_branch}..{branch}")
-        out = (proc.stdout or "").strip()
-        return out.isdigit() and int(out) > 0
+        return self._any_commits(f"{self.params.bolt_branch}..{branch}")
 
     def branch_merged(self, branch, target=None):
         target = target or self.params.bolt_branch
@@ -1287,15 +1284,17 @@ class BoltLoop:
                 continue                # the tree witnesses nothing; write nothing
             for item in batch.items:
                 current = inbox.stage_of(item.labels, inbox.CONSTRUCTION_STAGES)
-                if current != target:
-                    if target == inbox.STAGE_BUILT and current == inbox.STAGE_VERIFIED:
-                        pass            # verified has no witness; never walked back
-                    elif self.dry_run:
-                        actions.append(f"would reconcile #{item.number} "
-                                       f"{current or 'no stage'} -> {target}")
-                    elif self.set_stage([item.number], target):
-                        actions.append(f"#{item.number} {current or 'no stage'} "
-                                       f"-> {target} (re-derived from {branch})")
+                # verified is never walked back to built: it has no witness
+                # the tree can answer, so its absence proves nothing.
+                witnessed = (current != target
+                             and not (target == inbox.STAGE_BUILT
+                                      and current == inbox.STAGE_VERIFIED))
+                if witnessed and self.dry_run:
+                    actions.append(f"would reconcile #{item.number} "
+                                   f"{current or 'no stage'} -> {target}")
+                elif witnessed and self.set_stage([item.number], target):
+                    actions.append(f"#{item.number} {current or 'no stage'} "
+                                   f"-> {target} (re-derived from {branch})")
                 if target != inbox.STAGE_MERGED:
                     continue
                 # The merged edge is ONE fact with TWO writes, so a process
@@ -1316,7 +1315,7 @@ class BoltLoop:
                 # numbers it closed and skips an item already closed with the
                 # reason, so an unconditional append here would record a write
                 # on every cycle for an item nothing had touched.
-                if self.close_merged(WorkBatch(slug=batch.slug, items=(item,))):
+                if self.close_merged([item]):
                     actions.append(f"#{item.number} closed {inbox.CLOSED_MERGED} "
                                    f"(re-derived from {branch})")
 
@@ -1914,10 +1913,14 @@ class BoltLoop:
 
         Serialization is the caller's — `run` merges in a plain loop and
         awaits each one — and the gate is the repo's `[pre-merge]` hooks,
-        never suppressed. Success is ancestry, which git answers.
+        never suppressed. Success is ancestry, which git answers; the
+        short-circuit asks `batch_merged` — advancement past the cut point
+        as well as ancestry — because an untouched branch's tip is an
+        ancestor of everything it was cut from, and bare ancestry would
+        read it as already merged (#164).
         """
         branch = f"build/{batch.slug}"
-        if self.branch_merged(branch):
+        if self.batch_merged(batch):
             return StageOutcome("merge", "done", f"{branch} is already merged")
         name = session_name("merge", batch.slug)
         change = None if self.params.plan_mode else (batch.change or batch.slug)
@@ -1950,8 +1953,8 @@ class BoltLoop:
                                 f"after the merge session settled")
         return StageOutcome("merge", "done", f"{branch} merged", report=outcome.report)
 
-    def close_merged(self, batch, sha=None):
-        """Close the batch's assertion items `closed:merged`, with the SHA.
+    def close_merged(self, items, sha=None):
+        """Close these assertion items `closed:merged`, with the SHA.
 
         The unit parent's progress bar is GitHub's own and counts CLOSED
         sub-issues, so the check-off happens here rather than at the
@@ -1978,7 +1981,7 @@ class BoltLoop:
         """
         sha = sha or self.head_sha(self.params.bolt_branch)
         closed = []
-        for item in batch.items:
+        for item in items:
             if not item.is_assertion:
                 continue
             if self.tracker.closed_with(item.number, inbox.CLOSED_MERGED):
@@ -2245,7 +2248,7 @@ class BoltLoop:
                     # so a stage that later learns to skip cannot quietly
                     # start labelling itself.
                     self.set_stage(batch.numbers, inbox.STAGE_MERGED)
-                    self.close_merged(batch)
+                    self.close_merged(batch.items)
                     merged += 1
                     self._merged += 1
         result.outcomes = tuple(outcomes)

@@ -1595,9 +1595,9 @@ class MergeCloseTest(unittest.TestCase):
     def test_the_merge_boundary_closes_assertions_with_closed_merged(self):
         tracker = FakeTracker()
         program = a_loop(tracker, shell=self.shell())
-        program.close_merged(self.a_batch(
+        program.close_merged([
             item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
-            item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)))
+            item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)])
         self.assertEqual(tracker.reasons, [(1, inbox.CLOSED_MERGED),
                                            (2, inbox.CLOSED_MERGED)])
         self.assertTrue(all("abc1234" in w[2] for w in tracker.writes
@@ -1607,9 +1607,9 @@ class MergeCloseTest(unittest.TestCase):
         # A discovery closes on its own evidence, as it does today.
         tracker = FakeTracker()
         program = a_loop(tracker, shell=self.shell())
-        program.close_merged(self.a_batch(
+        program.close_merged([
             item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
-            item(5, inbox.IN_PROGRESS, title="a discovery")))
+            item(5, inbox.IN_PROGRESS, title="a discovery")])
         self.assertEqual([n for n, _ in tracker.reasons], [1])
 
     def test_the_merge_session_is_told_the_loop_does_the_closing(self):
