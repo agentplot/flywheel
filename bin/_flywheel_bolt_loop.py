@@ -97,6 +97,14 @@ MAX_CONTINUE_ROUNDS = 8
 MAX_PLAN_RETURNS = 2
 MAX_FIX_ROUNDS = 2
 
+#: The session-to-loop file channels, relative to the batch worktree. A
+#: report is a file whose lifecycle the LOOP owns — deleted before the
+#: session that writes it launches, read after it settles — never a scrape
+#: of the pane (#200). The single word below is verify's "nothing found".
+VERIFY_REPORT = ".flywheel/verify.md"
+REVIEW_RULING = ".flywheel/review.json"
+NO_FINDINGS = "NONE"
+
 #: One retry of a failed landing per run: the first failure births the fix
 #: item, the second is the andon cord's business, not another item's.
 MAX_LANDING_ATTEMPTS = 2
@@ -1032,26 +1040,29 @@ class BoltLoop:
     def head_sha(self, ref):
         return (self.git("rev-parse", ref).stdout or "").strip()
 
-    def commented_since(self, number, since):
-        """A comment on the item is the third leg of the deliverable
-        contract. Comments the loop itself wrote do not count."""
-        for comment in self.tracker.comments(number) or ():
-            body = comment.get("body", "") if isinstance(comment, dict) else str(comment)
-            if SESSION_OPEN in body:
-                continue
-            stamp = comment.get("created_at") if isinstance(comment, dict) else None
-            if stamp is None:
-                return True
-            if _epoch(stamp) >= since:
-                return True
-        return False
+    def clear_channel(self, cwd, rel):
+        """Delete a file channel before the session that writes it runs."""
+        try:
+            (Path(cwd) / rel).unlink()
+        except OSError:
+            pass
 
-    def deliverables(self, batch, since, change=None):
+    def read_channel(self, cwd, rel):
+        """The channel's content, stripped — or None where nothing was written."""
+        try:
+            return (Path(cwd) / rel).read_text().strip()
+        except OSError:
+            return None
+
+    def deliverables(self, batch, change=None):
         """What "done" means for a construction session, checked on disk.
 
-        "completion is objective — settle plus the deliverable contract
-        (change validates, commit on branch, comment on item)". Missing
-        deliverables are named, so the re-prompt can name them too.
+        Completion is objective — settle plus the deliverable contract:
+        change validates, commit on branch. Both are git's and openspec's
+        answers, never the session's word. The tracker comment that used to
+        be the third leg is the LOOP's to write now, at the built boundary
+        — bookkeeping was never the builder's job, and a work order that
+        points a session at the tracker is what primes the roaming.
         """
         missing = []
         if change and not self.change_validates(
@@ -1059,9 +1070,6 @@ class BoltLoop:
             missing.append(f"`openspec validate {change} --strict` is not green")
         if not self.branch_has_commits(f"build/{batch.slug}"):
             missing.append(f"no commit on build/{batch.slug} beyond {self.params.bolt_branch}")
-        silent = [n for n in batch.numbers if not self.commented_since(n, since)]
-        if silent:
-            missing.append("no comment on " + ", ".join(f"#{n}" for n in silent))
         return missing
 
     # -- the tracker side of a session ------------------------------------
@@ -1634,17 +1642,19 @@ class BoltLoop:
         """`/opsx:apply`, or the plan-mode path where the bolt declares it."""
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
-        # The deliverable window opens at the batch's FIRST launch — the
-        # durable session marker — never this process's clock: a restarted
-        # loop anchoring on its own clock disqualifies every comment already
-        # made and re-prompts a finished build forever (observed live: #140).
-        since = self.launch_origin(batch.numbers, name)
-        if since is None:
-            since = self._clock()
         if self.params.plan_mode:
             outcome = self.plan_mode_build(batch, name)
         else:
-            order = sessions.work_order(f"/opsx:apply {change}", self.build_brief(batch))
+            # The order is the command and the commit rule, nothing else:
+            # the session is launched IN the build worktree, the slug alone
+            # points opsx at its context, and the tracker is the loop's —
+            # items, worktree prose and escalation hints in a work order
+            # are what prime the roaming (#167, extended by the operator's
+            # ruling to every work session).
+            order = sessions.work_order(f"/opsx:apply {change}", (
+                "Commit by pathspec (git add -- <your paths>; "
+                "git commit -- <your paths>); never -a, never add -A. "
+                "Do not merge and do not push."))
             cwd = self.batch_worktree(batch)
             if cwd is None:
                 return StageOutcome("build", "failed",
@@ -1653,28 +1663,11 @@ class BoltLoop:
                 "build", name, cwd, order), batch.numbers, close=False)
         if not outcome.ok:
             return outcome
-        missing = self.deliverables(batch, since,
+        missing = self.deliverables(batch,
                                     change=None if self.params.plan_mode else change)
         if missing:
             outcome = self.reprompt_deliverables(batch, outcome, missing)
         return outcome
-
-    def build_brief(self, batch):
-        items = ", ".join(f"#{n}" for n in batch.numbers)
-        return (
-            f"Build for {items} on milestone {self.params.milestone}.\n\n"
-            f"Apply the change in this worktree — build/{batch.slug}, already cut "
-            f"by the loop. Re-read from disk "
-            f"every neighbour the spec claims something about — build time is when the "
-            f"neighbours have had longest to move.\n\n"
-            f"Comment on each item what you built and what you verified on disk versus "
-            f"relayed. Commit by pathspec (git add <your paths>; git commit -- <your "
-            f"paths>); never -a, never add -A. Do not merge and do not push — the loop "
-            f"merges.\n\n"
-            f"ANDON CORD: if the work is wrong in a way no further round fixes — the "
-            f"spec contradicts the decision it cites, the tree contradicts the spec — "
-            f"stop, write the andon marker in your item comment, and settle without "
-            f"building. Deliver by settling.")
 
     def reprompt_deliverables(self, batch, outcome, missing):
         """Settle without deliverables is ONE re-prompt, then needs-operator."""
@@ -1704,9 +1697,9 @@ class BoltLoop:
         again = self.settle("build", runner, handle, batch.numbers, origin, close=False)
         if not again.ok:
             return again
-        still = self.deliverables(batch, origin,
-                                 change=None if self.params.plan_mode else
-                                 (batch.change or batch.slug))
+        still = self.deliverables(batch,
+                                  change=None if self.params.plan_mode else
+                                  (batch.change or batch.slug))
         if still:
             self.pause(batch.numbers, (
                 f"The build settled twice without its deliverables: {'; '.join(still)}. "
@@ -1818,14 +1811,14 @@ class BoltLoop:
         return match.group("verdict").lower(), match.group("why").strip()
 
     def verify_stage(self, batch, build):
-        """`/opsx:verify`, then go-fix rounds on the SAME build session.
+        """`/opsx:verify` -> a findings file -> the review's ruling.
 
-        The findings are handled the way the operator does it by hand: the
-        loop re-prompts the session that built the work, relays what it
-        asks by commenting on the item, and re-runs verify. Two rounds on
-        the same finding and the item is paused with `needs-operator` — the
-        finding is keyed by its own text, so "the same finding" is decided
-        by comparison rather than by opinion.
+        Verify runs vanilla and writes what it found to a file the loop
+        owns (#200) — never a verdict: judging the findings is not its
+        job. The ruling belongs to the REVIEW session, the operator's
+        proxy — proceed, refix with the exact prompt for the build
+        session, or escalate. Work sessions do work, the review judges,
+        the loop does bookkeeping.
         """
         if self.params.plan_mode:
             return StageOutcome("verify", "skipped",
@@ -1833,48 +1826,105 @@ class BoltLoop:
         change = batch.change or batch.slug
         name = session_name("verify", batch.slug)
         cwd = self.batch_worktree(batch) or self.params.repo_dir
-        seen = {}
         for _ in range(MAX_FIX_ROUNDS + 1):
-            # The order is just the command (#167): no item references, no
-            # scope prose — pointing verify at the tracker or naming the
-            # behaviors it must not do is what primes the roaming.
+            self.clear_channel(cwd, VERIFY_REPORT)
             order = sessions.work_order(f"/opsx:verify {change}", (
-                f"Run /opsx:verify {change} in this worktree. "
-                f"Report the findings plainly, or say plainly that there are none. "
-                f"Fix nothing. Deliver by settling."))
+                f"Write the findings to {VERIFY_REPORT} in this worktree — "
+                f"plain markdown, or the single word {NO_FINDINGS} if there "
+                f"are none. Fix nothing."))
             outcome = self.drive("verify", self.spec_for(
                 "verify", name, cwd, order), batch.numbers)
             if not outcome.ok:
                 return outcome
-            findings = (outcome.report or "").strip()
-            if self.change_validates(change, cwd=cwd) and _no_findings(findings):
+            report = self.read_channel(cwd, VERIFY_REPORT)
+            if report is None:
+                self.pause(batch.numbers, (
+                    f"Verify settled without writing {VERIFY_REPORT}, so the "
+                    f"loop has no report to hand the review."))
+                return StageOutcome("verify", "paused", "no verify report file")
+            clean = report.upper() == NO_FINDINGS
+            if clean and self.change_validates(change, cwd=cwd):
                 # The build pane's purpose — the build/verify conversation —
                 # ends here. The session stays resumable by its id.
                 if build.handle is not None:
                     self.runner("build").close(build.handle)
                 return StageOutcome("verify", "done", "verify is clean")
-            key = _finding_key(findings)
-            seen[key] = seen.get(key, 0) + 1
-            if seen[key] > MAX_FIX_ROUNDS - 1:
+            if clean:
+                report = (f"Verify reported no findings, but `openspec "
+                          f"validate {change} --strict` is not green.")
+            ruling = self.review_stage(batch, change, cwd, report)
+            if ruling["action"] == "proceed":
+                if build.handle is not None:
+                    self.runner("build").close(build.handle)
+                return StageOutcome(
+                    "verify", "done",
+                    f"review ruled proceed: {ruling.get('reason', '')}".strip())
+            if ruling["action"] == "escalate":
                 self.pause(batch.numbers, (
-                    f"Verify raised the same finding twice and the loop paused the item "
-                    f"rather than a third round.\n\n{findings}"))
-                return StageOutcome("verify", "paused", "same finding twice", report=findings)
-            fixed = self.go_fix(batch, build, findings)
+                    f"The review escalated the verify findings: "
+                    f"{ruling.get('reason', 'no reason given')}\n\n{report}"))
+                return StageOutcome("verify", "paused", "review escalated",
+                                    report=report)
+            prompt = ruling.get("prompt") or (
+                f"Verify raised these findings against what you built. Go fix "
+                f"them — no new scope.\n\n{report}")
+            fixed = self.go_fix(batch, build, prompt)
             if not fixed.ok:
                 return fixed
-        return StageOutcome("verify", "paused", "verify rounds exhausted")
+        self.pause(batch.numbers, (
+            f"Verify still has findings after {MAX_FIX_ROUNDS} refix rounds; "
+            f"the loop paused the item rather than running another."))
+        return StageOutcome("verify", "paused", "fix rounds exhausted")
 
-    def go_fix(self, batch, build, findings):
-        """"Go fix these" — to the same session, warm.
+    def review_stage(self, batch, change, cwd, report):
+        """The operator's proxy: the one act of judgment in the cycle.
 
-        Same pane when it is open; when it is gone (a restart, a closed
-        pane), the deterministic session id resumes the same conversation
-        in a fresh pane — the pane is disposable, the session is durable
-        (#178). A gone pane is never a reason to pause."""
+        Are these findings blocking, and what exactly should the build
+        session be told? That is not verify's call and not the loop's —
+        it is the operator's, and this session stands in for them. For
+        now the proxy is whoever answers in the pane, the operator
+        included; the destination is a profile that rules the way they
+        would. A ruling the loop cannot read is an escalation, never a
+        guess.
+        """
+        name = session_name("review", batch.slug)
+        self.clear_channel(cwd, REVIEW_RULING)
+        order = sessions.work_order(
+            f"Review the verify findings for {change} and rule.",
+            (f"You are the operator's proxy. Judge; fix nothing. Weigh the "
+             f"findings below against the change itself, then write your "
+             f"ruling to {REVIEW_RULING} in this worktree as one JSON "
+             f"object, one of:\n\n"
+             f'  {{"action": "proceed", "reason": "<why these findings do not block the merge>"}}\n'
+             f'  {{"action": "refix", "prompt": "<the exact prompt to send the build session>"}}\n'
+             f'  {{"action": "escalate", "reason": "<what the operator must look at>"}}\n\n'
+             f"FINDINGS>>>\n{report}\n<<<FINDINGS"))
+        outcome = self.drive("review", self.spec_for(
+            "review", name, cwd, order), batch.numbers)
+        if not outcome.ok:
+            return {"action": "escalate",
+                    "reason": f"the review session did not settle: {outcome.detail}"}
+        raw = self.read_channel(cwd, REVIEW_RULING)
+        try:
+            ruling = json.loads(raw) if raw else None
+        except json.JSONDecodeError:
+            ruling = None
+        if (not isinstance(ruling, dict)
+                or ruling.get("action") not in ("proceed", "refix", "escalate")):
+            return {"action": "escalate",
+                    "reason": f"no readable ruling at {REVIEW_RULING}"}
+        return ruling
+
+    def go_fix(self, batch, build, prompt):
+        """The review's prompt — to the same build session, warm.
+
+        The prompt arrives verbatim from the review's ruling (or the
+        loop's plain fallback); this method only carries it. Same pane
+        when it is open; when it is gone (a restart, a closed pane), the
+        deterministic session id resumes the same conversation in a fresh
+        pane — the pane is disposable, the session is durable (#178). A
+        gone pane is never a reason to pause."""
         runner, handle = self.runner("build"), build.handle
-        prompt = (f"Verify raised these findings against what you built. Go fix them — "
-                  f"no new scope, and comment on the items what you changed.\n\n{findings}")
         if handle is None:
             name = session_name("build", batch.slug)
             cwd = self.batch_worktree(batch) or self.params.repo_dir
@@ -1883,8 +1933,8 @@ class BoltLoop:
             try:
                 handle = runner.launch(spec)
             except sessions.SessionError as error:
-                self.pause(batch.numbers, f"Verify raised findings and the fix "
-                                          f"relaunch failed: {error}\n\n{findings}")
+                self.pause(batch.numbers, f"The refix relaunch failed: {error}"
+                                          f"\n\n{prompt}")
                 return StageOutcome("build", "paused", "fix relaunch failed")
             if handle.reused:
                 # Reattach never re-sends an order; the findings still must
@@ -2226,6 +2276,13 @@ class BoltLoop:
                 # paused.
                 if build.ran:
                     self.set_stage(batch.numbers, inbox.STAGE_BUILT)
+                    # The tracker comment is the loop's — bookkeeping was
+                    # never the builder's job, and the work order no longer
+                    # points the session at the tracker at all.
+                    sha = self.head_sha(f"build/{batch.slug}")
+                    for n in batch.numbers:
+                        self.tracker.comment(
+                            n, f"Built on build/{batch.slug} as {sha}.")
             if config.runs("verify"):
                 verify = self.verify_stage(batch, build)
                 outcomes.append(verify)
@@ -2347,31 +2404,3 @@ class BoltLoop:
 # ---------------------------------------------------------------------------
 # Small readings
 # ---------------------------------------------------------------------------
-
-def _finding_key(text):
-    """The identity of a finding: its own text, whitespace-collapsed.
-
-    "The same finding twice" has to be decided by comparison rather than by
-    opinion, or the two-rounds-then-pause bound is one more judgment the
-    loop is not entitled to make.
-    """
-    return hashlib.sha256(" ".join((text or "").split()).lower().encode()).hexdigest()[:16]
-
-
-def _no_findings(text):
-    """Whether a verify report says, in so many words, that it found nothing."""
-    collapsed = " ".join((text or "").split()).lower()
-    if not collapsed:
-        return True
-    return bool(re.search(r"\bno (findings|issues|problems)\b|\bnothing to (fix|report)\b"
-                          r"|\bverify (is )?clean\b|\ball (checks|criteria) pass",
-                          collapsed))
-
-
-def _epoch(stamp):
-    """GitHub's ISO timestamps, as seconds. Unreadable reads as very old."""
-    try:
-        from datetime import datetime
-        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
-    except ValueError:
-        return 0.0

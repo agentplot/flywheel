@@ -69,11 +69,15 @@ without one.)
   artifact. `openspec validate --strict` green before it counts.
 - APPLY: /opsx:apply on the item's worktree.
 - VERIFY: /opsx:verify — checks what was built against the change's
-  artifacts. Findings are handled the way the operator does it by
-  hand: the loop re-prompts the SAME build session — "go fix these" —
-  relays its questions if it asks any, and re-runs verify. After two
-  fix rounds on the same finding the loop pauses the item and sets
-  needs-operator. No other machinery.
+  artifacts and writes the findings to a file the loop owns
+  (`.flywheel/verify.md`), never a verdict. Judging the findings is
+  the REVIEW's: a proxy-for-the-operator session reads them and rules
+  through `.flywheel/review.json` — proceed, refix with the exact
+  prompt for the build session (relayed to the SAME session, warm),
+  or escalate to needs-operator. An unreadable ruling escalates,
+  never guesses. After the fix-round budget the loop pauses the item.
+  Work sessions do work, the review judges, the loop does
+  bookkeeping.
 - MERGE, serialized per target branch, through the gate, never
   --yes; archive the change on green; the session's pane closes.
 - LAND per bolt.md: merge criteria verified by the landing session,

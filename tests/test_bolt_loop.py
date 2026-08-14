@@ -117,12 +117,26 @@ class FakeTracker:
 
 
 class ScriptedRunner:
-    """A runner whose settles and pane reads are scripted, not simulated."""
+    """A runner whose settles, pane reads and file channels are scripted.
 
-    def __init__(self, states=(), reports=()):
+    The loop reads verify's findings and the review's ruling from files
+    the sessions write (#200), so this double writes them at collect time
+    — the moment the real session would have. `verify_files` scripts the
+    findings per verify run and falls back to NONE (clean); `rulings`
+    scripts the review's JSON and writes nothing when exhausted.
+    """
+
+    def __init__(self, states=(), reports=(), verify_files=(), rulings=()):
         self.states = list(states) or [WaitState.SETTLED_DONE]
         self.reports = list(reports)
+        self.verify_files = list(verify_files)
+        self.rulings = list(rulings)
         self.launched, self.sent, self.keys, self.closed = [], [], [], []
+
+    def _write(self, rel, content):
+        path = TREE / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
 
     def launch(self, spec):
         self.launched.append(spec)
@@ -140,6 +154,12 @@ class ScriptedRunner:
         self.keys.append((handle.name, keys))
 
     def collect(self, handle, lines=200):
+        if handle.name.startswith("verify"):
+            self._write(loop.VERIFY_REPORT,
+                        self.verify_files.pop(0) if self.verify_files
+                        else loop.NO_FINDINGS)
+        elif handle.name.startswith("review") and self.rulings:
+            self._write(loop.REVIEW_RULING, self.rulings.pop(0))
         report = self.reports.pop(0) if self.reports else ""
         return sessions.Collected(state=WaitState.SETTLED_DONE, report=report)
 
@@ -891,38 +911,100 @@ class StageTest(unittest.TestCase):
         self.assertNotIn(("remove_label", 1, inbox.NEEDS_OPERATOR),
                          tracker.writes)
 
-    def test_verify_pauses_the_item_when_the_same_finding_survives_two_rounds(self):
-        tracker = FakeTracker(comments={1: [{"body": "built it"}]})
-        runner = ScriptedRunner(
-            states=[WaitState.SETTLED_DONE] * 8,
-            reports=["FINDING: the spec asks for a flag that is not there",
-                     "fixed it",
-                     "FINDING: the spec asks for a flag that is not there"])
-        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
-        build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
+    def build_handle(self):
+        return loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
             name="build-add-thing", runner="fake"))
+
+    def test_refix_rounds_exhaust_into_a_pause(self):
+        finding = "FINDING: the spec asks for a flag that is not there"
+        refix = '{"action": "refix", "prompt": "add the flag"}'
+        tracker = FakeTracker()
+        runner = ScriptedRunner(verify_files=[finding] * 3, rulings=[refix] * 3)
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
         outcome = a_loop(tracker, runner=runner, shell=shell).verify_stage(
-            self.batch(1), build)
+            self.batch(1), self.build_handle())
         self.assertEqual(outcome.status, "paused")
         self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
 
-    def test_verify_is_clean_when_the_change_validates_and_nothing_is_reported(self):
-        tracker = FakeTracker()
-        runner = ScriptedRunner(reports=["No findings — the build matches the change."])
-        outcome = a_loop(tracker, runner=runner).verify_stage(
+    def test_verify_clean_is_the_file_saying_none_and_validate_green(self):
+        outcome = a_loop(FakeTracker(), runner=ScriptedRunner()).verify_stage(
             self.batch(1), loop.StageOutcome("build", "done"))
         self.assertEqual(outcome.status, "done")
 
     def test_verify_clean_closes_the_build_pane(self):
         # The pane's purpose — the build/verify conversation — ends at
         # clean; the session stays resumable by its id (#178).
-        tracker = FakeTracker()
-        runner = ScriptedRunner(reports=["No findings — the build matches the change."])
-        build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
-            name="build-add-thing", runner="fake"))
-        outcome = a_loop(tracker, runner=runner).verify_stage(self.batch(1), build)
+        runner = ScriptedRunner()
+        outcome = a_loop(FakeTracker(), runner=runner).verify_stage(
+            self.batch(1), self.build_handle())
         self.assertEqual(outcome.status, "done")
         self.assertIn("build-add-thing", runner.closed)
+
+    def test_verify_settling_without_its_report_file_pauses(self):
+        # The channel is a file the loop owns, deleted before the launch —
+        # a session that settles without writing it produced nothing the
+        # review can rule on, and the loop never guesses from the pane.
+        class Silent(ScriptedRunner):
+            def collect(self, handle, lines=200):
+                return sessions.Collected(state=WaitState.SETTLED_DONE, report="")
+        tracker = FakeTracker()
+        outcome = a_loop(tracker, runner=Silent()).verify_stage(
+            self.batch(1), loop.StageOutcome("build", "done"))
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+
+    def test_a_proceed_ruling_overrides_the_findings(self):
+        runner = ScriptedRunner(
+            verify_files=["FINDING: a naming nit"],
+            rulings=['{"action": "proceed", "reason": "cosmetic; merge"}'])
+        outcome = a_loop(FakeTracker(), runner=runner).verify_stage(
+            self.batch(1), self.build_handle())
+        self.assertEqual(outcome.status, "done")
+        self.assertIn("proceed", outcome.detail)
+
+    def test_an_escalate_ruling_pauses_with_the_reason(self):
+        tracker = FakeTracker()
+        runner = ScriptedRunner(
+            verify_files=["FINDING: the migration drops a column"],
+            rulings=['{"action": "escalate", "reason": "data loss risk"}'])
+        outcome = a_loop(tracker, runner=runner).verify_stage(
+            self.batch(1), self.build_handle())
+        self.assertEqual(outcome.status, "paused")
+        self.assertEqual(outcome.detail, "review escalated")
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+
+    def test_the_refix_prompt_reaches_the_build_session_verbatim(self):
+        runner = ScriptedRunner(
+            verify_files=["FINDING: the flag is missing"],
+            rulings=['{"action": "refix", "prompt": "Add only the --flag option."}'])
+        outcome = a_loop(FakeTracker(), runner=runner).verify_stage(
+            self.batch(1), self.build_handle())
+        self.assertEqual(outcome.status, "done", "second verify run is clean")
+        self.assertIn(("build-add-thing", "Add only the --flag option."),
+                      runner.sent)
+
+    def test_an_unreadable_ruling_escalates_never_guesses(self):
+        tracker = FakeTracker()
+        runner = ScriptedRunner(
+            verify_files=["FINDING: something"],
+            rulings=["shrug, looks fine to me"])
+        outcome = a_loop(tracker, runner=runner).verify_stage(
+            self.batch(1), self.build_handle())
+        self.assertEqual(outcome.status, "paused")
+        self.assertEqual(outcome.detail, "review escalated")
+
+    def test_the_build_order_is_the_command_and_the_commit_rule(self):
+        # The slug alone points opsx at its context; items, worktree prose,
+        # escalation hints and settling instructions are loop plumbing that
+        # primes the roaming (#167, extended to build by the operator).
+        runner = ScriptedRunner()
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        a_loop(FakeTracker(), runner=runner, shell=shell).build_stage(self.batch(1))
+        order = runner.launched[0].order
+        self.assertTrue(order.startswith("/opsx:apply add-thing"))
+        self.assertIn("pathspec", order)
+        for noise in ("#1", "ANDON", "milestone", "settling", "worktree"):
+            self.assertNotIn(noise, order)
 
     def test_a_gone_pane_resumes_the_session_instead_of_pausing(self):
         # #178: a restart or a closed pane is never a reason to pause a
@@ -1061,6 +1143,16 @@ class StageLabelTest(unittest.TestCase):
                            ("git", "merge-base"): Result(1)})
         self.worked(tracker, shell=shell).cycle(1)
         self.assertEqual(self.stages_written(tracker), [])
+
+    def test_the_loop_writes_the_built_comment_not_the_session(self):
+        # Bookkeeping is the loop's: the work order no longer points the
+        # build session at the tracker, so the built boundary writes the
+        # branch-and-SHA comment itself.
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        self.worked(tracker).cycle(1)
+        bodies = [str(w[2]) for w in tracker.writes if w[0] == "comment"]
+        self.assertTrue(any("Built on build/" in b for b in bodies))
 
     def test_a_session_saying_it_built_is_not_the_evidence(self):
         # The build session settles claiming success, but no commit exists
@@ -1870,15 +1962,6 @@ class TrackerTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class ReadingTest(unittest.TestCase):
-
-    def test_the_same_finding_is_the_same_text_and_nothing_cleverer(self):
-        self.assertEqual(loop._finding_key("A  finding\n"), loop._finding_key("a finding"))
-        self.assertNotEqual(loop._finding_key("a finding"), loop._finding_key("another"))
-
-    def test_a_verify_report_that_says_it_found_nothing_is_read_as_clean(self):
-        self.assertTrue(loop._no_findings("No findings."))
-        self.assertTrue(loop._no_findings(""))
-        self.assertFalse(loop._no_findings("FINDING: the flag is missing"))
 
     def test_the_merge_criteria_section_is_read_from_the_record_on_disk(self):
         record = ROOT / "openspec" / "changes" / "loop-server" / "bolt.md"
