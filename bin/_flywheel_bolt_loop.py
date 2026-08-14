@@ -605,6 +605,10 @@ class FixtureTracker:
         raw = self._item(number) or {}
         return label in raw.get("labels", ())
 
+    def labels(self, number):
+        raw = self._item(number) or {}
+        return set(raw.get("labels", ()))
+
     def closed_with(self, number, label):
         raw = self._item(number) or {}
         return raw.get("state") == "closed" and label in raw.get("labels", ())
@@ -630,6 +634,16 @@ class FixtureTracker:
         if raw is not None and label in raw.get("labels", ()):
             raw["labels"].remove(label)
         self._record("remove_label", number, label)
+
+    def swap_label(self, number, add, remove=None):
+        raw = self._item(number)
+        if raw is not None:
+            if add not in raw.setdefault("labels", []):
+                raw["labels"].append(add)
+            if remove and remove != add and remove in raw["labels"]:
+                raw["labels"].remove(remove)
+        self._record("swap_label", number,
+                     f"+{add}" + (f" -{remove}" if remove and remove != add else ""))
 
     def comment(self, number, body):
         raw = self._item(number)
@@ -1260,7 +1274,7 @@ class BoltLoop:
         """
         items = [i for i in snapshot.on(self.params.milestone)
                  if ((i.is_open and i.in_progress) or i.merge_closed)
-                 and not ({inbox.UNIT, inbox.ELABORATION} & i.labels)]
+                 and not i.is_container]
         if not items:
             return
         for batch in analyse(items, snapshot, self.params.slug):
@@ -1416,7 +1430,7 @@ class BoltLoop:
             # A container is never work: routing a unit asks the
             # merge-criteria test of a box, and the keep path then wraps
             # the box in another box, forever (observed live: #120 → #121).
-            and not ({inbox.UNIT, inbox.ELABORATION} & i.labels)
+            and not i.is_container
         ]
         if not orphans:
             return None

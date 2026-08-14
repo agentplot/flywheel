@@ -155,6 +155,17 @@ class Item:
         return TYPE_ASSERTION in self.labels
 
     @property
+    def is_container(self):
+        """A unit or elaboration parent — a batch, never work.
+
+        Every per-item sweep excludes containers, or a release's own parent
+        is re-run through composition, routing or staging (observed live as
+        #120 -> #121). One definition, so the next sweep cannot forget it
+        by copying the set literal wrong.
+        """
+        return bool({UNIT, ELABORATION} & self.labels)
+
+    @property
     def merge_closed(self):
         """Closed at merge-back and still in flight until the bolt lands.
 
@@ -390,7 +401,7 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         if item.ready or item.in_progress:
             add(item.milestone, "run", f"#{item.number} {item.state or ''}".strip())
         elif (sweep and item.queued and item.parent_batch is None
-              and not ({UNIT, ELABORATION} & item.labels)):
+              and not item.is_container):
             # over-approximation: compose may have work here. Batch parents
             # are containers, never composable work — counting them keeps a
             # job open forever (compose_plan skips them for the same reason).
@@ -593,7 +604,7 @@ def compose_plan(snapshot, slug, handoff=None):
         i for i in snapshot.on(milestone)
         if i.is_open and i.queued and i.parent_batch is None
         and i.number not in claimed
-        and not ({UNIT, ELABORATION} & i.labels)
+        and not i.is_container
     )
 
 
@@ -803,7 +814,7 @@ def set_needs_operator(tracker, number, comment=None):
     return True
 
 
-def set_stage(tracker, number, stage):
+def set_stage(tracker, number, stage, labels=None):
     """Move an item to one `stage:*` label, removing any other. True on a write.
 
     An item carries exactly ONE stage label, naming its **leading edge** —
@@ -834,15 +845,33 @@ def set_stage(tracker, number, stage):
     plus another ends carrying the target alone.
 
     Takes any of the four-method label surfaces — `Tracker`, `BoltTracker`,
-    the intent loop's `Writer` — as its other two writes here do.
+    the intent loop's `Writer` — as its other two writes here do, and uses
+    two optional extras where the surface offers them: a callable `labels`
+    answers "what does the item carry" in ONE read instead of one probe per
+    stage name (against the live tracker each probe is a full issue GET),
+    and `swap_label` makes the move without a moment in which the item
+    carries no stage at all. A surface with neither — the test fakes —
+    gets the probe-and-two-writes behaviour unchanged. Callers already
+    holding the item's labels pass them as `labels` and no read happens.
     """
-    stale = [other for other in STAGE_LABELS
-             if other != stage and tracker.has_label(number, other)]
-    if not stale and tracker.has_label(number, stage):
+    if labels is None:
+        reader = getattr(tracker, "labels", None)
+        if callable(reader):
+            labels = reader(number)
+        else:
+            labels = {l for l in STAGE_LABELS if tracker.has_label(number, l)}
+    carried = set(labels) & set(STAGE_LABELS)
+    if carried == {stage}:
         return False
+    stale = [l for l in STAGE_LABELS if l in carried and l != stage]
+    add_needed = stage not in carried
+    swap = getattr(tracker, "swap_label", None)
+    if add_needed and callable(swap):
+        swap(number, add=stage, remove=stale.pop(0) if stale else None)
+        add_needed = False
     for other in stale:
         tracker.remove_label(number, other)
-    if not tracker.has_label(number, stage):
+    if add_needed:
         tracker.add_label(number, stage)
     return True
 
@@ -1153,24 +1182,6 @@ class Tracker:
         text = out if isinstance(out, str) else str(out or "")
         tail = text.strip().rsplit("/", 1)[-1]
         return int(tail) if tail.isdigit() else None
-
-    def attach_sub_issue(self, parent, number):
-        """Attach #number as a sub-issue of #parent. True when it wrote.
-
-        Invariant 10: the endpoint takes the issue's DATABASE id, not its
-        number. Invariant 2: an item joins exactly one batch ever, and
-        GitHub answers 422 to an attempt on a parented sub-issue — so one
-        that already has a parent is SKIPPED rather than retried, which is
-        what lets a guard applied twice converge instead of crashing.
-        """
-        raw = self._gh(self.token, "api",
-                       f"/repos/{self.org}/{self.repo}/issues/{number}")
-        if raw.get("parent_issue_url"):
-            return False
-        self._gh(self.token, "api",
-                 f"/repos/{self.org}/{self.repo}/issues/{parent}/sub_issues",
-                 "--input", "-", input_json={"sub_issue_id": raw["id"]})
-        return True
 
     def close_issue(self, number, comment=None, reason=CLOSED_DONE):
         if reason:

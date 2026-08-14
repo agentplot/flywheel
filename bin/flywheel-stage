@@ -59,8 +59,9 @@ def main(argv=None):
     args = parse_args(argv)
     tracker = Tracker(resolve_token(args.org), args.org, args.repo)
 
-    before = stage_of(tracker.labels(args.number), STAGE_LABELS)
-    if set_stage(tracker, args.number, args.stage):
+    carried = tracker.labels(args.number)
+    before = stage_of(carried, STAGE_LABELS)
+    if set_stage(tracker, args.number, args.stage, labels=carried):
         moved = f"{before} -> {args.stage}" if before else f"-> {args.stage}"
         print(f"#{args.number} {moved}")
     else:

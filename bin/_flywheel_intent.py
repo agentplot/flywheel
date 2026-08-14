@@ -50,7 +50,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,
-                             IN_PROGRESS, Item, NEEDS_OPERATOR, QUEUED, READY,
+                             IN_PROGRESS, NEEDS_OPERATOR, QUEUED, READY,
                              STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
                              STATUS_BACKLOG, TYPE_ASSERTION, Tracker,
                              TrackerSnapshot, clear_needs_operator,
@@ -268,12 +268,6 @@ class Writer:
             return number
         return None
 
-    def attach_sub_issue(self, parent, number):
-        self._record("sub-issue", f"#{number}", f"-> #{parent}")
-        if self.apply and self.tracker:
-            return self.tracker.attach_sub_issue(parent, number)
-        return None
-
     def close_issue(self, number, comment=None, reason=CLOSED_DONE):
         self._record("close", f"#{number}", reason or "")
         if self.apply and self.tracker:
@@ -400,8 +394,11 @@ def apply_handoff(writer, plan, snapshot, config):
             + ". Amended by the intent loop's handoff-birth guard.",
         )
         if item is not None and item.parent_batch is not None:
-            attach_to_unit(writer, item.parent_batch,
-                           [n for n in merged if n not in current])
+            compose_unit(writer, config,
+                         title=f"Handoff: the settled assertions on {slug} "
+                               f"to construction",
+                         numbers=[n for n in merged if n not in current],
+                         into=item.parent_batch)
         return
     handoff = writer.create_issue(
         title=f"Plan the bolt for the settled assertions on {slug}",
@@ -415,21 +412,21 @@ def apply_handoff(writer, plan, snapshot, config):
                  numbers=([handoff] if handoff else []) + list(numbers))
 
 
-def compose_unit(writer, config, title, numbers):
-    """One `unit` parent over these items, through `flywheel-batch`.
+def compose_batch(writer, config, kind, title, numbers, into=None):
+    """One `flywheel-batch` call — THE definition of composing or joining.
 
-    `flywheel-batch --kind unit` is the composing move in one call: it
-    creates the parent, attaches the sub-issues, adds the parent to the org
-    Project and defaults its fields, and skips an item that already belongs
-    to a batch rather than failing on it. Reimplementing any of that here
-    would be a second definition of what a batch looks like.
+    `flywheel-batch` is the whole move in one command: it creates the
+    parent (or, with `--into`, refuses a non-open one and appends), attaches
+    the sub-issues, adds the parent to the org Project and defaults its
+    fields, skips an item that already belongs to a batch, and comments the
+    newcomers on an amended parent. Reimplementing any of that in this
+    module would be a second definition of what a batch looks like — the
+    handoff amend once spoke to the sub-issue endpoint directly and got
+    none of those checks.
 
-    It puts the parent at **Backlog** and never writes Ready — on this path
-    the operator's flip is the approval, and a batch born at Ready would
-    make the loop the approver of its own handoff. The one release where
-    the parent IS born at Ready is the operator's born-ready release at
-    triage, where their word is itself the approval; that move is made by
-    the release path with `flywheel-board`, not from inside this loop.
+    A created parent's number is captured into `writer.created` so
+    `wait_listed` gives BOTH release paths read-your-writes, not just
+    compose.
     """
     if not numbers:
         return
@@ -437,25 +434,36 @@ def compose_unit(writer, config, title, numbers):
         str(config.batch_cmd),
         "--org", config.org,
         "--repo", config.repo,
-        "--kind", "unit",
+        "--kind", kind,
         "--milestone", config.milestone,
         "--title", title,
         "--project", config.project,
-    ] + [str(n) for n in numbers]
-    writer.command(argv, cwd=config.repo_dir, what="flywheel-batch")
+    ]
+    if into is not None:
+        argv += ["--into", str(into)]
+    argv += [str(n) for n in numbers]
+    result = writer.command(argv, cwd=config.repo_dir, what="flywheel-batch")
+    if result is not None:
+        match = re.search(r"^(?:unit|elaboration) #(\d+):",
+                          (result.stdout or ""), re.MULTILINE)
+        if match:
+            writer.created.append(int(match.group(1)))
 
 
-def attach_to_unit(writer, batch_number, numbers):
-    """Attach late-settling assertions to the unit that already exists.
+def compose_unit(writer, config, title, numbers, into=None):
+    """One `unit` parent over these items, through `flywheel-batch`.
 
-    `flywheel-batch` composes a NEW parent, so this is the one place that
-    speaks to GitHub's sub-issue endpoint directly. An item that already
-    belongs to a batch is skipped rather than fatal: an item joins exactly
-    one batch ever, GitHub 422s the second attempt, and a guard applied
-    twice must converge rather than crash.
+    It puts the parent at **Backlog** and never writes Ready — on this path
+    the operator's flip is the approval, and a batch born at Ready would
+    make the loop the approver of its own handoff. The one release where
+    the parent IS born at Ready is the operator's born-ready release at
+    triage, where their word is itself the approval; that move is made by
+    the release path with `flywheel-board`, not from inside this loop.
+
+    `into` appends late-settling assertions to the unit that already
+    exists, through the same command.
     """
-    for number in numbers:
-        writer.attach_sub_issue(batch_number, number)
+    compose_batch(writer, config, "unit", title, numbers, into=into)
 
 
 # ---------------------------------------------------------------------------
@@ -470,34 +478,21 @@ def apply_compose(writer, items, config, snapshot=None):
     with no thread signal available on the tracker reduces to one batch: the
     loop never splits by guess.
     """
-    if not items:
-        return
-    argv = [
-        str(config.batch_cmd),
-        "--org", config.org,
-        "--repo", config.repo,
-        "--kind", "elaboration",
-        "--milestone", config.milestone,
-        "--title", f"Work the queued design items on {config.slug}",
-        "--project", config.project,
-    ]
     # AMEND, like handoff birth: while an open elaboration for this
     # milestone sits at Backlog, newcomers JOIN it — a new batch per
     # sweep fragments the queue into near-identical containers (observed
     # live: #131/#132, #109/#114/#129).
+    into = None
     if snapshot is not None:
         for b in sorted(snapshot.batches, key=lambda b: b.number):
             if (b.kind == ELABORATION and b.status == STATUS_BACKLOG
                     and b.milestone == config.milestone):
-                argv += ["--into", str(b.number)]
+                into = b.number
                 break
-    argv += [str(i.number) for i in sorted(items, key=lambda i: i.number)]
-    result = writer.command(argv, cwd=config.repo_dir, what="flywheel-batch")
-    if result is not None:
-        match = re.search(r"^(?:unit|elaboration) #(\d+):",
-                          (result.stdout or ""), re.MULTILINE)
-        if match:
-            writer.created.append(int(match.group(1)))
+    compose_batch(writer, config, "elaboration",
+                  f"Work the queued design items on {config.slug}",
+                  [i.number for i in sorted(items, key=lambda i: i.number)],
+                  into=into)
 
 
 def wait_listed(tracker, numbers, milestone, tries=8, pause=5,
@@ -1017,8 +1012,7 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
                     f"The intent loop cannot dispatch this item: its type is "
                     f"`{kind or 'missing'}`, which is not one of the six "
                     f"design types ({', '.join(sorted(TYPES))}). "
-                    f"{'An assertion is guard 2 and construction' if kind == 'assertion' else 'Set a type label'}"
-                    f" — the loop will not guess one.",
+                    f"Set a type label — the loop will not guess one.",
                 )
             if not batches:
                 break                  # nothing ready, guards dry: STOP

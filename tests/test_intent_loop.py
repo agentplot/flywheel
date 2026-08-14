@@ -96,10 +96,6 @@ class FakeTracker:
         self.calls.append(("create_issue", title, tuple(labels), milestone))
         return 999
 
-    def attach_sub_issue(self, parent, number):
-        self.calls.append(("attach_sub_issue", parent, number))
-        return True
-
     def close_issue(self, number, comment=None, reason=None):
         self.calls.append(("close_issue", number, reason))
 
@@ -208,7 +204,11 @@ class HandoffGuardTest(unittest.TestCase):
     def test_amend_extends_the_set_and_attaches_the_newcomer_to_the_unit(self):
         # #1 is already a sub-issue of the handoff's unit, so it is no
         # longer "settled and unbolted" and the plan names only #2. The
-        # body must name the UNION, or the amend would drop #1.
+        # body must name the UNION, or the amend would drop #1. The attach
+        # is `flywheel-batch --into` — the same joining move compose uses —
+        # so the newcomer gets the open-parent check and the newcomers
+        # comment, not a bare sub-issue POST.
+        run = FakeRun()
         snap = Snapshot(
             items=[item(1, "type:assertion", "state:queued", parent_batch=10),
                    item(2, "type:assertion", "state:queued"),
@@ -216,14 +216,17 @@ class HandoffGuardTest(unittest.TestCase):
                         body=intent.handoff_body("x", (1,)))],
             batches=[Batch(number=10, kind="unit", status="Backlog",
                            sub_issues=(9, 1), milestone="intent/x")])
-        writer = intent.Writer(apply=False, snapshot=snap)
+        writer = intent.Writer(apply=True, run=run, snapshot=snap)
         intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
-                             config())
+                             config(apply=True))
         self.assertEqual([w.kind for w in writer.writes],
-                         ["body", "comment", "sub-issue"])
+                         ["body", "comment", "command"])
         body = next(w for w in writer.writes if w.kind == "body")
-        self.assertEqual(writer.writes[-1].detail, "-> #10")
         self.assertEqual(body.target, "#9")
+        argv = run.calls[-1]
+        self.assertIn("--into", argv)
+        self.assertEqual(argv[argv.index("--into") + 1], "10")
+        self.assertEqual(argv[-1], "2", "only the newcomer joins")
 
     def test_a_handoff_body_round_trips_its_set(self):
         self.assertEqual(
