@@ -1477,9 +1477,12 @@ class BoltLoop:
         seen = {}
         for _ in range(MAX_FIX_ROUNDS + 1):
             order = sessions.work_order(f"/opsx:verify {change}", (
-                f"Verify what was built for {', '.join('#' + str(n) for n in batch.numbers)} "
-                f"against the change's artifacts, in this worktree — "
-                f"build/{batch.slug}, already cut by the loop. "
+                f"Run /opsx:verify {change} in this worktree — build/{batch.slug}, "
+                f"already cut by the loop — for {', '.join('#' + str(n) for n in batch.numbers)}. "
+                f"Vanilla verify, nothing else: the change's artifacts are the whole "
+                f"yardstick. Do not audit neighbouring code, other specs, or the wider "
+                f"tree, and file no issues — a finding either belongs to this change's "
+                f"fix round or is out of scope (#167, operator ruling). "
                 f"Report the findings plainly, or say plainly that there are none. "
                 f"Fix nothing. Deliver by settling."))
             outcome = self.drive("verify", self.spec_for(
