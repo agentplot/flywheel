@@ -225,6 +225,30 @@ class DurableRepromptTest(unittest.TestCase):
         self.assertIn(("add_label", 7, inbox.NEEDS_OPERATOR), tracker.writes)
 
 
+class RelaunchOriginTest(unittest.TestCase):
+
+    def test_a_fresh_launch_ignores_a_dead_sessions_marker(self):
+        # #168: build relaunched after its predecessor died, inherited the
+        # corpse's marker, and was judged stalled at 1276 minutes before
+        # doing anything. Only a REUSED pane may inherit a marker.
+        marker = f'{loop.SESSION_OPEN} name="build-b1" started="0" -->'
+        tracker = FakeTracker(comments={7: [{"body": marker},
+                                            {"body": "built it"}]})
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        l = a_loop(tracker, shell=shell)   # ScriptedRunner: never reused
+        batch = loop.WorkBatch(slug="b1", items=(item(7, inbox.IN_PROGRESS),))
+        outcome = l.build_stage(batch)
+        self.assertEqual(outcome.status, "done")
+
+    def test_launch_origin_reads_the_latest_marker_for_the_name(self):
+        first = f'{loop.SESSION_OPEN} name="build-b1" started="100" -->'
+        again = f'{loop.SESSION_OPEN} name="build-b1" started="900" -->'
+        tracker = FakeTracker(comments={7: [{"body": first},
+                                            {"body": again}]})
+        l = a_loop(tracker)
+        self.assertEqual(l.launch_origin([7], "build-b1"), 900)
+
+
 class ComposeAmendTest(unittest.TestCase):
 
     def test_bolt_compose_appends_to_the_open_backlog_unit(self):

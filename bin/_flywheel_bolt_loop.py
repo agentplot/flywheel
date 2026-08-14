@@ -854,7 +854,10 @@ class BoltLoop:
             self.tracker.comment(number, f"Session `{name}` started.\n\n{marker}")
 
     def launch_origin(self, numbers, name):
-        """The launch time this loop (or an earlier one) already recorded."""
+        """The LATEST launch this loop (or an earlier one) recorded for the
+        name. A name accumulates one marker per (re)launch; the live pane
+        is the most recent one, so the newest marker is its clock — the
+        oldest would measure the first corpse (#168)."""
         best = None
         for number in numbers:
             for comment in self.tracker.comments(number) or ():
@@ -863,7 +866,7 @@ class BoltLoop:
                     if match.group("name") != name:
                         continue
                     started = int(match.group("started"))
-                    best = started if best is None else min(best, started)
+                    best = started if best is None else max(best, started)
         return best
 
     def flip_in_progress(self, numbers):
@@ -901,7 +904,13 @@ class BoltLoop:
             handle = runner.launch(spec)
         except sessions.SessionError as error:
             return StageOutcome(stage, "failed", f"launch: {error}")
-        origin = self.launch_origin(numbers, spec.name) if numbers else None
+        # Markers measure the session that is actually in the pane. Only a
+        # REUSED pane may inherit one; a fresh launch after the old session
+        # died starts its own clock — inheriting the corpse's marker judged
+        # a new-born session stalled at 1276 minutes (#168, observed live).
+        reused = bool(getattr(handle, "reused", False))
+        origin = (self.launch_origin(numbers, spec.name)
+                  if numbers and reused else None)
         if origin is None:
             origin = self._clock()
             if numbers and not expect_prompted:

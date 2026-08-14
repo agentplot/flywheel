@@ -335,9 +335,15 @@ class HerdrRunner(Runner):
         self._await_ready(spec.name)
         self._ensure_named(spec.name)
         if not self._deliver(spec.name, spec.order):
+            # Release the NAME while keeping the pane: launch is idempotent
+            # by name and deliberately never re-sends an order, so a corpse
+            # under this name wedges every later launch (#169, observed
+            # live on spec-writing-stage-labels-133).
+            self._herdr("agent", "rename", spec.name,
+                        f"{spec.name}-undelivered")
             raise SessionError(
                 f"{spec.name}: the work order never submitted — the pane is "
-                f"left open for inspection")
+                f"left open for inspection as {spec.name}-undelivered")
         return handle
 
     def wait(self, handle, timeout=WAIT_CHUNK_S):

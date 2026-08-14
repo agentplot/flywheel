@@ -216,6 +216,12 @@ class IdempotentLaunchTest(unittest.TestCase):
                                       submit_attempts=2)
         with self.assertRaises(sessions.SessionError):
             runner.launch(spec())
+        # #169: the corpse must not keep the name — launch is idempotent by
+        # name and never re-sends an order, so an unreleased name wedges
+        # every later pass.
+        renames = [a for a in herdr.calls if a[1:3] == ["agent", "rename"]]
+        self.assertTrue(renames, "the failed launch must release the name")
+        self.assertTrue(renames[-1][4].endswith("-undelivered"))
 
     def test_the_name_is_set_at_launch_so_there_is_no_rename_to_race(self):
         herdr = FakeHerdr()
