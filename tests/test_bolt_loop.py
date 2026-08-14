@@ -1066,14 +1066,58 @@ class StageTest(unittest.TestCase):
         ancestry["rc"] = 0
         self.assertEqual(program.merge_stage(self.batch(1)).status, "done")
 
-    def test_the_merge_order_never_suppresses_the_gate(self):
+    def test_the_merge_is_a_static_step_never_a_session(self):
+        # Merging is bookkeeping: fixed command, same gate either way,
+        # success answered by git. No agent has anything to decide here.
         runner = ScriptedRunner()
-        shell = FakeShell({("git", "merge-base"): Result(1)})
-        a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(self.batch(1))
-        order = runner.launched[0].order
-        self.assertIn("wt merge build/add-thing --no-remove", order)
-        for suppressor in ("--yes", "--no-hooks", "--no-verify"):
-            self.assertIn(suppressor, order, "the order names what it forbids")
+        shell = FakeShell({("git", "merge-base"): Result(0)})
+        outcome = a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(
+            self.batch(1))
+        self.assertEqual(outcome.status, "done")
+        self.assertEqual(runner.launched, [], "no merge session exists")
+        self.assertTrue(any(a[:4] == ("wt", "merge", "build/add-thing",
+                                      "--no-remove")
+                            for a, _ in shell.calls))
+
+    def test_a_red_gate_goes_back_to_the_build_session_with_the_output(self):
+        results = iter([Result(1, "gate: the books check failed"), Result(0)])
+        shell = FakeShell({("wt", "merge"): lambda: next(results),
+                           ("git", "merge-base"): Result(0)})
+        runner = ScriptedRunner()
+        build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
+            name="build-add-thing", runner="fake"))
+        outcome = a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(
+            self.batch(1), build)
+        self.assertEqual(outcome.status, "done", "green on the retry")
+        self.assertTrue(any("the books check failed" in prompt
+                            for _, prompt in runner.sent))
+
+    def test_a_gate_red_past_the_budget_pauses_the_batch(self):
+        shell = FakeShell({("wt", "merge"): Result(1, "gate: still red"),
+                           ("git", "merge-base"): Result(0)})
+        tracker = FakeTracker()
+        build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
+            name="build-add-thing", runner="fake"))
+        outcome = a_loop(tracker, shell=shell).merge_stage(self.batch(1), build)
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+
+    def test_a_merge_conflict_pauses_for_the_operator(self):
+        # The agent seat for conflicts is reserved, stubbed to a pause:
+        # a conflict means a sibling moved under this branch, and nobody
+        # auto-resolves that today.
+        shell = FakeShell({("wt", "merge"): Result(1, "CONFLICT (content): x"),
+                           ("git", "merge-base"): Result(1)})
+        tracker = FakeTracker()
+        runner = ScriptedRunner()
+        outcome = a_loop(tracker, runner=runner, shell=shell).merge_stage(
+            self.batch(1))
+        self.assertEqual(outcome.status, "paused")
+        self.assertEqual(outcome.detail, "merge conflict")
+        self.assertEqual(runner.sent, [], "no refix round on a conflict")
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+        self.assertTrue(any(a[:3] == ("git", "merge", "--abort")
+                            for a, _ in shell.calls))
 
 
 class StageLabelTest(unittest.TestCase):
@@ -1697,18 +1741,6 @@ class MergeCloseTest(unittest.TestCase):
             item(5, inbox.IN_PROGRESS, title="a discovery")])
         self.assertEqual([n for n, _ in tracker.reasons], [1])
 
-    def test_the_merge_session_is_told_the_loop_does_the_closing(self):
-        runner = ScriptedRunner()
-        shell = FakeShell({("git", "merge-base"): Result(1)})
-        a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(
-            loop.WorkBatch(slug="add-thing", items=(item(1, inbox.READY),)))
-        order = runner.launched[0].order
-        self.assertIn("the LOOP closes each assertion `closed:merged`", order)
-        self.assertNotIn("do not close them", order)
-        # …and the one write it must never be told to withhold.
-        self.assertIn("ANDON CORD IS THE EXCEPTION", order)
-        self.assertIn("andon marker", order)
-
     def test_a_full_cycle_merges_and_closes_in_one_go(self):
         snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.READY,
                                         change="add-thing")],
@@ -1716,15 +1748,15 @@ class MergeCloseTest(unittest.TestCase):
         tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
         runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
                                 reports=["No findings."] * 12)
-        # Ancestry must FLIP when the merge session runs: a branch that
-        # reads merged from the start is parked awaiting the landing by
-        # the resume partition and never drives at all.
+        # Ancestry must FLIP when the wt merge subprocess runs: a branch
+        # that reads merged from the start is parked awaiting the landing
+        # by the resume partition and never drives at all.
         class MergeAwareShell(FakeShell):
             def __call__(self, argv, cwd=None, env=None, timeout=None):
                 if tuple(argv[:2]) == ("git", "merge-base"):
                     self.calls.append((tuple(argv), cwd))
-                    merged = any(s.name.startswith("merge-")
-                                 for s in runner.launched)
+                    merged = any(a[:2] == ("wt", "merge")
+                                 for a, _ in self.calls)
                     return Result(0 if merged else 1)
                 return super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
         shell = MergeAwareShell({("git", "rev-list"): Result(0, "3\n"),

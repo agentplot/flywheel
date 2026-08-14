@@ -1956,50 +1956,75 @@ class BoltLoop:
                 f"open and waiting.\n\n{outcome.report}"))
         return outcome
 
-    def merge_stage(self, batch):
-        """Merge-back through the gate, one writer to the target branch.
+    def merge_stage(self, batch, build=None):
+        """Merge-back through the gate — a static step, no session.
 
-        Serialization is the caller's — `run` merges in a plain loop and
-        awaits each one — and the gate is the repo's `[pre-merge]` hooks,
-        never suppressed. Success is ancestry, which git answers; the
-        short-circuit asks `batch_merged` — advancement past the cut point
-        as well as ancestry — because an untouched branch's tip is an
-        ancestor of everything it was cut from, and bare ancestry would
-        read it as already merged (#164).
+        Merging is bookkeeping: the command is fixed, the gate is the
+        repo's `[pre-merge]` hooks and runs identically either way, and
+        success is ancestry, which git answers. Serialization is the
+        caller's — `run` merges in a plain loop. The short-circuit asks
+        `batch_merged` — advancement past the cut point as well as
+        ancestry — because an untouched branch's tip is an ancestor of
+        everything it was cut from (#164).
+
+        The failure paths are where the judgment lives, and neither
+        belongs to a merge agent: a RED GATE is a finding and goes back
+        to the build session with the gate's own output as the prompt,
+        bounded by the same fix-round budget as verify; a CONFLICT means
+        a sibling moved under this branch — an agent seat is reserved
+        for that, stubbed today to a pause the operator works by hand.
         """
         branch = f"build/{batch.slug}"
         if self.batch_merged(batch):
             return StageOutcome("merge", "done", f"{branch} is already merged")
-        name = session_name("merge", batch.slug)
-        change = None if self.params.plan_mode else (batch.change or batch.slug)
-        order = sessions.work_order(
-            f"Merge {branch} back to {self.params.bolt_branch} through the gate.",
-            (f"Merge-back for {', '.join('#' + str(n) for n in batch.numbers)}.\n\n"
-             f"In \"{self.params.bolt_worktree}\" run:  wt merge {branch} --no-remove  "
-             f"— NEVER --yes, --no-hooks or --no-verify; this repo's [pre-merge] hooks "
-             f"ARE the gate and are never suppressed or hand-substituted. If you hit "
-             f"\"Cannot prompt for approval in non-interactive environment\", stop and "
-             f"report it rather than working around it.\n\n"
-             + (f"On green: openspec archive {change}, and commit.\n\n" if change else "")
-             + f"On red: fix NOTHING and report the gate output verbatim. Do not "
-               f"comment the SHA, do not label, do not close: the LOOP closes each "
-               f"assertion `closed:merged` with the merge SHA once git confirms "
-               f"the ancestry, and the landing upgrades that to `closed:done`; "
-               f"closing is bookkeeping, and the loop and the session must not "
-               f"race for it. THE ANDON CORD IS THE EXCEPTION and is always "
-               f"yours: if the work has gone wrong in a way no further round "
-               f"fixes, write the andon marker in an item comment and settle — "
-               f"the loop reads that marker back and pauses the batch. "
-               f"Deliver by settling."))
-        outcome = self.drive("merge", self.spec_for(
-            "merge", name, self.params.bolt_worktree, order), batch.numbers)
-        if not outcome.ok:
-            return outcome
+        output = ""
+        for attempt in range(MAX_FIX_ROUNDS + 1):
+            proc = self.shell(["wt", "merge", branch, "--no-remove"],
+                              cwd=self.params.bolt_worktree)
+            if proc.returncode == 0:
+                break
+            output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+            if "conflict" in output.lower():
+                self.shell(["git", "merge", "--abort"],
+                           cwd=self.params.bolt_worktree)
+                self.pause(batch.numbers, (
+                    f"The merge of {branch} hit conflicts — a sibling moved "
+                    f"under it. The loop aborted the merge and paused the "
+                    f"batch for the operator.\n\n{output}"))
+                return StageOutcome("merge", "paused", "merge conflict",
+                                    report=output)
+            if attempt >= MAX_FIX_ROUNDS:
+                self.pause(batch.numbers, (
+                    f"The merge gate stayed red after {MAX_FIX_ROUNDS} refix "
+                    f"rounds; the loop paused the batch.\n\n{output}"))
+                return StageOutcome("merge", "paused", "gate red after refix",
+                                    report=output)
+            fixed = self.go_fix(
+                batch, build or StageOutcome("build", "done"),
+                (f"The merge gate is red for {branch}. Fix exactly what it "
+                 f"names — no new scope — and commit by pathspec.\n\n{output}"))
+            if not fixed.ok:
+                return fixed
         if not self.branch_merged(branch):
             return StageOutcome("merge", "failed",
-                                f"{branch} is not an ancestor of {self.params.bolt_branch} "
-                                f"after the merge session settled")
-        return StageOutcome("merge", "done", f"{branch} merged", report=outcome.report)
+                                f"{branch} is not an ancestor of "
+                                f"{self.params.bolt_branch} after wt merge")
+        change = None if self.params.plan_mode else (batch.change or batch.slug)
+        note = ""
+        if change:
+            # Archive on green is a loop write now, like every other piece
+            # of bookkeeping. A failed archive never un-merges the branch.
+            archived = self.shell(["openspec", "archive", change, "--yes"],
+                                  cwd=self.params.bolt_worktree)
+            if archived.returncode == 0:
+                self.shell(["git", "add", "-A", "openspec"],
+                           cwd=self.params.bolt_worktree)
+                self.shell(["git", "commit", "-m",
+                            f"chore(openspec): archive {change}"],
+                           cwd=self.params.bolt_worktree)
+            else:
+                note = " (openspec archive failed; left for hand cleanup)"
+        return StageOutcome("merge", "done", f"{branch} merged{note}")
 
     def close_merged(self, items, sha=None):
         """Close these assertion items `closed:merged`, with the SHA.
@@ -2294,7 +2319,7 @@ class BoltLoop:
                 if verify.ran:
                     self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
             if config.runs("merge"):
-                merge = self.merge_stage(batch)
+                merge = self.merge_stage(batch, build)
                 outcomes.append(merge)
                 if merge.ran:
                     # merge_stage returns done only on ancestry git confirmed.

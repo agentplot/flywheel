@@ -78,8 +78,12 @@ without one.)
   never guesses. After the fix-round budget the loop pauses the item.
   Work sessions do work, the review judges, the loop does
   bookkeeping.
-- MERGE, serialized per target branch, through the gate, never
-  --yes; archive the change on green; the session's pane closes.
+- MERGE, a static loop step — no session: `wt merge` through the
+  gate, serialized per target branch, success answered by ancestry;
+  the loop archives the change on green. A red gate goes back to the
+  build session with the gate's own output, on the fix-round budget;
+  a conflict pauses for the operator (an agent seat is reserved
+  there, stubbed today).
 - LAND per bolt.md: merge criteria verified by the landing session,
   which refuses otherwise; `Landing: merge` (default) or
   `Landing: pr`. A failing criterion births one born-ready fix item,
