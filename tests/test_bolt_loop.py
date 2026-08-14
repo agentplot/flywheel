@@ -63,6 +63,11 @@ class FakeTracker:
     def has_label(self, number, label):
         return label in self.labels.get(number, set())
 
+    def closed_with(self, number, label):
+        # Both halves, as the real tracker reads them: a label present on a
+        # still-open issue is a torn close, not a finished one.
+        return number in self.closed and label in self.labels.get(number, set())
+
     def milestones(self, state="all"):
         return self._milestones
 
@@ -868,6 +873,68 @@ class StageLabelTest(unittest.TestCase):
         self.assertEqual(again, [], "a check that changed nothing records nothing")
         self.assertEqual(len(tracker.writes), before, "and writes nothing")
 
+    # -- the merge-close, torn -----------------------------------------------
+
+    def torn_close(self):
+        """The state a process killed inside `close` leaves behind.
+
+        `BoltTracker.close` writes the label and then PATCHes the state, so
+        a death between them leaves the item OPEN and carrying
+        `closed:merged` — the one combination `merge_closed` (which is
+        `not is_open and CLOSED_MERGED in labels`) reads as False.
+        """
+        torn = item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+                    inbox.CLOSED_MERGED, change="add-thing")
+        snapshot = Snapshot(items=[torn], milestone="bolt/x")
+        tracker = FakeTracker(snapshot)
+        tracker.labels[1] = {inbox.CLOSED_MERGED}
+        return snapshot, tracker
+
+    def test_a_process_killed_inside_the_close_has_the_close_finished(self):
+        """R10: the guard ends the item at whichever half a dead process
+        left undone. The label half survived; the state half did not."""
+        snapshot, tracker = self.torn_close()
+        program = a_loop(tracker, shell=self.shell())
+        actions = []
+        program.guard_stages(snapshot, actions)
+        self.assertIn(1, tracker.closed, "the close is finished, not re-skipped")
+        self.assertIn(inbox.CLOSED_MERGED, tracker.labels[1])
+
+    def test_the_torn_close_repair_records_only_the_write_it_made(self):
+        """`guards`' contract: `actions` records writes made, not writes
+        attempted. The repair used to append unconditionally while
+        `close_merged` skipped on the label already being there — an action
+        every cycle, forever, for a write that never happened."""
+        snapshot, tracker = self.torn_close()
+        program = a_loop(tracker, shell=self.shell())
+        first = []
+        program.guard_stages(snapshot, first)
+        self.assertTrue(any("closed" in a for a in first), first)
+
+        # Second pass, against the tracker the first one left behind.
+        repaired = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+                                        inbox.IN_PROGRESS, inbox.CLOSED_MERGED,
+                                        change="add-thing", state="closed")],
+                            milestone="bolt/x")
+        before = len(tracker.writes)
+        again = []
+        program.guard_stages(repaired, again)
+        self.assertEqual(again, [], "the repair converges")
+        self.assertEqual(len(tracker.writes), before, "and writes nothing")
+
+    def test_an_item_already_closed_at_merge_is_left_entirely_alone(self):
+        # Idempotence in the normal direction, which the old skip did give.
+        closed = item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+                      inbox.CLOSED_MERGED, change="add-thing", state="closed")
+        snapshot = Snapshot(items=[closed], milestone="bolt/x")
+        tracker = FakeTracker(snapshot)
+        tracker.labels[1] = {inbox.CLOSED_MERGED}
+        tracker.closed.add(1)
+        program = a_loop(tracker, shell=self.shell())
+        actions = []
+        program.guard_stages(snapshot, actions)
+        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
+
     # -- the type that runs no verify --------------------------------------
 
     def direct(self, tracker):
@@ -1354,6 +1421,22 @@ class TrackerTest(unittest.TestCase):
         missing = writes - set(loop.ReadOnlyTracker.WRITES)
         self.assertEqual(missing, set(),
                          f"unguarded write(s) in a dry run: {sorted(missing)}")
+
+    def test_every_tracker_surface_answers_the_reads_the_loop_makes(self):
+        """A run can be pointed at three trackers, and the loop calls the
+        same reads on all of them. `closed_with` was added for the torn
+        merge-close and would have been an AttributeError on the fixture
+        path — green suite, broken `--fixture` run — so the surfaces are
+        compared rather than trusted."""
+        reads = ("has_label", "closed_with", "comments", "snapshot")
+        for surface in (loop.BoltTracker, loop.FixtureTracker):
+            for name in reads:
+                self.assertTrue(hasattr(surface, name),
+                                f"{surface.__name__} cannot answer {name}")
+        # …and the read-only wrapper passes reads through rather than
+        # refusing them, or a dry run could not even look.
+        guarded = loop.ReadOnlyTracker(FakeTracker())
+        self.assertFalse(guarded.closed_with(1, inbox.CLOSED_MERGED))
 
     def test_the_atomic_label_swap_is_refused_in_a_dry_run(self):
         guarded = loop.ReadOnlyTracker(FakeTracker())

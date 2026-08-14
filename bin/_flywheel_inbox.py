@@ -1012,6 +1012,19 @@ class Tracker:
                        f"/repos/{self.org}/{self.repo}/issues/{number}")
         return any(l.get("name") == label for l in raw.get("labels", ()))
 
+    def closed_with(self, number, label):
+        """Is this item CLOSED and carrying `label`? One read, both fields.
+
+        Closing is two writes — the reason label, then the state — so
+        "already closed with this reason" is a two-field question, and
+        asking only the label half calls a torn close finished. The same
+        payload carries both, so this costs exactly what `has_label` costs.
+        """
+        raw = self._gh(self.token, "api",
+                       f"/repos/{self.org}/{self.repo}/issues/{number}")
+        return (raw.get("state") == "closed"
+                and any(l.get("name") == label for l in raw.get("labels", ())))
+
     def add_label(self, number, label):
         self._gh(self.token, "issue", "edit", str(number),
                  "--repo", f"{self.org}/{self.repo}", "--add-label", label)

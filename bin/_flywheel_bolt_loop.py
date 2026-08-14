@@ -566,6 +566,10 @@ class FixtureTracker:
         raw = self._item(number) or {}
         return label in raw.get("labels", ())
 
+    def closed_with(self, number, label):
+        raw = self._item(number) or {}
+        return raw.get("state") == "closed" and label in raw.get("labels", ())
+
     def milestone(self, title):
         return {"title": title, "number": 1}
 
@@ -1113,14 +1117,22 @@ class BoltLoop:
                 # tracker's eyes. Repair the close as well as the label.
                 if not item.is_assertion:
                     continue
-                if item.merge_closed or not item.is_open:
-                    continue            # already closed; `closed:done` never walked back
+                if item.merge_closed:
+                    continue            # closed WITH the reason; nothing torn
+                if not item.is_open:
+                    continue            # closed some other way; `closed:done` never walked back
+                # What reaches here is open — either never closed, or a
+                # close torn between its label and its state.
                 if self.dry_run:
                     actions.append(f"would close #{item.number} {inbox.CLOSED_MERGED}")
                     continue
-                self.close_merged(WorkBatch(slug=batch.slug, items=(item,)))
-                actions.append(f"#{item.number} closed {inbox.CLOSED_MERGED} "
-                               f"(re-derived from {branch})")
+                # Only what was actually written. `close_merged` returns the
+                # numbers it closed and skips an item already closed with the
+                # reason, so an unconditional append here would record a write
+                # on every cycle for an item nothing had touched.
+                if self.close_merged(WorkBatch(slug=batch.slug, items=(item,))):
+                    actions.append(f"#{item.number} closed {inbox.CLOSED_MERGED} "
+                                   f"(re-derived from {branch})")
 
     def guard_scaffold(self, actions):
         """0 — scaffold-if-missing.
@@ -1644,13 +1656,22 @@ class BoltLoop:
         Closing is the LOOP's, made against git's ancestry answer — the
         merge session comments and closes nothing, for the reason the
         landing already gives: closing is bookkeeping, not judgment.
+
+        **The skip asks both halves.** Closing writes the reason label and
+        then the state, so an item carrying `closed:merged` while still
+        open is a torn close, not a finished one. Skipping on the label
+        alone made this function a no-op on exactly the state the
+        re-derivation guard sends here to be repaired — the item stayed
+        open forever and the guard reported a write it had not made.
+        `closed_with` reads both fields from the one payload `has_label`
+        was already fetching, so the correction costs nothing.
         """
         sha = sha or self.head_sha(self.params.bolt_branch)
         closed = []
         for item in batch.items:
             if not item.is_assertion:
                 continue
-            if self.tracker.has_label(item.number, inbox.CLOSED_MERGED):
+            if self.tracker.closed_with(item.number, inbox.CLOSED_MERGED):
                 continue
             self.tracker.close(
                 item.number,
