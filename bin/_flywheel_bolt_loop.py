@@ -41,6 +41,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -955,9 +956,16 @@ class BoltLoop:
         return any(self.tracker.has_label(n, inbox.NEEDS_OPERATOR) for n in numbers)
 
     def spec_for(self, stage, name, cwd, order, plan_mode=False):
+        # The session id derives from the name and cwd, so ANY loop process
+        # can reconstruct it with zero stored state: the pane is disposable,
+        # the session is durable, and a relaunch resumes the warm
+        # conversation instead of starting cold (#178).
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_URL,
+                                    f"flywheel://{cwd}/{name}"))
         return sessions.SessionSpec(
             name=name, cwd=str(cwd), order=order, profile=PROFILE,
             model=STAGE_MODELS.get(stage), plan_mode=plan_mode,
+            session_id=session_id,
             runner=sessions.choose_runner(stage, self.params.runner_config))
 
     # -- guards ------------------------------------------------------------
@@ -1498,6 +1506,10 @@ class BoltLoop:
                 return outcome
             findings = (outcome.report or "").strip()
             if self.change_validates(change, cwd=cwd) and _no_findings(findings):
+                # The build pane's purpose — the build/verify conversation —
+                # ends here. The session stays resumable by its id.
+                if build.handle is not None:
+                    self.runner("build").close(build.handle)
                 return StageOutcome("verify", "done", "verify is clean")
             key = _finding_key(findings)
             seen[key] = seen.get(key, 0) + 1
@@ -1512,16 +1524,39 @@ class BoltLoop:
         return StageOutcome("verify", "paused", "verify rounds exhausted")
 
     def go_fix(self, batch, build, findings):
-        """"Go fix these" — to the same session, in the same pane."""
+        """"Go fix these" — to the same session, warm.
+
+        Same pane when it is open; when it is gone (a restart, a closed
+        pane), the deterministic session id resumes the same conversation
+        in a fresh pane — the pane is disposable, the session is durable
+        (#178). A gone pane is never a reason to pause."""
         runner, handle = self.runner("build"), build.handle
+        prompt = (f"Verify raised these findings against what you built. Go fix them — "
+                  f"no new scope, and comment on the items what you changed.\n\n{findings}")
         if handle is None:
-            self.pause(batch.numbers, f"Verify raised findings and the build session's "
-                                      f"pane is gone.\n\n{findings}")
-            return StageOutcome("build", "paused", "no session to re-prompt")
+            name = session_name("build", batch.slug)
+            cwd = self.batch_worktree(batch) or self.params.repo_dir
+            spec = self.spec_for("build", name, cwd, sessions.work_order(
+                f"Fix verify findings for {batch.change or batch.slug}", prompt))
+            try:
+                handle = runner.launch(spec)
+            except sessions.SessionError as error:
+                self.pause(batch.numbers, f"Verify raised findings and the fix "
+                                          f"relaunch failed: {error}\n\n{findings}")
+                return StageOutcome("build", "paused", "fix relaunch failed")
+            if handle.reused:
+                # Reattach never re-sends an order; the findings still must
+                # arrive.
+                runner.send(handle, prompt)
+            outcome = self.settle("build", runner, handle, batch.numbers,
+                                  self._clock(), close=False)
+            if outcome.status == "blocked":
+                self.pause(batch.numbers, (
+                    f"The build session asked a question during a go-fix round. Its "
+                    f"pane is open and waiting.\n\n{outcome.report}"))
+            return outcome
         origin = self._clock()
-        runner.send(handle, (
-            f"Verify raised these findings against what you built. Go fix them — no new "
-            f"scope, and comment on the items what you changed.\n\n{findings}"))
+        runner.send(handle, prompt)
         outcome = self.settle("build", runner, handle, batch.numbers, origin, close=False)
         if outcome.status == "blocked":
             self.pause(batch.numbers, (

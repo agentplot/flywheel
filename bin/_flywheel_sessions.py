@@ -103,6 +103,18 @@ def work_order(invocation, brief):
 # Specs and handles
 # ---------------------------------------------------------------------------
 
+def claude_transcript_exists(cwd, session_id):
+    """Does Claude Code hold a transcript for this session in this cwd?
+
+    Transcripts live under ~/.claude/projects/<slug>/<id>.jsonl, where the
+    slug is the cwd with every non-alphanumeric character turned into a
+    dash (measured against real project dirs: /, . and _ all become -).
+    """
+    slug = re.sub(r"[^A-Za-z0-9-]", "-", str(cwd))
+    return (Path.home() / ".claude" / "projects" / slug
+            / f"{session_id}.jsonl").exists()
+
+
 @dataclass(frozen=True)
 class SessionSpec:
     """What to launch. Runner choice is per stage, by supervision need, and
@@ -118,6 +130,12 @@ class SessionSpec:
     skip_permissions: bool = True
     operator_round: bool = False
     env: dict = None
+    #: Deterministic Claude session id (the caller derives it from the
+    #: session name). The pane is disposable; the session is durable: a
+    #: fresh launch pins this id with --session-id, and a later launch
+    #: whose pane is gone resumes the same warm conversation with
+    #: --resume. Empty means neither flag is passed.
+    session_id: str = ""
 
     def __post_init__(self):
         if not self.name:
@@ -241,10 +259,11 @@ class HerdrRunner(Runner):
 
     def __init__(self, run=_subprocess_run, sleep=time.sleep, env=None,
                  start_attempts=12, ready_attempts=30, submit_attempts=8,
-                 poll_s=4):
+                 poll_s=4, transcript_exists=None):
         self._run = run
         self._sleep = sleep
         self._env = env
+        self._transcript_exists = transcript_exists or claude_transcript_exists
         self.start_attempts = start_attempts
         self.ready_attempts = ready_attempts
         self.submit_attempts = submit_attempts
@@ -311,6 +330,14 @@ class HerdrRunner(Runner):
         argv += spec.permission_flag
         if spec.model:
             argv += ["--model", spec.model]
+        if spec.session_id:
+            # A transcript under this id means an earlier pane died with
+            # the conversation intact — resume it warm rather than start
+            # cold. Otherwise pin the id so a future launch can.
+            if self._transcript_exists(spec.cwd, spec.session_id):
+                argv += ["--resume", spec.session_id]
+            else:
+                argv += ["--session-id", spec.session_id]
 
         # A fresh tab's shell can take a while to reach its prompt (devenv
         # init) and herdr reports pane_busy until it does.

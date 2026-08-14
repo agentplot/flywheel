@@ -666,6 +666,39 @@ class StageTest(unittest.TestCase):
             self.batch(1), loop.StageOutcome("build", "done"))
         self.assertEqual(outcome.status, "done")
 
+    def test_verify_clean_closes_the_build_pane(self):
+        # The pane's purpose — the build/verify conversation — ends at
+        # clean; the session stays resumable by its id (#178).
+        tracker = FakeTracker()
+        runner = ScriptedRunner(reports=["No findings — the build matches the change."])
+        build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
+            name="build-add-thing", runner="fake"))
+        outcome = a_loop(tracker, runner=runner).verify_stage(self.batch(1), build)
+        self.assertEqual(outcome.status, "done")
+        self.assertIn("build-add-thing", runner.closed)
+
+    def test_a_gone_pane_resumes_the_session_instead_of_pausing(self):
+        # #178: a restart or a closed pane is never a reason to pause a
+        # fix round — the deterministic id relaunches the conversation.
+        tracker = FakeTracker(comments={1: [{"body": "built it"}]})
+        runner = ScriptedRunner()
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        program = a_loop(tracker, runner=runner, shell=shell)
+        outcome = program.go_fix(self.batch(1),
+                                 loop.StageOutcome("build", "done", handle=None),
+                                 "FINDING: the flag is missing")
+        self.assertEqual(outcome.status, "done")
+        self.assertTrue(runner.launched, "a gone pane relaunches by id")
+        self.assertNotIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+
+    def test_spec_for_derives_a_stable_session_id(self):
+        program = a_loop(FakeTracker())
+        one = program.spec_for("build", "build-x-1", "/tmp/wt", "order")
+        two = program.spec_for("build", "build-x-1", "/tmp/wt", "order")
+        other = program.spec_for("build", "build-x-2", "/tmp/wt", "order")
+        self.assertEqual(one.session_id, two.session_id)
+        self.assertNotEqual(one.session_id, other.session_id)
+
     def test_verify_and_spec_are_skipped_on_the_plan_mode_path(self):
         program = a_loop(FakeTracker(), plan_mode=True)
         self.assertEqual(program.spec_stage(self.batch(1)).status, "skipped")
