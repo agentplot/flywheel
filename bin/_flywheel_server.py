@@ -406,11 +406,34 @@ class Server:
                      "tracker unchanged")
         for milestone, kind in current.keep:
             self.log(f"{milestone}: {kind} already running")
+        self.write_state(current)
 
         failures += self.relay(snapshot)
         if current.quiet and not current.keep:
             self.log("nothing actionable on the tracker")
         return 1 if failures else 0
+
+    def write_state(self, current):
+        """A per-pass snapshot for `flywheel status` — the daemon's answer
+        to run-vs-held, which the tracker alone cannot say."""
+        rows = {}
+        for want in current.start:
+            rows[getattr(want, "milestone", "?")] = {
+                "state": "run", "detail": "started this pass"}
+        for milestone, kind in current.keep:
+            rows[milestone] = {"state": "run", "detail": "loop active"}
+        for milestone, left in current.waiting:
+            rows[milestone] = {"state": "held",
+                               "detail": f"dry; retry in {int(left)}s"}
+        for milestone, host in current.elsewhere:
+            rows[milestone] = {"state": "elsewhere", "detail": host}
+        path = state_dir(self.config.org) / "state.json"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(
+                {"written_unix": self.clock(), "loops": rows}) + "\n")
+        except OSError:
+            pass
 
     def relay(self, snapshot):
         """Dispatch's nudge — the one standing agent, and the only prompt

@@ -5,15 +5,15 @@
     "url": "https://github.com/agentplot"
   },
   "metadata": {
-    "description": "The flywheel — a design loop and a construction loop, coupled at one operator gate. One plugin, served from its own repository.",
-    "version": "0.10.2"
+    "description": "The flywheel \u2014 a design loop and a construction loop, coupled at one operator gate. One plugin, served from its own repository.",
+    "version": "0.9.11"
   },
   "plugins": [
     {
       "name": "flywheel",
       "source": "./",
       "description": "Two coupled loops for turning intent into built code: a design loop that burns fog into decisions, and a construction loop that drives proposals to merged.",
-      "version": "0.10.2",
+      "version": "0.10.16",
       "keywords": [
         "openspec",
         "design-loop",

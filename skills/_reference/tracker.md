@@ -205,6 +205,18 @@ it is already working to find out why. Raising the cord is therefore
 both things at once: the marker in the comment, and the item left in a
 state the filters can see.
 
+**Answering the cord is a marker too.** The operator (or their proxy)
+writes the ruling as an ordinary comment and includes, on its own line:
+
+    <!-- flywheel:andon-answered -->
+
+The answer retires every andon raised before it on that item — the loop
+resumes the batch, and the sessions read the ruling from the comment the
+marker rides in. An answer that quotes the old andon does not re-raise
+it; an andon raised after the answer is a new stop. Without the marker
+the loop keeps pausing on the old andon forever, because recognizing
+"answered" is code, not a judgment about prose.
+
 ## The literal graph — one assertion, birth to landing
 
 An intent `auth-hardening` needs a forgot-password flow; one question

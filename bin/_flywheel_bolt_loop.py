@@ -50,6 +50,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -877,6 +878,7 @@ class BoltLoop:
         self._fix_rounds = {}
         self._landing_attempts = 0
         self._merged = 0
+        self._resume_landing = False
 
     # -- plumbing ----------------------------------------------------------
 
@@ -896,18 +898,123 @@ class BoltLoop:
     def git(self, *args, cwd=None):
         return self.shell(["git", *args], cwd=cwd or self.params.bolt_worktree)
 
+    def _wt_rows(self):
+        out = self.shell(["wt", "list", "--format", "json"],
+                         cwd=self.params.repo_dir)
+        if out.returncode != 0:
+            return None
+        try:
+            rows = json.loads(out.stdout or "[]")
+        except ValueError:
+            return None
+        return rows if isinstance(rows, list) else None
+
+    def worktree_for(self, branch, base):
+        """The loop is the worktree orchestrator — worktrunk's agent-handoff
+        pattern: the orchestrator creates the worktree and the session is
+        born inside it. No order ever tells a session to run `wt switch`.
+
+        Idempotent: an existing worktree for the branch is adopted by path.
+        Returns (path, created); (None, False) when wt cannot provide one.
+        """
+        rows = self._wt_rows()
+        for row in rows or ():
+            if row.get("branch") == branch and row.get("path"):
+                return row["path"], False
+        # A branch may exist with no worktree — a restart, a landing that
+        # pruned, a session that got there first. Plain `wt switch` attaches
+        # a worktree to an existing branch; `--create` is only for a branch
+        # not born yet, and errors on one that is.
+        exists = self.git("rev-parse", "--verify", "--quiet", branch,
+                          cwd=self.params.repo_dir).returncode == 0
+        argv = (["wt", "switch", branch, "--no-cd"] if exists else
+                ["wt", "switch", "--create", branch, "--base", base, "--no-cd"])
+        made = self.shell(argv, cwd=self.params.repo_dir)
+        if made.returncode != 0:
+            return None, False
+        if not exists:
+            self.record_base(branch, base)
+        rows = self._wt_rows()
+        for row in rows or ():
+            if row.get("branch") == branch and row.get("path"):
+                return row["path"], True
+        return None, False
+
+    def record_base(self, branch, base):
+        """The cut point, recorded where git keeps durable facts — a ref,
+        written once at creation. `branch_advanced` reads it to tell an
+        empty branch from a merged one, which bare ancestry cannot."""
+        sha = (self.git("rev-parse", base,
+                        cwd=self.params.repo_dir).stdout or "").strip()
+        if sha:
+            self.git("update-ref", f"refs/flywheel/base/{branch}", sha,
+                     cwd=self.params.repo_dir)
+
+    def branch_base(self, branch):
+        """The recorded cut point; merge-base with main when the branch
+        predates the refs. The fallback reads a merged-but-unrecorded
+        branch as empty — the safe direction, since re-driving green work
+        costs a no-op session and a false "merged" costs a false landing."""
+        ref = self.git("rev-parse", "--verify", "--quiet",
+                       f"refs/flywheel/base/{branch}", cwd=self.params.repo_dir)
+        sha = (ref.stdout or "").strip()
+        if ref.returncode == 0 and sha:
+            return sha
+        fallback = self.git("merge-base", branch, self.params.main_branch,
+                            cwd=self.params.repo_dir)
+        return (fallback.stdout or "").strip() or None
+
+    def branch_advanced(self, branch):
+        """Commits beyond the cut point — the fact that makes ancestry mean
+        something. An empty branch's tip is an ancestor of everything it
+        was cut from, so bare ancestry reads it as merged, landed and done
+        (#164, observed live); an empty branch is "nothing to merge",
+        never "merged"."""
+        base = self.branch_base(branch)
+        if not base:
+            return False
+        proc = self.git("rev-list", "--count", f"{base}..{branch}",
+                        cwd=self.params.repo_dir)
+        out = (proc.stdout or "").strip()
+        return out.isdigit() and int(out) > 0
+
+    def batch_merged(self, batch):
+        """Git's answer to "does this batch still need driving": a build
+        branch that advanced past its cut point and is fully an ancestor
+        of the bolt branch awaits only the landing. A branch that does not
+        exist is work not yet started; one that never advanced is work
+        never done."""
+        branch = f"build/{batch.slug}"
+        if self.git("rev-parse", "--verify", "--quiet", branch).returncode != 0:
+            return False
+        if not self.branch_advanced(branch):
+            return False
+        return self.git("merge-base", "--is-ancestor", branch,
+                        self.params.bolt_branch).returncode == 0
+
+    def batch_worktree(self, batch):
+        path, _created = self.worktree_for(f"build/{batch.slug}",
+                                           self.params.bolt_branch)
+        return path
+
     # -- objective checks: the world, not a report -------------------------
 
-    def change_validates(self, change):
-        """`openspec validate --strict` — green before a spec counts."""
+    def change_validates(self, change, cwd=None):
+        """`openspec validate --strict` — green before a spec counts.
+
+        Run in the tree that HOLDS the change: a spec committed on a build
+        worktree does not exist in the main checkout, and validating there
+        fails a change that is green where it lives.
+        """
         proc = self.shell(["openspec", "validate", change, "--strict"],
-                          cwd=self.params.repo_dir)
+                          cwd=cwd or self.params.repo_dir)
         return proc.returncode == 0
 
     def branch_has_commits(self, branch):
         proc = self.git("rev-list", "--count",
                         f"{self.params.bolt_branch}..{branch}")
-        return (proc.stdout or "0").strip().isdigit() and int(proc.stdout.strip()) > 0
+        out = (proc.stdout or "").strip()
+        return out.isdigit() and int(out) > 0
 
     def branch_merged(self, branch, target=None):
         target = target or self.params.bolt_branch
@@ -938,7 +1045,8 @@ class BoltLoop:
         deliverables are named, so the re-prompt can name them too.
         """
         missing = []
-        if change and not self.change_validates(change):
+        if change and not self.change_validates(
+                change, cwd=self.batch_worktree(batch)):
             missing.append(f"`openspec validate {change} --strict` is not green")
         if not self.branch_has_commits(f"build/{batch.slug}"):
             missing.append(f"no commit on build/{batch.slug} beyond {self.params.bolt_branch}")
@@ -963,7 +1071,10 @@ class BoltLoop:
             self.tracker.comment(number, f"Session `{name}` started.\n\n{marker}")
 
     def launch_origin(self, numbers, name):
-        """The launch time this loop (or an earlier one) already recorded."""
+        """The LATEST launch this loop (or an earlier one) recorded for the
+        name. A name accumulates one marker per (re)launch; the live pane
+        is the most recent one, so the newest marker is its clock — the
+        oldest would measure the first corpse (#168)."""
         best = None
         for number in numbers:
             for comment in self.tracker.comments(number) or ():
@@ -972,7 +1083,7 @@ class BoltLoop:
                     if match.group("name") != name:
                         continue
                     started = int(match.group("started"))
-                    best = started if best is None else min(best, started)
+                    best = started if best is None else max(best, started)
         return best
 
     def flip_in_progress(self, numbers):
@@ -1020,7 +1131,13 @@ class BoltLoop:
             handle = runner.launch(spec)
         except sessions.SessionError as error:
             return StageOutcome(stage, "failed", f"launch: {error}")
-        origin = self.launch_origin(numbers, spec.name) if numbers else None
+        # Markers measure the session that is actually in the pane. Only a
+        # REUSED pane may inherit one; a fresh launch after the old session
+        # died starts its own clock — inheriting the corpse's marker judged
+        # a new-born session stalled at 1276 minutes (#168, observed live).
+        reused = bool(getattr(handle, "reused", False))
+        origin = (self.launch_origin(numbers, spec.name)
+                  if numbers and reused else None)
         if origin is None:
             origin = self._clock()
             if numbers and not expect_prompted:
@@ -1039,7 +1156,11 @@ class BoltLoop:
         watch = sessions.supervise(
             runner, handle, on_notify=on_notify, clock=self._clock, origin=origin,
             notified=self._already_notified(numbers))
-        if watch.notified and watch.state != sessions.WaitState.STALLED:
+        # Clear only the notice THIS watch raised. `watch.notified` is also
+        # true when the label pre-existed — an andon escalation or an earlier
+        # run's notice — and clearing on that read ate a live andon four
+        # times (#165). A label this watch did not set outlives its settle.
+        if notified["fired"] and watch.state != sessions.WaitState.STALLED:
             for number in numbers:
                 inbox.clear_needs_operator(self.tracker, number)
         if watch.state == sessions.WaitState.STALLED:
@@ -1061,9 +1182,16 @@ class BoltLoop:
         return any(self.tracker.has_label(n, inbox.NEEDS_OPERATOR) for n in numbers)
 
     def spec_for(self, stage, name, cwd, order, plan_mode=False):
+        # The session id derives from the name and cwd, so ANY loop process
+        # can reconstruct it with zero stored state: the pane is disposable,
+        # the session is durable, and a relaunch resumes the warm
+        # conversation instead of starting cold (#178).
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_URL,
+                                    f"flywheel://{cwd}/{name}"))
         return sessions.SessionSpec(
             name=name, cwd=str(cwd), order=order, profile=PROFILE,
             model=STAGE_MODELS.get(stage), plan_mode=plan_mode,
+            session_id=session_id,
             runner=sessions.choose_runner(stage, self.params.runner_config))
 
     # -- guards ------------------------------------------------------------
@@ -1079,6 +1207,9 @@ class BoltLoop:
         scaffolded = self.guard_scaffold(actions)
         if scaffolded is not None:
             return actions, scaffolded
+        topology = self.guard_topology(actions)
+        if topology is not None:
+            return actions, topology
         flipped = self.guard_flip_consume(snapshot, actions)
         failure = self.guard_route(snapshot, actions, skip=flipped)
         if failure is None:
@@ -1190,7 +1321,9 @@ class BoltLoop:
         order = sessions.work_order(f"/opsx:new {self.params.slug}", (
             f"Scaffold the bolt record for bolt/{self.params.slug} and bind the "
             f"{self.params.type_name} schema. Write bolt.md from what the milestone "
-            f"and its items say; commit by pathspec. Do not start any other work, "
+            f"and its items say; commit by pathspec, in THIS worktree on the "
+            f"branch already checked out — never create a branch or worktree; "
+            f"the loop cuts the bolt branch after you settle. Do not start any other work, "
             f"and do not touch the items. Deliver by settling."))
         outcome = self.drive("scaffold", self.spec_for(
             "scaffold", name, self.params.bolt_worktree, order))
@@ -1202,6 +1335,30 @@ class BoltLoop:
                     f"openspec/changes/{self.params.slug} is still missing"
                     + (f" — its report: {tail}" if tail else ""))
         actions.append(f"scaffolded openspec/changes/{self.params.slug}")
+        return None
+
+    def guard_topology(self, actions):
+        """0.5 — the bolt branch and its worktree are the loop's to cut.
+
+        The record is born on main at scaffold; cutting `bolt/<slug>` from
+        it is the first topological act, and it is the LOOP'S — a session
+        never creates a worktree (worktrunk's agent-handoff pattern).
+        Idempotent: an existing worktree is adopted by path, so this writes
+        nothing on a second cycle. Skipped on --dry-run and under a
+        fixture tracker; wt's canonical path wins even over an explicit
+        --bolt-worktree, because adoption-by-path is what a restarted
+        stateless loop relies on.
+        """
+        if self.dry_run or isinstance(self.tracker, FixtureTracker):
+            return None
+        path, created = self.worktree_for(self.params.bolt_branch,
+                                          self.params.main_branch)
+        if path is None:
+            return (f"topology: wt could not provide {self.params.bolt_branch} "
+                    f"and its worktree")
+        self.params.bolt_worktree = path
+        if created:
+            actions.append(f"cut {self.params.bolt_branch} and its worktree")
         return None
 
     def guard_flip_consume(self, snapshot, actions):
@@ -1253,6 +1410,9 @@ class BoltLoop:
             i for i in snapshot.on(self.params.milestone)
             if i.is_open and i.queued and i.number not in skip
             and i.parent_batch is None and i.number not in claimed
+            # A container is never work: routing a unit asks the
+            # merge-criteria test of a box, and the keep path then wraps
+            # the box in another box, forever (observed live: #120 → #121).
             and not ({inbox.UNIT, inbox.ELABORATION} & i.labels)
         ]
         if not orphans:
@@ -1282,7 +1442,7 @@ class BoltLoop:
                 self.tracker.set_milestone(item.number, route)
                 actions.append(f"#{item.number} moved to {route}")
         if keep:
-            composed = self.compose(keep)
+            composed = self.compose(keep, snapshot)
             if composed:
                 actions.append(composed)
         return None
@@ -1348,7 +1508,7 @@ class BoltLoop:
             return "keep", f"the verdict named {route}, which is not an open intent"
         return route, why
 
-    def compose(self, items):
+    def compose(self, items, snapshot=None):
         """What stays on the bolt becomes one unit at Backlog.
 
         Backlog, never Ready: composing is the loop's, approving is the
@@ -1357,15 +1517,40 @@ class BoltLoop:
         """
         numbers = [str(i.number) for i in items]
         batch = Path(__file__).resolve().parent / "flywheel-batch"
-        proc = self.shell([
+        argv = [
             str(batch), "--kind", "unit", "--org", self.params.org,
             "--repo", self.params.repo, "--milestone", self.params.milestone,
-            "--title", f"Work the discoveries queued on bolt/{self.params.slug}",
-            *numbers], cwd=self.params.repo_dir)
+            "--title", f"Work the discoveries queued on bolt/{self.params.slug}"]
+        # AMEND, like the intent side: while an open unit for this bolt
+        # sits at Backlog, newcomers join it rather than fragmenting into
+        # near-identical containers.
+        if snapshot is not None:
+            for b in sorted(snapshot.batches, key=lambda b: b.number):
+                if (b.kind == inbox.UNIT and b.status == inbox.STATUS_BACKLOG
+                        and b.milestone == self.params.milestone):
+                    argv += ["--into", str(b.number)]
+                    break
+        proc = self.shell(argv + numbers, cwd=self.params.repo_dir)
         if proc.returncode != 0:
             self._log(f"compose failed: {(proc.stderr or proc.stdout or '').strip()}")
             return None
+        self._await_listed(proc.stdout)
         return f"composed #{', #'.join(numbers)} into a unit at Backlog"
+
+    def _await_listed(self, stdout):
+        """Read-your-writes: do not finish the guard until a batch this
+        cycle created is visible in the list the next snapshot reads."""
+        if self.dry_run or isinstance(self.tracker, FixtureTracker):
+            return
+        match = re.search(r"^unit #(\d+):", stdout or "", re.MULTILINE)
+        if not match:
+            return
+        number = int(match.group(1))
+        for _ in range(6):
+            snap = self.tracker.snapshot(self.params.milestone)
+            if any(i.number == number for i in snap.items):
+                return
+            time.sleep(5)
 
     # -- stages ------------------------------------------------------------
 
@@ -1381,11 +1566,22 @@ class BoltLoop:
             return StageOutcome("spec", "skipped",
                                 "plan-mode path: the approved plan is the spec")
         change = batch.change or batch.slug
+        cwd = self.batch_worktree(batch)
+        if cwd is None:
+            return StageOutcome("spec", "failed",
+                                f"wt could not provide build/{batch.slug} "
+                                f"from {self.params.bolt_branch}")
+        # A resumed batch whose change already validates needs no spec
+        # session — green is green, and re-driving one costs a session per
+        # restart for work that is provably done.
+        if self.change_validates(change, cwd=cwd):
+            return StageOutcome("spec", "done",
+                                "the change already validates — nothing to spec")
         name = session_name("spec-writing", change)
         invocations = list(self.params.config.invocations)
         order = sessions.work_order(f"{invocations[0]} {change}", self.spec_brief(batch, change))
         outcome = self.drive("spec", self.spec_for(
-            "spec", name, self.params.repo_dir, order), batch.numbers, close=False)
+            "spec", name, cwd, order), batch.numbers, close=False)
         runner, handle = self.runner("spec"), outcome.handle
         for invocation in invocations[1:]:
             if not outcome.ok:
@@ -1396,9 +1592,9 @@ class BoltLoop:
                 runner.send(handle, f"{invocation} {change}")
                 outcome = self.settle("spec", runner, handle, batch.numbers,
                                       origin, close=False)
-                if not outcome.ok or self.change_validates(change):
+                if not outcome.ok or self.change_validates(change, cwd=cwd):
                     break
-        if outcome.ok and not self.change_validates(change):
+        if outcome.ok and not self.change_validates(change, cwd=cwd):
             outcome = StageOutcome("spec", "failed",
                                    f"`openspec validate {change} --strict` is not green")
         if outcome.handle is not None:
@@ -1412,24 +1608,35 @@ class BoltLoop:
         return (
             f"Spec for {items} on milestone {self.params.milestone}.\n\n"
             f"One spec-driven change for these assertions, derived from {records} "
-            f"and the decisions they cite, never from a restatement. Worktree: in "
-            f"\"{self.params.repo_dir}\" run  wt switch --create build/{batch.slug} "
-            f"--base {self.params.bolt_branch} --no-cd  and work there. "
+            f"and the decisions they cite, never from a restatement. You are IN "
+            f"the build/{batch.slug} worktree, already cut from "
+            f"{self.params.bolt_branch} by the loop — work here, and never "
+            f"create a branch or worktree. "
             f"`openspec validate {change} --strict` green before it counts.\n\n"
             f"Record what you specced as a comment on each item. Commit by pathspec; "
             f"do not merge and do not push — the loop merges. Deliver by settling.")
 
     def build_stage(self, batch):
         """`/opsx:apply`, or the plan-mode path where the bolt declares it."""
-        since = self._clock()
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
+        # The deliverable window opens at the batch's FIRST launch — the
+        # durable session marker — never this process's clock: a restarted
+        # loop anchoring on its own clock disqualifies every comment already
+        # made and re-prompts a finished build forever (observed live: #140).
+        since = self.launch_origin(batch.numbers, name)
+        if since is None:
+            since = self._clock()
         if self.params.plan_mode:
             outcome = self.plan_mode_build(batch, name)
         else:
             order = sessions.work_order(f"/opsx:apply {change}", self.build_brief(batch))
+            cwd = self.batch_worktree(batch)
+            if cwd is None:
+                return StageOutcome("build", "failed",
+                                    f"wt could not provide build/{batch.slug}")
             outcome = self.drive("build", self.spec_for(
-                "build", name, self.params.repo_dir, order), batch.numbers, close=False)
+                "build", name, cwd, order), batch.numbers, close=False)
         if not outcome.ok:
             return outcome
         missing = self.deliverables(batch, since,
@@ -1442,7 +1649,8 @@ class BoltLoop:
         items = ", ".join(f"#{n}" for n in batch.numbers)
         return (
             f"Build for {items} on milestone {self.params.milestone}.\n\n"
-            f"Apply the change on the build/{batch.slug} worktree. Re-read from disk "
+            f"Apply the change in this worktree — build/{batch.slug}, already cut "
+            f"by the loop. Re-read from disk "
             f"every neighbour the spec claims something about — build time is when the "
             f"neighbours have had longest to move.\n\n"
             f"Comment on each item what you built and what you verified on disk versus "
@@ -1462,6 +1670,19 @@ class BoltLoop:
             self.pause(batch.numbers, f"The build settled without its deliverables "
                                       f"({told}) and its pane is gone.")
             return StageOutcome("build", "paused", f"no deliverables: {told}")
+        # ONE re-prompt across every process that will ever own this batch:
+        # the marker is a tracker comment, so a restarted loop sees its
+        # predecessor's re-prompt and pauses instead of re-prompting again.
+        marker = f"{SESSION_OPEN} reprompt build-{batch.slug} -->"
+        for comment in self.tracker.comments(batch.numbers[0]) or ():
+            body = comment.get("body", "") if isinstance(comment, dict) else str(comment)
+            if marker in body:
+                self.pause(batch.numbers, (
+                    f"The build settled without its deliverables again after an "
+                    f"earlier re-prompt ({told}). The loop paused the item "
+                    f"rather than re-prompting a second time."))
+                return StageOutcome("build", "paused", f"no deliverables: {told}")
+        self.tracker.comment(batch.numbers[0], marker)
         origin = self._clock()
         runner.send(handle, (
             f"Your batch settled without the deliverables the contract names: {told}. "
@@ -1490,7 +1711,11 @@ class BoltLoop:
         """
         order = sessions.work_order("/flywheel:build", self.plan_brief(batch))
         runner = self.runner("build")
-        spec = self.spec_for("build", name, self.params.repo_dir, order, plan_mode=True)
+        cwd = self.batch_worktree(batch)
+        if cwd is None:
+            return StageOutcome("build", "failed",
+                                f"wt could not provide build/{batch.slug}")
+        spec = self.spec_for("build", name, cwd, order, plan_mode=True)
         try:
             handle = runner.launch(spec)
         except sessions.SessionError as error:
@@ -1593,19 +1818,26 @@ class BoltLoop:
                                 "plan-mode path: there is no change to verify against")
         change = batch.change or batch.slug
         name = session_name("verify", batch.slug)
+        cwd = self.batch_worktree(batch) or self.params.repo_dir
         seen = {}
         for _ in range(MAX_FIX_ROUNDS + 1):
+            # The order is just the command (#167): no item references, no
+            # scope prose — pointing verify at the tracker or naming the
+            # behaviors it must not do is what primes the roaming.
             order = sessions.work_order(f"/opsx:verify {change}", (
-                f"Verify what was built for {', '.join('#' + str(n) for n in batch.numbers)} "
-                f"against the change's artifacts, on the build/{batch.slug} worktree. "
+                f"Run /opsx:verify {change} in this worktree. "
                 f"Report the findings plainly, or say plainly that there are none. "
                 f"Fix nothing. Deliver by settling."))
             outcome = self.drive("verify", self.spec_for(
-                "verify", name, self.params.repo_dir, order), batch.numbers)
+                "verify", name, cwd, order), batch.numbers)
             if not outcome.ok:
                 return outcome
             findings = (outcome.report or "").strip()
-            if self.change_validates(change) and _no_findings(findings):
+            if self.change_validates(change, cwd=cwd) and _no_findings(findings):
+                # The build pane's purpose — the build/verify conversation —
+                # ends here. The session stays resumable by its id.
+                if build.handle is not None:
+                    self.runner("build").close(build.handle)
                 return StageOutcome("verify", "done", "verify is clean")
             key = _finding_key(findings)
             seen[key] = seen.get(key, 0) + 1
@@ -1620,16 +1852,39 @@ class BoltLoop:
         return StageOutcome("verify", "paused", "verify rounds exhausted")
 
     def go_fix(self, batch, build, findings):
-        """"Go fix these" — to the same session, in the same pane."""
+        """"Go fix these" — to the same session, warm.
+
+        Same pane when it is open; when it is gone (a restart, a closed
+        pane), the deterministic session id resumes the same conversation
+        in a fresh pane — the pane is disposable, the session is durable
+        (#178). A gone pane is never a reason to pause."""
         runner, handle = self.runner("build"), build.handle
+        prompt = (f"Verify raised these findings against what you built. Go fix them — "
+                  f"no new scope, and comment on the items what you changed.\n\n{findings}")
         if handle is None:
-            self.pause(batch.numbers, f"Verify raised findings and the build session's "
-                                      f"pane is gone.\n\n{findings}")
-            return StageOutcome("build", "paused", "no session to re-prompt")
+            name = session_name("build", batch.slug)
+            cwd = self.batch_worktree(batch) or self.params.repo_dir
+            spec = self.spec_for("build", name, cwd, sessions.work_order(
+                f"Fix verify findings for {batch.change or batch.slug}", prompt))
+            try:
+                handle = runner.launch(spec)
+            except sessions.SessionError as error:
+                self.pause(batch.numbers, f"Verify raised findings and the fix "
+                                          f"relaunch failed: {error}\n\n{findings}")
+                return StageOutcome("build", "paused", "fix relaunch failed")
+            if handle.reused:
+                # Reattach never re-sends an order; the findings still must
+                # arrive.
+                runner.send(handle, prompt)
+            outcome = self.settle("build", runner, handle, batch.numbers,
+                                  self._clock(), close=False)
+            if outcome.status == "blocked":
+                self.pause(batch.numbers, (
+                    f"The build session asked a question during a go-fix round. Its "
+                    f"pane is open and waiting.\n\n{outcome.report}"))
+            return outcome
         origin = self._clock()
-        runner.send(handle, (
-            f"Verify raised these findings against what you built. Go fix them — no new "
-            f"scope, and comment on the items what you changed.\n\n{findings}"))
+        runner.send(handle, prompt)
         outcome = self.settle("build", runner, handle, batch.numbers, origin, close=False)
         if outcome.status == "blocked":
             self.pause(batch.numbers, (
@@ -1751,6 +2006,23 @@ class BoltLoop:
         # read. The landing is the last boundary, with no session downstream
         # to catch what it drops.
         numbers = [i.number for i in items]
+        # Two refusals before anything is driven or closed. A live wait on
+        # any item means a question is standing — landing over it is how
+        # #96–#99 got closed over an unanswered andon (#164). And a bolt
+        # branch that never advanced past its cut point has nothing to
+        # land: its ancestry into main is vacuously true.
+        waiting = [i.number for i in items
+                   if inbox.NEEDS_OPERATOR in i.labels]
+        if waiting:
+            return StageOutcome("land", "paused",
+                                "a live wait stands on "
+                                + ", ".join(f"#{n}" for n in waiting)
+                                + " — the landing waits for the operator")
+        if not self.branch_advanced(self.params.bolt_branch):
+            return StageOutcome("land", "failed",
+                                f"{self.params.bolt_branch} carries no work "
+                                f"beyond its cut point — nothing to land, "
+                                f"nothing closed")
         name = session_name("land", self.params.slug)
         order = sessions.work_order(
             f"Land bolt/{self.params.slug} per its bolt.md.",
@@ -1873,15 +2145,27 @@ class BoltLoop:
             snapshot = self.tracker.snapshot(self.params.milestone)
         box = inbox.bolt_inbox(snapshot, self.params.slug)
         result.ready = tuple(i.number for i in box.ready)
-        if not box.ready and not actions:
+        if not box.ready and not box.in_progress and not actions:
             result.stopped = "nothing is ready and the guards wrote nothing"
             return result
-        work = inbox.unblocked(snapshot, box.ready)
-        if not work:
+        work = list(inbox.unblocked(snapshot, box.ready))
+        resume = [i for i in inbox.unblocked(snapshot, box.in_progress)
+                  if i not in work]
+        if not work and not resume:
             result.stopped = ("every ready item is blocked by an open item — "
                               "nothing to work this cycle")
             return result
-        batches = analyse(work, snapshot, self.params.slug)
+        batches = analyse(tuple(work) + tuple(resume), snapshot, self.params.slug)
+        done = [b for b in batches if self.batch_merged(b)]
+        batches = [b for b in batches if b not in done]
+        if done:
+            # merged-awaiting-landing: nothing to drive, and a restarted
+            # process must still reach for the landing it never saw happen.
+            self._resume_landing = True
+        if not batches:
+            result.stopped = (f"every batch is merged to "
+                              f"{self.params.bolt_branch} — awaiting the landing")
+            return result
         if self.dry_run:
             result.outcomes = tuple(
                 StageOutcome("batch", "skipped",
@@ -2013,7 +2297,7 @@ class BoltLoop:
             return False                       # there is still released work
         if not unlanded:
             return False                       # nothing to upgrade, nothing to land
-        if land == "force" or self._merged > 0:
+        if land == "force" or self._merged > 0 or self._resume_landing:
             return True
         # `_merged` is PER PROCESS, and the server now starts a loop for a
         # milestone whose items are all `closed:merged` precisely so it can

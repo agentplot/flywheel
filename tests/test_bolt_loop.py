@@ -11,6 +11,7 @@ stage is done because git and openspec say so, never because a session's
 report said so).
 """
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -173,6 +174,20 @@ class FakeShell:
         for prefix, result in self.answers.items():
             if tuple(argv)[:len(prefix)] == prefix:
                 return result() if callable(result) else result
+        # Built-in wt: the loop is the worktree orchestrator, so every test
+        # meets `wt list` / `wt switch --create`. bolt/x pre-exists (topology
+        # adopts, writes nothing — the dry-cycle property holds); build/*
+        # exists once a recorded `wt switch --create` made it. All paths are
+        # TREE, whose change directory the deliverable checks already use.
+        if tuple(argv[:2]) == ("git", "merge-base"):
+            return Result(1)   # not an ancestor: batches still need driving
+        if tuple(argv[:2]) == ("wt", "list"):
+            made = [a[3] if a[2] == "--create" else a[2]
+                    for a, _ in self.calls
+                    if a[:2] == ("wt", "switch") and len(a) > 2]
+            rows = [{"branch": b, "path": str(TREE)}
+                    for b in ["bolt/x", *made]]
+            return Result(0, stdout=json.dumps(rows))
         return self.default
 
 
@@ -195,6 +210,159 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
     return loop.BoltLoop(loop.BoltParams(**fields), tracker,
                          runner_factory=lambda stage: runner,
                          run=shell or FakeShell(), clock=clock or FakeClock())
+
+
+class SpecShortCircuitTest(unittest.TestCase):
+
+    def test_a_change_that_already_validates_needs_no_spec_session(self):
+        # A resumed batch re-drove a full spec session per restart for a
+        # change that was already green.
+        shell = FakeShell(answers={("openspec", "validate"): Result(0)})
+        runner = ScriptedRunner([])
+        l = a_loop(FakeTracker(), shell=shell, runner=runner)
+        batch = loop.WorkBatch(slug="b1", items=(item(7, inbox.IN_PROGRESS),))
+        outcome = l.spec_stage(batch)
+        self.assertEqual(outcome.status, "done")
+        self.assertEqual(runner.launched, [], "no session may be driven")
+
+
+class DurableRepromptTest(unittest.TestCase):
+
+    def test_a_predecessors_reprompt_marker_pauses_instead_of_reprompting(self):
+        # The one-re-prompt rule must survive a process restart: the marker
+        # is a tracker comment, and a successor that finds it pauses
+        # (observed live: three re-prompts across three restarts, #140).
+        marker = loop.SESSION_OPEN + " reprompt build-b1 -->"
+        tracker = FakeTracker(Snapshot(), comments={7: [{"body": marker}]})
+        l = a_loop(tracker)
+        batch = loop.WorkBatch(slug="b1", items=(item(7, inbox.IN_PROGRESS),))
+        outcome = l.reprompt_deliverables(
+            batch, loop.StageOutcome("build", "done", handle=object()),
+            ["no comment on #7"])
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn(("add_label", 7, inbox.NEEDS_OPERATOR), tracker.writes)
+
+
+class RelaunchOriginTest(unittest.TestCase):
+
+    def test_a_fresh_launch_ignores_a_dead_sessions_marker(self):
+        # #168: build relaunched after its predecessor died, inherited the
+        # corpse's marker, and was judged stalled at 1276 minutes before
+        # doing anything. Only a REUSED pane may inherit a marker.
+        marker = f'{loop.SESSION_OPEN} name="build-b1" started="0" -->'
+        tracker = FakeTracker(comments={7: [{"body": marker},
+                                            {"body": "built it"}]})
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        l = a_loop(tracker, shell=shell)   # ScriptedRunner: never reused
+        batch = loop.WorkBatch(slug="b1", items=(item(7, inbox.IN_PROGRESS),))
+        outcome = l.build_stage(batch)
+        self.assertEqual(outcome.status, "done")
+
+    def test_launch_origin_reads_the_latest_marker_for_the_name(self):
+        first = f'{loop.SESSION_OPEN} name="build-b1" started="100" -->'
+        again = f'{loop.SESSION_OPEN} name="build-b1" started="900" -->'
+        tracker = FakeTracker(comments={7: [{"body": first},
+                                            {"body": again}]})
+        l = a_loop(tracker)
+        self.assertEqual(l.launch_origin([7], "build-b1"), 900)
+
+
+class ComposeAmendTest(unittest.TestCase):
+
+    def test_bolt_compose_appends_to_the_open_backlog_unit(self):
+        shell = FakeShell()
+        snap = Snapshot(
+            items=[item(120, inbox.QUEUED, inbox.UNIT, milestone="bolt/x")],
+            batches=[Batch(120, kind=inbox.UNIT,
+                           status=inbox.STATUS_BACKLOG, milestone="bolt/x")])
+        l = a_loop(FakeTracker(snap), shell=shell)
+        l.compose([item(7, inbox.QUEUED, milestone="bolt/x")], snap)
+        call = next(a for a, _ in shell.calls if "flywheel-batch" in str(a[0]))
+        self.assertIn("--into", call)
+        self.assertEqual(call[call.index("--into") + 1], "120")
+
+
+class StatelessResumeTest(unittest.TestCase):
+    """A restarted loop re-adopts its own in-progress items (observed live:
+    a restart saw only state:ready, found nothing, and stranded the bolt)."""
+
+    def _snap(self):
+        return Snapshot(items=[
+            item(96, inbox.IN_PROGRESS, inbox.TYPE_ASSERTION,
+                 milestone="bolt/x")])
+
+    def test_an_unmerged_in_progress_item_is_re_driven_not_stranded(self):
+        l = a_loop(FakeTracker(self._snap()))
+        l.dry_run = True   # merge-base answers rc 1: not merged
+        result = l.cycle(1)
+        self.assertNotEqual(result.stopped,
+                            "nothing is ready and the guards wrote nothing")
+
+    def test_a_merged_in_progress_item_awaits_the_landing(self):
+        shell = FakeShell(answers={("git", "merge-base"): Result(0),
+                                   ("git", "rev-parse"): Result(0, "abc\n"),
+                                   ("git", "rev-list"): Result(0, "1\n")})
+        l = a_loop(FakeTracker(self._snap()), shell=shell)
+        result = l.cycle(1)
+        self.assertIn("awaiting the landing", result.stopped)
+        box = inbox.bolt_inbox(self._snap(), "x")
+        self.assertTrue(l.landing_wanted("auto", box,
+                                         list(self._snap().items)))
+
+    def test_an_empty_branch_is_nothing_to_merge_never_merged(self):
+        # #164, observed live: build/stage-labels-133's tip was the very
+        # commit it was cut at, so bare ancestry read the never-worked
+        # branch as "merged" and the loop went looking for a landing.
+        shell = FakeShell(answers={("git", "merge-base"): Result(0),
+                                   ("git", "rev-parse"): Result(0, "abc\n"),
+                                   ("git", "rev-list"): Result(0, "0\n")})
+        l = a_loop(FakeTracker(self._snap()), shell=shell)
+        result = l.cycle(1)
+        self.assertNotIn("awaiting the landing", result.stopped or "")
+
+
+class ContainerRoutingTest(unittest.TestCase):
+
+    def test_a_unit_parent_is_never_routed(self):
+        # Observed live: the loop composed discoveries into unit #120, then
+        # the next cycle routed the container itself and the keep path
+        # wrapped it in #121. A container is never work.
+        snap = Snapshot(items=[
+            item(120, inbox.QUEUED, inbox.UNIT, milestone="bolt/x"),
+            item(7, inbox.QUEUED, milestone="bolt/x"),
+        ])
+        l = a_loop(FakeTracker())
+        l.dry_run = True
+        actions = []
+        l.guard_route(snap, actions)
+        said = " ".join(actions)
+        self.assertIn("#7", said)
+        self.assertNotIn("#120", said)
+
+
+class WorktreeOrchestrationTest(unittest.TestCase):
+
+    def test_an_existing_branch_without_a_worktree_gets_plain_switch(self):
+        # FakeShell's default answers git rev-parse with rc 0: the branch
+        # exists. --create on an existing branch errors in wt, so the loop
+        # must attach with plain switch (the restart / session-got-there
+        # -first case).
+        shell = FakeShell()
+        l = a_loop(FakeTracker(), shell=shell)
+        path, created = l.worktree_for("bolt/y", "main")
+        self.assertEqual(path, str(TREE))
+        creates = [a for a, _ in shell.calls if a[:3] == ("wt", "switch", "--create")]
+        self.assertFalse(creates, "an existing branch is attached, never --create'd")
+
+    def test_a_branch_not_born_yet_is_created_from_its_base(self):
+        shell = FakeShell(answers={("git", "rev-parse"): Result(1)})
+        l = a_loop(FakeTracker(), shell=shell)
+        path, created = l.worktree_for("build/z", "bolt/x")
+        self.assertEqual(path, str(TREE))
+        self.assertTrue(created)
+        create = next(a for a, _ in shell.calls
+                      if a[:3] == ("wt", "switch", "--create"))
+        self.assertIn("--base", create)
 
 
 # ---------------------------------------------------------------------------
@@ -691,7 +859,12 @@ class StageTest(unittest.TestCase):
 
     def test_the_strategy_decides_how_many_spec_commands_the_session_is_given(self):
         runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 4)
-        program = a_loop(FakeTracker(), runner=runner, strategy="new+ff")
+        # not green before the session runs, green after — else the
+        # short-circuit skips the session this test is about
+        greens = iter([Result(1), Result(0), Result(0), Result(0)])
+        shell = FakeShell({("openspec", "validate"): lambda: next(greens)})
+        program = a_loop(FakeTracker(), runner=runner, strategy="new+ff",
+                         shell=shell)
         program.spec_stage(self.batch(1))
         self.assertTrue(runner.launched[0].order.startswith("/opsx:new add-thing"))
         self.assertEqual(runner.sent[0][1], "/opsx:ff add-thing")
@@ -710,6 +883,20 @@ class StageTest(unittest.TestCase):
         shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
         outcome = a_loop(tracker, shell=shell).build_stage(self.batch(1))
         self.assertEqual(outcome.status, "done")
+
+    def test_settle_never_clears_a_needs_operator_it_did_not_raise(self):
+        # #165, observed live 4x: the andon's escalation was read as "my
+        # stall notice already fired" and cleared when the next session
+        # over the same items settled. A label this watch did not set
+        # outlives its settle.
+        tracker = FakeTracker(comments={1: [{"body": "built it"}]})
+        tracker.add_label(1, inbox.NEEDS_OPERATOR)   # the andon's, not ours
+        tracker.writes.clear()
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        outcome = a_loop(tracker, shell=shell).build_stage(self.batch(1))
+        self.assertEqual(outcome.status, "done")
+        self.assertNotIn(("remove_label", 1, inbox.NEEDS_OPERATOR),
+                         tracker.writes)
 
     def test_verify_pauses_the_item_when_the_same_finding_survives_two_rounds(self):
         tracker = FakeTracker(comments={1: [{"body": "built it"}]})
@@ -732,6 +919,39 @@ class StageTest(unittest.TestCase):
         outcome = a_loop(tracker, runner=runner).verify_stage(
             self.batch(1), loop.StageOutcome("build", "done"))
         self.assertEqual(outcome.status, "done")
+
+    def test_verify_clean_closes_the_build_pane(self):
+        # The pane's purpose — the build/verify conversation — ends at
+        # clean; the session stays resumable by its id (#178).
+        tracker = FakeTracker()
+        runner = ScriptedRunner(reports=["No findings — the build matches the change."])
+        build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
+            name="build-add-thing", runner="fake"))
+        outcome = a_loop(tracker, runner=runner).verify_stage(self.batch(1), build)
+        self.assertEqual(outcome.status, "done")
+        self.assertIn("build-add-thing", runner.closed)
+
+    def test_a_gone_pane_resumes_the_session_instead_of_pausing(self):
+        # #178: a restart or a closed pane is never a reason to pause a
+        # fix round — the deterministic id relaunches the conversation.
+        tracker = FakeTracker(comments={1: [{"body": "built it"}]})
+        runner = ScriptedRunner()
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        program = a_loop(tracker, runner=runner, shell=shell)
+        outcome = program.go_fix(self.batch(1),
+                                 loop.StageOutcome("build", "done", handle=None),
+                                 "FINDING: the flag is missing")
+        self.assertEqual(outcome.status, "done")
+        self.assertTrue(runner.launched, "a gone pane relaunches by id")
+        self.assertNotIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+
+    def test_spec_for_derives_a_stable_session_id(self):
+        program = a_loop(FakeTracker())
+        one = program.spec_for("build", "build-x-1", "/tmp/wt", "order")
+        two = program.spec_for("build", "build-x-1", "/tmp/wt", "order")
+        other = program.spec_for("build", "build-x-2", "/tmp/wt", "order")
+        self.assertEqual(one.session_id, two.session_id)
+        self.assertNotEqual(one.session_id, other.session_id)
 
     def test_verify_and_spec_are_skipped_on_the_plan_mode_path(self):
         program = a_loop(FakeTracker(), plan_mode=True)
@@ -1104,10 +1324,41 @@ class LandingTest(unittest.TestCase):
     def program(self, criteria, ancestor=0, runner=None, tracker=None):
         tracker = tracker or FakeTracker(self.snapshot())
         shell = FakeShell({("git", "merge-base"): Result(ancestor),
-                           ("git", "rev-parse"): Result(0, "abc1234\n")})
+                           ("git", "rev-parse"): Result(0, "abc1234\n"),
+                           ("git", "rev-list"): Result(0, "1\n")})
         program = a_loop(tracker, runner=runner or ScriptedRunner(), shell=shell)
         program.merge_criteria = lambda: criteria
         return program, tracker
+
+    def test_a_work_less_bolt_branch_lands_nothing_and_closes_nothing(self):
+        # #164, observed live: bolt/stage-labels carried only the scaffold,
+        # already on main — ancestry was vacuously true, and the loop
+        # declared "landed" and closed #96–#99 over a standing andon.
+        tracker = FakeTracker(self.snapshot())
+        shell = FakeShell({("git", "merge-base"): Result(0),
+                           ("git", "rev-parse"): Result(0, "abc1234\n"),
+                           ("git", "rev-list"): Result(0, "0\n")})
+        program = a_loop(tracker, shell=shell)
+        program.merge_criteria = lambda: "Landing: merge"
+        outcome = program.land_stage(self.snapshot())
+        self.assertEqual(outcome.status, "failed")
+        self.assertIn("nothing to land", outcome.detail)
+        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
+
+    def test_a_live_wait_on_any_item_holds_the_landing(self):
+        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+                                    inbox.NEEDS_OPERATOR)],
+                        milestone="bolt/x")
+        tracker = FakeTracker(snap)
+        shell = FakeShell({("git", "merge-base"): Result(0),
+                           ("git", "rev-parse"): Result(0, "abc1234\n"),
+                           ("git", "rev-list"): Result(0, "1\n")})
+        program = a_loop(tracker, shell=shell)
+        program.merge_criteria = lambda: "Landing: merge"
+        outcome = program.land_stage(snap)
+        self.assertEqual(outcome.status, "paused")
+        self.assertIn("#1", outcome.detail)
+        self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
 
     def test_every_item_ends_at_closed_done_with_the_landing_sha(self):
         program, tracker = self.program("Landing: merge", ancestor=0)
@@ -1342,7 +1593,20 @@ class MergeCloseTest(unittest.TestCase):
         tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
         runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
                                 reports=["No findings."] * 12)
-        a_loop(tracker, runner=runner, shell=self.shell()).cycle(1)
+        # Ancestry must FLIP when the merge session runs: a branch that
+        # reads merged from the start is parked awaiting the landing by
+        # the resume partition and never drives at all.
+        class MergeAwareShell(FakeShell):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                if tuple(argv[:2]) == ("git", "merge-base"):
+                    self.calls.append((tuple(argv), cwd))
+                    merged = any(s.name.startswith("merge-")
+                                 for s in runner.launched)
+                    return Result(0 if merged else 1)
+                return super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+        shell = MergeAwareShell({("git", "rev-list"): Result(0, "3\n"),
+                                 ("git", "rev-parse"): Result(0, "abc1234\n")})
+        a_loop(tracker, runner=runner, shell=shell).cycle(1)
         self.assertIn(inbox.STAGE_MERGED, tracker.labels[1])
         self.assertIn(inbox.CLOSED_MERGED, tracker.labels[1])
 

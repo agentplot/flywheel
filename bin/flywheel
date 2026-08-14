@@ -1044,8 +1044,8 @@ def server_rows(manifest: dict) -> None:
         box = inbox.Tracker(resolve_token(org), org, repo,
                             project_title=manifest["top"].get("project",
                                                               "Flywheel"))
-        jobs = inbox.server_inbox(box.snapshot(with_edges=False),
-                                  changes_dir=changes)
+        snap = box.snapshot(with_edges=False)
+        jobs = inbox.server_inbox(snap, changes_dir=changes)
     except SystemExit as error:
         print(f"  tracker not readable from here — {error}")
         return
@@ -1053,11 +1053,31 @@ def server_rows(manifest: dict) -> None:
         print(f"  tracker not readable from here — "
               f"{error.__class__.__name__}: {error}")
         return
+    live = {}
+    state_path = server.state_dir(org) / "state.json"
+    try:
+        if pid and time.time() - state_path.stat().st_mtime < 300:
+            live = json.loads(state_path.read_text()).get("loops", {})
+    except (OSError, ValueError):
+        pass
     if not jobs:
         print("  no milestone has a job")
-        return
     for job in jobs:
-        print(f"  {job.milestone}  {job.kind}  ({job.why})")
+        row = live.get(job.milestone)
+        verb = row["state"] if row else job.kind
+        detail = f"  · {row['detail']}" if row and row.get("detail") else ""
+        print(f"  {job.milestone}  {verb}  ({job.why}){detail}")
+    flips = [b for b in snap.batches if b.status == "Backlog"]
+    ops = [i for i in snap.items
+           if i.is_open and inbox.NEEDS_OPERATOR in i.labels]
+    if flips or ops:
+        print()
+        print("waiting on the operator:")
+        for b in flips:
+            where = f" on {b.milestone}" if b.milestone else ""
+            print(f"  batch #{b.number} at Backlog{where} — flip to Ready to release")
+        for i in ops:
+            print(f"  #{i.number} needs-operator — {getattr(i, 'title', '')[:60]}")
 
 def down(manifest: dict) -> int:
     """Stop the server and every loop process for this org.

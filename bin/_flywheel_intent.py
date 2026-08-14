@@ -49,10 +49,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _flywheel_inbox import (CLOSED_DONE, INTENT_PREFIX, IN_PROGRESS, Item,
-                             NEEDS_OPERATOR, QUEUED, READY, STAGE_COLLECTED,
-                             STAGE_DONE, STAGE_IN_SESSION, TYPE_ASSERTION,
-                             Tracker, TrackerSnapshot, clear_needs_operator,
+from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,
+                             IN_PROGRESS, Item, NEEDS_OPERATOR, QUEUED, READY,
+                             STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
+                             STATUS_BACKLOG, TYPE_ASSERTION, Tracker,
+                             TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, set_needs_operator,
                              set_stage, unblocked)
 from _flywheel_sessions import (MAX_NAME, SessionHandle, SessionSpec,
@@ -171,6 +172,7 @@ class Writer:
         self.writes = []
         self._added = {}
         self._removed = {}
+        self.created = []   # issue numbers born this cycle, for wait_listed
         self.snapshot = snapshot
 
     # -- the snapshot, and the cache that may not outlive it ----------------
@@ -260,7 +262,10 @@ class Writer:
     def create_issue(self, title, body, labels=(), milestone=None):
         self._record("issue", title, " ".join(labels))
         if self.apply and self.tracker:
-            return self.tracker.create_issue(title, body, labels, milestone)
+            number = self.tracker.create_issue(title, body, labels, milestone)
+            if number:
+                self.created.append(number)
+            return number
         return None
 
     def attach_sub_issue(self, parent, number):
@@ -457,7 +462,7 @@ def attach_to_unit(writer, batch_number, numbers):
 # Guard 3 — compose
 # ---------------------------------------------------------------------------
 
-def apply_compose(writer, items, config):
+def apply_compose(writer, items, config, snapshot=None):
     """Orphan `state:queued` items into one proposed batch at Backlog.
 
     Composing is not releasing — `flywheel-batch` puts the parent at Backlog
@@ -475,8 +480,44 @@ def apply_compose(writer, items, config):
         "--milestone", config.milestone,
         "--title", f"Work the queued design items on {config.slug}",
         "--project", config.project,
-    ] + [str(i.number) for i in sorted(items, key=lambda i: i.number)]
-    writer.command(argv, cwd=config.repo_dir, what="flywheel-batch")
+    ]
+    # AMEND, like handoff birth: while an open elaboration for this
+    # milestone sits at Backlog, newcomers JOIN it — a new batch per
+    # sweep fragments the queue into near-identical containers (observed
+    # live: #131/#132, #109/#114/#129).
+    if snapshot is not None:
+        for b in sorted(snapshot.batches, key=lambda b: b.number):
+            if (b.kind == ELABORATION and b.status == STATUS_BACKLOG
+                    and b.milestone == config.milestone):
+                argv += ["--into", str(b.number)]
+                break
+    argv += [str(i.number) for i in sorted(items, key=lambda i: i.number)]
+    result = writer.command(argv, cwd=config.repo_dir, what="flywheel-batch")
+    if result is not None:
+        match = re.search(r"^(?:unit|elaboration) #(\d+):",
+                          (result.stdout or ""), re.MULTILINE)
+        if match:
+            writer.created.append(int(match.group(1)))
+
+
+def wait_listed(tracker, numbers, milestone, tries=8, pause=5,
+                sleep=time.sleep):
+    """Read-your-writes over an eventually consistent list.
+
+    GitHub's issue list can lag a fresh creation, and the next cycle's
+    snapshot IS that list — a birth invisible to it births again
+    (observed live: handoffs #128/#130, elaborations #131/#132). A cycle
+    that created something does not proceed until its creations are
+    listed, so no successor ever reads a pre-write list.
+    """
+    missing = set(numbers)
+    for _ in range(tries):
+        snap = tracker.snapshot(milestone=milestone)
+        missing -= {i.number for i in snap.items}
+        if not missing:
+            return True
+        sleep(pause)
+    return False
 
 
 def run_guards(writer, inbox, snapshot, config):
@@ -484,7 +525,7 @@ def run_guards(writer, inbox, snapshot, config):
     mark = writer.mark()
     apply_flip_consume(writer, inbox.queued_to_flip)
     apply_handoff(writer, inbox.handoff, snapshot, config)
-    apply_compose(writer, inbox.orphan_queued, config)
+    apply_compose(writer, inbox.orphan_queued, config, snapshot)
     return writer.since(mark)
 
 
@@ -947,6 +988,9 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
 
             guard_writes = run_guards(writer, inbox, snapshot, config)
             if guard_writes and config.apply:
+                if writer.created:
+                    wait_listed(tracker, writer.created, config.milestone)
+                    writer.created = []
                 continue               # the tracker moved; re-query before working
 
             # A flip the loop was not there to see. Collected BEFORE the

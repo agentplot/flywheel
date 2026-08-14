@@ -423,6 +423,7 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
 class BoltInbox:
     milestone: str
     ready: tuple = ()
+    in_progress: tuple = ()   # the loop's own half-done items, for re-adoption
     ready_units: tuple = ()
     queued_to_flip: tuple = ()
 
@@ -473,7 +474,14 @@ def bolt_inbox(snapshot, slug):
     """
     milestone = f"{BOLT_PREFIX}{slug}"
     on_milestone = [i for i in snapshot.on(milestone) if i.is_open]
+    # `ready` stays exactly the record's filter. `in_progress` rides
+    # beside it because the loop itself flips ready -> in-progress when a
+    # batch starts, and a STATELESS RESTART must re-adopt its half-done
+    # items — but which of them still need driving is git's to say (a
+    # batch whose build branch is an ancestor of the bolt branch awaits
+    # only the landing), so the split is the loop's, not this filter's.
     ready = tuple(i for i in on_milestone if i.ready)
+    in_progress = tuple(i for i in on_milestone if i.in_progress)
     units = tuple(
         b for b in snapshot.batches
         if b.at_ready and b.kind == UNIT and b.milestone in (None, milestone)
@@ -481,6 +489,7 @@ def bolt_inbox(snapshot, slug):
     return BoltInbox(
         milestone=milestone,
         ready=ready,
+        in_progress=in_progress,
         ready_units=units,
         queued_to_flip=flip_consume_plan(snapshot, milestone),
     )
@@ -688,6 +697,9 @@ def dispatch_inbox(snapshot):
 
 ANDON_OPEN = "<!-- flywheel:andon -->"
 ANDON_CLOSE = "<!-- /flywheel:andon -->"
+ANDON_ANSWERED = "<!-- flywheel:andon-answered -->"
+_ANDON_ANSWERED = re.compile(
+    r"^" + re.escape(ANDON_ANSWERED) + r"[ \t]*$", re.MULTILINE)
 
 _ANDON = re.compile(
     r"^" + re.escape(ANDON_OPEN) + r"[ \t]*$(?P<body>.*?)^" + re.escape(ANDON_CLOSE),
@@ -754,13 +766,23 @@ def find_andon(comments):
     expressible in the filters is a design smell. So the loop learns that a
     session stopped from `needs-operator` and item state the way it learns
     everything else, and reads the marker only to find out why.
+
+    An `ANDON_ANSWERED` marker retires every andon raised before it — the
+    operator (or their proxy) writes it in the comment that answers, and
+    the batch resumes; without it an answered andon re-pauses the batch on
+    every cycle forever (#166). Same strictness: a literal marker line,
+    never prose. An answer comment that quotes the old andon does not
+    re-raise it.
     """
+    found = None
     for comment in comments or ():
         body = comment.get("body") if isinstance(comment, dict) else comment
-        found = parse_andon(body)
-        if found:
-            return found
-    return None
+        if body and _ANDON_ANSWERED.search(body):
+            found = None
+            continue
+        if found is None:
+            found = parse_andon(body)
+    return found
 
 
 # ---------------------------------------------------------------------------
@@ -865,8 +887,31 @@ class Tracker:
             from _flywheel_gh import gh as _gh, graphql as _graphql
             gh = gh or _gh
             graphql = graphql or _graphql
-        self._gh = gh
+        self._gh = self._with_refresh(gh)
         self._graphql = graphql
+
+    def _with_refresh(self, raw):
+        """Retry exactly once with a re-minted token on Bad credentials.
+
+        Installation tokens live one hour and flywheel-token's cache
+        refreshes five minutes before expiry — but a long-lived process
+        holding the token STRING in memory sails past the hour (observed
+        live: a loop 401'd on the deliverables check after waiting out a
+        30-minute build; the server daemon would hit the same wall). The
+        wrapper ignores the stale first argument and re-resolves through
+        flywheel-token, whose cache makes the refresh cheap.
+        """
+        def call(token, *args, **kw):
+            try:
+                return raw(token, *args, **kw)
+            except SystemExit as err:
+                if "Bad credentials" not in str(err):
+                    raise
+                os.environ.pop("GH_TOKEN", None)   # never re-read a stale copy
+                from _flywheel_gh import resolve_token
+                self.token = resolve_token(self.org)
+                return raw(self.token, *args, **kw)
+        return call
 
     # -- reads -------------------------------------------------------------
 

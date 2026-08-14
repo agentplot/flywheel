@@ -164,6 +164,27 @@ class IdempotentLaunchTest(unittest.TestCase):
         self.assertNotIn("agent prompt", herdr.verbs(),
                          "reuse must never re-send the work order")
 
+    def test_a_fresh_launch_pins_the_deterministic_session_id(self):
+        herdr = FakeHerdr()
+        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+                                      transcript_exists=lambda c, s: False)
+        runner.launch(spec(session_id="abc-123"))
+        start = next(a for a in herdr.calls if a[1:3] == ["agent", "start"])
+        self.assertIn("--session-id", start)
+        self.assertEqual(start[start.index("--session-id") + 1], "abc-123")
+
+    def test_a_launch_with_a_transcript_resumes_the_warm_session(self):
+        # #178: the pane is disposable, the session is durable — a
+        # transcript under the derived id means resume, never start cold.
+        herdr = FakeHerdr()
+        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+                                      transcript_exists=lambda c, s: True)
+        runner.launch(spec(session_id="abc-123"))
+        start = next(a for a in herdr.calls if a[1:3] == ["agent", "start"])
+        self.assertIn("--resume", start)
+        self.assertEqual(start[start.index("--resume") + 1], "abc-123")
+        self.assertNotIn("--session-id", start)
+
     def test_a_fresh_launch_creates_the_tab_then_starts_then_prompts(self):
         herdr = FakeHerdr()
         runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
@@ -216,6 +237,12 @@ class IdempotentLaunchTest(unittest.TestCase):
                                       submit_attempts=2)
         with self.assertRaises(sessions.SessionError):
             runner.launch(spec())
+        # #169: the corpse must not keep the name — launch is idempotent by
+        # name and never re-sends an order, so an unreleased name wedges
+        # every later pass.
+        renames = [a for a in herdr.calls if a[1:3] == ["agent", "rename"]]
+        self.assertTrue(renames, "the failed launch must release the name")
+        self.assertTrue(renames[-1][4].endswith("-undelivered"))
 
     def test_the_name_is_set_at_launch_so_there_is_no_rename_to_race(self):
         herdr = FakeHerdr()
