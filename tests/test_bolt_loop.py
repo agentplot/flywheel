@@ -857,6 +857,61 @@ class StageLabelTest(unittest.TestCase):
                           inbox.STAGE_MERGED])
         self.assertNotIn(inbox.STAGE_VERIFIED, tracker.labels[1])
 
+    def test_every_boundary_writes_off_ran_rather_than_ok(self):
+        """The four writes share one test, and it is not `ok`.
+
+        `ok` means "the cycle may carry on" and admits `skipped`; `ran`
+        means "this boundary occurred". Pinning the distinction on the
+        outcome type itself, so the next stage that learns to skip cannot
+        start labelling itself by inheriting the wrong predicate.
+        """
+        skipped = loop.StageOutcome("verify", "skipped", "did not run")
+        self.assertTrue(skipped.ok, "a skipped stage does not stop the cycle")
+        self.assertFalse(skipped.ran, "but it did not happen")
+        done = loop.StageOutcome("verify", "done", "clean")
+        self.assertTrue(done.ok)
+        self.assertTrue(done.ran)
+        for status in ("paused", "failed", "stalled", "blocked"):
+            outcome = loop.StageOutcome("verify", status)
+            self.assertFalse(outcome.ok, status)
+            self.assertFalse(outcome.ran, status)
+
+    def test_a_skipped_stage_writes_no_label_on_the_plan_mode_path(self):
+        """A stage that did not happen writes no label — and on the plan-mode
+        path TWO stages do not happen.
+
+        `spec_stage` and `verify_stage` both return `skipped` under
+        `plan_mode`, and `StageOutcome.ok` admits `skipped` so that the
+        cycle carries on past them. That makes `.ok` the wrong test for
+        "did this boundary occur": `bolt-quick` declares the default stage
+        set, so `config.runs("verify")` is true on a plan-mode bolt and the
+        verify boundary would write `stage:verified` for a session that was
+        never launched — the same wrong audit answer the spec forbids on
+        `bolt-direct`, arrived at by a different route.
+
+        `stage:planned` is still written on this path, by `plan_mode_build`
+        at the APPROVED verdict — the one boundary the plan-mode path has.
+        """
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
+                                reports=["a plan"] * 12)
+        program = a_loop(tracker, runner=runner, shell=self.shell(),
+                         plan_mode=True)
+        # Approve once, then let the session read as finished — `approved`
+        # re-enters the dialog loop, so a judge that only ever approves
+        # never returns.
+        verdicts = iter([("approved", "matches the claim"),
+                         ("unreadable", "finished")])
+        program.judge_plan = lambda *a: next(verdicts)
+        program.cycle(1)
+        self.assertNotIn(inbox.STAGE_VERIFIED, self.stages_written(tracker),
+                         "no verify session ran, so no verify label")
+        self.assertNotIn(inbox.STAGE_VERIFIED, tracker.labels[1])
+        self.assertEqual(self.stages_written(tracker),
+                         [inbox.STAGE_PLANNED, inbox.STAGE_BUILT,
+                          inbox.STAGE_MERGED])
+
 
 class LandingTest(unittest.TestCase):
 

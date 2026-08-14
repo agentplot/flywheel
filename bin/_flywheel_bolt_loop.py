@@ -723,7 +723,28 @@ class StageOutcome:
 
     @property
     def ok(self):
+        """May the cycle carry on past this stage?
+
+        `skipped` is ok because a stage that does not apply must not stop
+        the ones after it — the plan-mode path skips spec and verify, and
+        still builds and merges.
+        """
         return self.status in ("done", "skipped")
+
+    @property
+    def ran(self):
+        """Did this boundary actually occur?
+
+        The stage labels are written off THIS, never off `ok`. The two
+        differ on exactly one status — `skipped` — and that difference is
+        the whole point: a skipped stage is one that did not happen, and
+        "a stage that did not happen writes no label" is the property the
+        audit query depends on. Reading `ok` here would have the plan-mode
+        path label items `stage:verified` with no verify session ever
+        launched, which is the same wrong answer the spec forbids on
+        `bolt-direct`, reached by a different route.
+        """
+        return self.status == "done"
 
 
 @dataclass
@@ -1765,10 +1786,11 @@ class BoltLoop:
                 outcomes.append(spec)
                 if not spec.ok:
                     continue
-                # On the plan-mode path there is no spec to validate, and
+                # `spec.ran`, not `spec.ok`: on the plan-mode path the spec
+                # stage is SKIPPED — there is no change to validate — and
                 # `plan_mode_build` writes `stage:planned` at the approval
-                # instead — the one boundary that path actually has.
-                if not self.params.plan_mode:
+                # instead, the one boundary that path actually has.
+                if spec.ran:
                     self.set_stage(batch.numbers, inbox.STAGE_PLANNED)
             build = StageOutcome("build", "skipped",
                                  "the type declares no build stage")
@@ -1777,20 +1799,30 @@ class BoltLoop:
                 outcomes.append(build)
                 if not build.ok:
                     continue
-                # `build.ok` is the deliverables check having passed, not the
-                # session's word: no commit on the branch and the stage paused.
-                self.set_stage(batch.numbers, inbox.STAGE_BUILT)
+                # `build.ran` is the deliverables check having passed, not
+                # the session's word: no commit on the branch and the stage
+                # paused.
+                if build.ran:
+                    self.set_stage(batch.numbers, inbox.STAGE_BUILT)
             if config.runs("verify"):
                 verify = self.verify_stage(batch, build)
                 outcomes.append(verify)
                 if not verify.ok:
                     continue
-                self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
+                # `verify.ran`, not `verify.ok`: the plan-mode path skips
+                # verify while `bolt-quick` still DECLARES it, so `ok` alone
+                # would label an item verified with no session ever run.
+                if verify.ran:
+                    self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
             if config.runs("merge"):
                 merge = self.merge_stage(batch)
                 outcomes.append(merge)
-                if merge.ok:
+                if merge.ran:
                     # merge_stage returns done only on ancestry git confirmed.
+                    # `ran` rather than `ok` for the same reason as the three
+                    # boundaries above: all four write off "did it happen",
+                    # so a stage that later learns to skip cannot quietly
+                    # start labelling itself.
                     self.set_stage(batch.numbers, inbox.STAGE_MERGED)
                     self.close_merged(batch)
                     merged += 1
