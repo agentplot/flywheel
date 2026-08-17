@@ -58,6 +58,16 @@ collapse both into `False` and leave the report unable to say which.
 And the gate writes a pending approval keyed to the landing plan; a bolt
 that cannot land should not be asking the operator to approve a landing.
 
+**A dry run reports the hold like any other run.** Because the hold is
+asked before the landing question at all, and `holding_cards` reads
+nothing but the snapshot's cards, `--dry-run` says "held, card #231" on a
+bolt whose card is open — which is the answer an operator asking what
+this pass would do is after. It stays within what a dry run may do: the
+tracker is wrapped in `ReadOnlyTracker` under `--dry-run`, so any tracker
+write would raise, and the held path makes none. Its only writes are the
+local ledger note and the observation report, which a dry run writes on
+every pass already.
+
 **The hold outranks `land="force"`.** `force` exists for the operator or
 the server resuming a run that died between the last merge and the
 landing — a question about *this process's* knowledge, not about the
@@ -76,10 +86,6 @@ the report shape, and the ledger note stays as it is.
   rules holds the landing indefinitely → the run says so on every pass,
   by number, and `flywheel status` already reports an unapproved card
   under what waits on the operator.
-- **The hold is invisible to a dry run.** `landing_wanted` returns
-  `False` under `dry_run`, so a dry run reports neither hold nor landing
-  → accepted: a dry run drives nothing, and the run that would land is
-  the run that reports.
 
 ## Open Questions
 
