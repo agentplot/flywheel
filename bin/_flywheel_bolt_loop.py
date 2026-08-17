@@ -115,6 +115,11 @@ MAX_LANDING_ATTEMPTS = 2
 #: as the andon marker in `_flywheel_inbox`, and read the same way: code,
 #: not judgment — half a marker is not a launch record.
 SESSION_OPEN = "<!-- flywheel:session"
+#: A clean verify verdict, made durable on the item so a restarted loop
+#: re-buys no judgment for a branch that has not moved since.
+VERIFIED_MARK = "<!-- flywheel:verified"
+_VERIFIED = re.compile(
+    r"<!--\s*flywheel:verified\s+sha=\"(?P<sha>[0-9a-f]+)\"\s*-->")
 _SESSION = re.compile(
     r"<!--\s*flywheel:session\s+name=\"(?P<name>[^\"]+)\"\s+"
     r"started=\"(?P<started>\d+)\"\s*-->"
@@ -1160,6 +1165,35 @@ class BoltLoop:
 
     # -- the tracker side of a session ------------------------------------
 
+    def mark_verified(self, batch):
+        """Record the clean verdict on the items, bound to the branch head.
+
+        Same shape as the launch marker: a machine-readable comment, read
+        back as code. A restarted loop trusts it exactly while the branch
+        sha still matches — one commit later and the verdict is spent."""
+        sha = self.head_sha(f"build/{batch.slug}")
+        if not sha:
+            return
+        for number in batch.numbers:
+            self.tracker.comment(
+                number,
+                f"Verify is clean at `{sha}`.\n\n"
+                f'<!-- flywheel:verified sha="{sha}" -->')
+
+    def verified_at(self, numbers):
+        """The recorded clean-verify sha these items agree on, or None."""
+        shas = []
+        for number in numbers:
+            found = None
+            for comment in self.tracker.comments(number) or ():
+                match = _VERIFIED.search(comment.get("body", ""))
+                if match:
+                    found = match.group("sha")
+            shas.append(found)
+        return (shas[0] if shas and shas[0]
+                and all(sha == shas[0] for sha in shas) else None)
+
+
     def mark_launch(self, numbers, name, started):
         """Record the launch on the items — the stall clock's only carrier.
 
@@ -1660,6 +1694,12 @@ class BoltLoop:
         """`/opsx:apply`, or the plan-mode path where the bolt declares it."""
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
+        if not self.params.plan_mode and not self.deliverables(batch, change):
+            # Symmetric with spec's already-validates skip: the branch holds
+            # a commit and the change validates, so a restarted loop re-buys
+            # no build for a boundary the tree already proves.
+            return StageOutcome("build", "done",
+                                "already built — the tree proves it")
         if self.params.plan_mode:
             outcome = self.plan_mode_build(batch, name)
         else:
@@ -1844,6 +1884,14 @@ class BoltLoop:
         change = batch.change or batch.slug
         name = session_name("verify", batch.slug)
         cwd = self.batch_worktree(batch) or self.params.repo_dir
+        branch_sha = self.head_sha(f"build/{batch.slug}")
+        if branch_sha and self.verified_at(batch.numbers) == branch_sha:
+            # The verdict is durable and the branch has not moved: a
+            # restarted loop re-buys no judgment it already recorded.
+            if build.handle is not None:
+                self.runner("build").close(build.handle)
+            return StageOutcome("verify", "done",
+                                f"verified at {branch_sha[:9]} — the branch has not moved")
         for _ in range(MAX_FIX_ROUNDS + 1):
             self.clear_channel(cwd, VERIFY_REPORT)
             order = sessions.work_order(f"/opsx:verify {change}", (
@@ -1866,6 +1914,7 @@ class BoltLoop:
                 # ends here. The session stays resumable by its id.
                 if build.handle is not None:
                     self.runner("build").close(build.handle)
+                self.mark_verified(batch)
                 return StageOutcome("verify", "done", "verify is clean")
             if clean:
                 report = (f"Verify reported no findings, but `openspec "
@@ -1874,6 +1923,7 @@ class BoltLoop:
             if ruling["action"] == "proceed":
                 if build.handle is not None:
                     self.runner("build").close(build.handle)
+                self.mark_verified(batch)
                 return StageOutcome(
                     "verify", "done",
                     f"review ruled proceed: {ruling.get('reason', '')}".strip())
@@ -2516,6 +2566,12 @@ class BoltLoop:
             return False                       # there is still released work
         if not unlanded:
             return False                       # nothing to upgrade, nothing to land
+        if land != "force" and any(
+                i.milestone_state == "open" for i in unlanded):
+            # The landing is the operator's: their milestone close releases
+            # it. Every item merged and every card ruled is necessary,
+            # never sufficient.
+            return False
         if land == "force" or self._merged > 0 or self._resume_landing:
             return True
         # `_merged` is PER PROCESS, and the server now starts a loop for a

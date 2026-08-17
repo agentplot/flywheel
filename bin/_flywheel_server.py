@@ -696,6 +696,21 @@ class Server:
         if self.dry_run:
             self.log(f"would archive {slug} ({want.milestone})")
             return True
+        if want.milestone.startswith(inbox.BOLT_PREFIX):
+            # The close released the landing; the archive follows it. A bolt
+            # branch still un-landed means the loop has work first — retry
+            # on a later pass, no flag: this is sequencing, not a defect.
+            branch = f"bolt/{slug}"
+            exists = self.run(["git", "rev-parse", "-q", "--verify", branch],
+                              cwd=cwd)
+            if getattr(exists, "returncode", 1) == 0:
+                landed = self.run(
+                    ["git", "merge-base", "--is-ancestor", branch, "main"],
+                    cwd=cwd)
+                if getattr(landed, "returncode", 1) != 0:
+                    self.log(f"{want.milestone}: closed but not landed — "
+                             f"the landing runs first; archive follows")
+                    return False
         out = self.run(["openspec", "archive", slug, "--yes", "--json"],
                        cwd=cwd)
         if getattr(out, "returncode", 1) != 0:

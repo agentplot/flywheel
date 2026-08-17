@@ -501,6 +501,13 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
 
     for item in snapshot.items:
         if item.milestone_state != "open":
+            # The operator's close on a bolt milestone RELEASES the landing:
+            # merged items still awaiting their upgrade keep the loop's job
+            # alive until the landing has run and closed them done.
+            if (item.merge_closed and item.milestone
+                    and item.milestone.startswith(BOLT_PREFIX)):
+                add(item.milestone, "run",
+                    f"#{item.number} merged; the close released the landing")
             continue
         if milestone_slug(item.milestone) is None:
             continue

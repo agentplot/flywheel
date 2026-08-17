@@ -312,8 +312,14 @@ class StatelessResumeTest(unittest.TestCase):
         result = l.cycle(1)
         self.assertIn("awaiting the landing", result.stopped)
         box = inbox.bolt_inbox(self._snap(), "x")
-        self.assertTrue(l.landing_wanted("auto", box,
-                                         list(self._snap().items)))
+        self.assertFalse(
+            l.landing_wanted("auto", box, list(self._snap().items)),
+            "merged work awaits the operator's close — never an auto landing")
+        released = [Item(number=i.number, milestone=i.milestone,
+                         milestone_state="closed", title=i.title,
+                         state=i.state, labels=i.labels)
+                    for i in self._snap().items]
+        self.assertTrue(l.landing_wanted("auto", box, released))
 
     def test_an_empty_branch_is_nothing_to_merge_never_merged(self):
         # #164, observed live: build/stage-labels-133's tip was the very
@@ -880,12 +886,62 @@ class StageTest(unittest.TestCase):
         self.assertEqual(outcome.status, "paused")
         self.assertEqual(outcome.detail, "review escalated")
 
+    def test_a_built_tree_skips_the_build_session(self):
+        # Symmetric with spec's already-validates: a restarted loop re-buys
+        # no build for a boundary the tree already proves.
+        runner = ScriptedRunner()
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        outcome = a_loop(FakeTracker(), runner=runner,
+                         shell=shell).build_stage(self.batch(1))
+        self.assertEqual(outcome.status, "done")
+        self.assertEqual(runner.launched, [], "no session for proven work")
+
+    def test_a_recorded_clean_verdict_skips_verify_while_the_branch_holds(self):
+        sha = "abc123def456"
+        mark = f'Verify is clean at `{sha}`.\n\n<!-- flywheel:verified sha="{sha}" -->'
+        tracker = FakeTracker(comments={1: [{"body": mark}]})
+        runner = ScriptedRunner()
+        shell = FakeShell({("git", "rev-parse"): Result(0, sha + "\n")})
+        build = loop.StageOutcome("build", "done")
+        outcome = a_loop(tracker, runner=runner, shell=shell).verify_stage(
+            self.batch(1), build)
+        self.assertEqual(outcome.status, "done")
+        self.assertIn("has not moved", outcome.detail)
+        self.assertEqual(runner.launched, [], "no session re-buys the verdict")
+
+    def test_a_moved_branch_spends_the_recorded_verdict(self):
+        mark = 'Verify is clean at `oldsha`.\n\n<!-- flywheel:verified sha="0ld5ha" -->'
+        tracker = FakeTracker(comments={1: [{"body": mark}]})
+        runner = ScriptedRunner(reports=["whatever"],
+                                states=[WaitState.SETTLED_DONE] * 4)
+        shell = FakeShell({("git", "rev-parse"): Result(0, "newsha\n")})
+        build = loop.StageOutcome("build", "done")
+        a_loop(tracker, runner=runner, shell=shell).verify_stage(
+            self.batch(1), build)
+        self.assertTrue(runner.launched, "one commit later, verify runs again")
+
+    def test_a_clean_verify_records_its_verdict_on_the_items(self):
+        sha = "abc123def456"
+        tracker = FakeTracker()
+        runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 4)
+        shell = FakeShell({("git", "rev-parse"): Result(0, sha + "\n")})
+        program = a_loop(tracker, runner=runner, shell=shell)
+        program.read_channel = lambda cwd, rel: "NONE"
+        build = loop.StageOutcome("build", "done")
+        outcome = program.verify_stage(self.batch(1), build)
+        self.assertEqual(outcome.status, "done")
+        marked = [w[2] for w in tracker.writes
+                  if w[0] == "comment" and "flywheel:verified" in w[2]]
+        self.assertTrue(marked, "the verdict is durable on the item")
+        self.assertIn(sha, marked[0])
+
     def test_the_build_order_is_the_command_and_the_commit_rule(self):
         # The slug alone points opsx at its context; items, worktree prose,
         # escalation hints and settling instructions are loop plumbing that
         # primes the roaming (#167, extended to build by the operator).
         runner = ScriptedRunner()
-        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                           ("openspec", "validate"): Result(1, "", "not green")})
         a_loop(FakeTracker(), runner=runner, shell=shell).build_stage(self.batch(1))
         order = runner.launched[0].order
         self.assertTrue(order.startswith("/opsx:apply add-thing"))
@@ -1510,14 +1566,22 @@ class LandingTest(unittest.TestCase):
         self.assertFalse(program.landing_wanted("auto", box, open_items))
         self.assertTrue(program.landing_wanted("force", box, open_items))
         program._merged = 1
-        self.assertTrue(program.landing_wanted("auto", box, open_items))
+        self.assertFalse(
+            program.landing_wanted("auto", box, open_items),
+            "an open milestone never lands — the operator's close releases it")
+        released = [Item(number=i.number, milestone=i.milestone,
+                         milestone_state="closed", title=i.title,
+                         state=i.state, labels=i.labels)
+                    for i in open_items]
+        self.assertTrue(program.landing_wanted("auto", box, released))
 
     def test_a_restarted_process_lands_a_bolt_whose_work_is_all_merged(self):
         # `_merged` is per process, and the server starts a loop for an
         # all-merge-closed milestone precisely so it can land. Counting
         # only this process's merges declined the landing it was started
         # for. The previous test pinned it only after setting `_merged`.
-        merged = [Item(number=n, milestone="bolt/x", title=str(n), state="closed",
+        merged = [Item(number=n, milestone="bolt/x", milestone_state="closed",
+                       title=str(n), state="closed",
                        labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
                   for n in (1, 2)]
         program = a_loop(FakeTracker())
@@ -1656,10 +1720,13 @@ class MergeCloseTest(unittest.TestCase):
     # -- the landing's upgrade ---------------------------------------------
 
     def merged_snapshot(self):
+        # milestone_state closed: the operator's close released the landing.
         return Snapshot(items=[
-            Item(number=1, milestone="bolt/x", title="one", state="closed",
+            Item(number=1, milestone="bolt/x", milestone_state="closed",
+                 title="one", state="closed",
                  labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
-            Item(number=2, milestone="bolt/x", title="two", state="closed",
+            Item(number=2, milestone="bolt/x", milestone_state="closed",
+                 title="two", state="closed",
                  labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
         ], milestone="bolt/x")
 
