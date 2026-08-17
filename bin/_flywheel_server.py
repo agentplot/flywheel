@@ -47,6 +47,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _flywheel_inbox as inbox  # noqa: E402
+import _flywheel_ledger as obs   # noqa: E402
 
 # ---------------------------------------------------------------------------
 # The clocks and the one command table
@@ -291,11 +292,14 @@ class Server:
 
     def __init__(self, config, tracker=None, gate=None, nudge=None,
                  run=_run, popen=subprocess.Popen, clock=time.time,
-                 sleep=time.sleep, log=None, dry_run=False, opener=None):
+                 sleep=time.sleep, log=None, dry_run=False, opener=None,
+                 ledger=None):
         self.config = config
         self.tracker = tracker
         self.gate = gate            # injected: bin/flywheel's gate_readiness
         self.nudge = nudge          # injected: dispatch's herdr prompt
+        self.ledger = ledger or obs.NullLedger()
+        self._nudges = 0
         self.run = run
         self.popen = popen
         self.clock = clock
@@ -455,7 +459,15 @@ class Server:
         if self.dry_run:
             self.log(f"would nudge dispatch: {'; '.join(parts)}")
             return 0
-        return 0 if self.nudge(". ".join(parts) + ".") else 1
+        self._nudges += 1
+        step = f"nudge:{self._nudges}"
+        summary = "; ".join(parts)
+        self.ledger.expect(step, "dispatch inbox non-empty",
+                           f"nudge delivered — {summary}")
+        delivered = bool(self.nudge(". ".join(parts) + "."))
+        self.ledger.actual(step, "delivered" if delivered else
+                           "delivery failed", ok=delivered)
+        return 0 if delivered else 1
 
     # -- processes ---------------------------------------------------------
 

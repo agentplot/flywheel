@@ -40,6 +40,7 @@ under a running session destroys the work in it.
 """
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -56,6 +57,7 @@ from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,
                              TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, set_needs_operator,
                              set_stage, unblocked)
+from _flywheel_ledger import NullLedger
 from _flywheel_sessions import (MAX_NAME, SessionHandle, SessionSpec,
                                 WaitState, runner_for,
                                 supervise, work_order)
@@ -963,9 +965,11 @@ def batch_andon(batch, tracker):
     return None
 
 
-def run(config, tracker=None, runner=None, clock=time.time, writer=None):
+def run(config, tracker=None, runner=None, clock=time.time, writer=None,
+        ledger=None):
     """The loop. Returns a `Report`; raises nothing a caller must catch."""
     report = Report(slug=config.slug)
+    led = ledger or NullLedger()
     fault = config_fault(config)
     if fault:
         report.status = "stopped"
@@ -983,8 +987,18 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
             snapshot = read_snapshot(config, tracker)
             writer.snapshot = snapshot
             inbox = intent_inbox(snapshot, config.slug)
+            ready_numbers = [i.number for i in inbox.ready]
+            led.precondition(
+                ("ready " + ", ".join(f"#{n}" for n in ready_numbers))
+                if ready_numbers else "nothing ready")
 
+            writes_before = len(writer.writes)
             guard_writes = run_guards(writer, inbox, snapshot, config)
+            for index, write in enumerate(writer.writes[writes_before:]):
+                # Guards write as they check — recorded, never gated.
+                step = f"guard:{cycle + 1}.{index}"
+                led.expect(step, "idempotent repair", str(write))
+                led.actual(step, str(write))
             if guard_writes and config.apply:
                 if writer.created:
                     wait_listed(tracker, writer.created, config.milestone)
@@ -1020,12 +1034,28 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
             if not batches:
                 break                  # nothing ready, guards dry: STOP
 
+            plan = [{
+                "step": f"session:{session_name(batch, config.slug)}",
+                "trigger": ", ".join(f"#{n}" for n in batch.numbers) + " ready",
+                "expected": f"a {batch.type} session is charged and supervised",
+            } for batch in batches]
+            if config.apply:
+                if not led.gate(plan):
+                    raise LoopStop("gated — the expectation report awaits "
+                                   "flywheel approve")
+            else:
+                led.write_plan(plan)   # a dry run IS the expectation preview
+
             # Every batch launches before any is waited on: the sessions run in
             # parallel, the WAITING is the loop's and is serial, and so is the
             # merging that follows it — one writer to the base branch at a time.
             live = []
-            for batch in batches:
+            for batch, row in zip(batches, plan):
+                led.expect(row["step"], row["trigger"], row["expected"])
                 spec, handle = dispatch_batch(batch, writer, runner, config, clock)
+                led.actual(row["step"],
+                           "session launched" if handle else "planned only",
+                           ok=True)
                 dispatched.append(
                     f"{spec.name} — {', '.join(f'#{n}' for n in batch.numbers)}")
                 live.append((batch, spec, handle))
@@ -1046,6 +1076,15 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None):
     report.dispatched = tuple(dispatched)
     if inbox is not None and snapshot is not None:
         report.resting = resting_queue(inbox, snapshot, undispatchable or ())
+    if report.failure:
+        led.note(report.failure)
+    path = led.write_report()
+    hook = os.environ.get("FLYWHEEL_OBSERVER")
+    if path and hook:
+        try:
+            subprocess.run([hook, str(path)], check=False)
+        except OSError:
+            pass
     return report
 
 

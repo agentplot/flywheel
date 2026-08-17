@@ -15,12 +15,14 @@ The loop itself is `_flywheel_bolt_loop.py` beside this file.
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _flywheel_bolt_loop as loop      # noqa: E402
 import _flywheel_inbox as inbox         # noqa: E402
+import _flywheel_ledger as ledger_mod   # noqa: E402
 from _flywheel_gh import resolve_token  # noqa: E402
 
 
@@ -94,8 +96,12 @@ def build_loop(args):
 
     if args.dry_run:
         tracker = loop.ReadOnlyTracker(tracker)
-    return loop.BoltLoop(params, tracker, log=lambda m: print(m, flush=True),
-                         dry_run=args.dry_run), params
+    log = lambda m: print(m, flush=True)   # noqa: E731
+    run_ledger = ledger_mod.RunLedger(
+        ledger_mod.observations_root(args.org), f"bolt-{args.slug}",
+        gate_mode=os.environ.get("FLYWHEEL_GATE", "gate"), log=log)
+    return loop.BoltLoop(params, tracker, log=log,
+                         dry_run=args.dry_run, ledger=run_ledger), params
 
 
 def render(report, params):

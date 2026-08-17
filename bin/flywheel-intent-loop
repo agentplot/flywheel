@@ -29,6 +29,7 @@ Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -36,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_gh import GraphqlError, resolve_token
 from _flywheel_inbox import Tracker
 from _flywheel_intent import Config, run
+from _flywheel_ledger import RunLedger, observations_root
 from _flywheel_sessions import SessionError, runner_for
 
 
@@ -82,7 +84,10 @@ def main():
     if config.apply:
         runner = runner_for("herdr")
 
-    report = run(config, tracker=tracker, runner=runner)
+    ledger = RunLedger(observations_root(config.org), f"intent-{config.slug}",
+                       gate_mode=os.environ.get("FLYWHEEL_GATE", "gate"),
+                       log=lambda m: print(m, flush=True))
+    report = run(config, tracker=tracker, runner=runner, ledger=ledger)
     print(report.render())
     return 0 if report.status == "ok" else 1
 

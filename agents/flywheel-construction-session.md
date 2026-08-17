@@ -50,3 +50,11 @@ it as the structured marker in your item comment — the form is in the
 plugin's `skills/_reference/tracker.md`. The loop recognizes that marker
 as code and will not read a stop out of your prose, so a report alone
 holds nothing. Stopping on a defect is expected behaviour.
+
+THE FINDING-ROUTING RULE — a finding about the machinery itself (a loop
+bug, a prompt problem, a dispatch mistake) goes in your report and
+nowhere else: never a tracker item, never a queued discovery. Record the
+observation in your report and stop; the observer carries it to the
+operator. The tracker is the bus for the work you were charged with, and
+discoveries you queue there are about that work, never about the
+flywheel.

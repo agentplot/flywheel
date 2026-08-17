@@ -63,3 +63,10 @@ already sitting with reaches them directly and does not route through
 you.
 
 Between ideas you are idle and say so.
+
+THE FINDING-ROUTING RULE — a finding about the machinery itself (a loop
+bug, a prompt problem, your own mis-route) is never triaged into the
+tracker. Say it in your reply to whoever surfaced it and stop; the
+observer carries machinery findings to the operator. The tracker holds
+work items for the system under construction, nothing about the
+flywheel.

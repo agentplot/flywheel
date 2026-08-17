@@ -10,7 +10,7 @@ processes, the archive, the teardown — is exercised through injected `run=`,
 import unittest
 from pathlib import Path
 
-from context import BIN, inbox  # noqa: F401 — BIN puts bin/ on sys.path
+from context import BIN, inbox, ledger as obs  # noqa: F401 — BIN puts bin/ on sys.path
 
 import _flywheel_server as server  # noqa: E402
 
@@ -437,6 +437,39 @@ class StateTest(unittest.TestCase):
                                                  environ=env))
             self.assertEqual(server.running_pid("o", alive=lambda _p: True,
                                                 environ=env), 4242)
+
+
+class NudgeLedgerTest(unittest.TestCase):
+    """#4.1 — dispatch activity is observable through the same surface."""
+
+    def snap(self):
+        return Snapshot(items=[item(1, inbox.NEEDS_OPERATOR)])
+
+    def test_a_delivered_nudge_writes_expect_and_actual(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            led = obs.RunLedger(tmp, "dispatch", gate_mode="courtesy")
+            box = a_server(tracker=FakeTracker(self.snap()), ledger=led)
+            box.nudge = lambda text: True
+            box.pass_once()
+            kinds = [e["kind"] for e in led.entries]
+            self.assertIn("expect", kinds)
+            self.assertIn("actual", kinds)
+            actual = next(e for e in led.entries if e["kind"] == "actual")
+            self.assertTrue(actual["ok"])
+            self.assertEqual(actual["step"], "nudge:1")
+
+    def test_a_failed_delivery_is_a_recorded_divergence(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            led = obs.RunLedger(tmp, "dispatch", gate_mode="courtesy")
+            box = a_server(tracker=FakeTracker(self.snap()), ledger=led)
+            box.nudge = lambda text: False
+            box.pass_once()
+            actual = next(e for e in led.entries if e["kind"] == "actual")
+            self.assertFalse(actual["ok"])
+            text = led.write_report().read_text()
+            self.assertIn("diverged", text)
 
 
 if __name__ == "__main__":

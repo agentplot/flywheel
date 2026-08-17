@@ -16,7 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from context import BIN, ROOT, inbox, sessions  # noqa: F401
+from context import BIN, ROOT, inbox, ledger as obs, sessions  # noqa: F401
 import _flywheel_bolt_loop as loop  # noqa: E402
 
 Item = inbox.Item
@@ -219,7 +219,7 @@ TREE = Path(_TREE.name)
 
 
 def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
-           strategy="ff", **overrides):
+           strategy="ff", ledger=None, **overrides):
     fields = dict(slug="x", org="o", repo="r", repo_dir=str(TREE),
                   bolt_worktree=str(TREE), type_name="bolt-quick",
                   plan_mode=plan_mode,
@@ -229,7 +229,8 @@ def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
     runner = runner or ScriptedRunner()
     return loop.BoltLoop(loop.BoltParams(**fields), tracker,
                          runner_factory=lambda stage: runner,
-                         run=shell or FakeShell(), clock=clock or FakeClock())
+                         run=shell or FakeShell(), clock=clock or FakeClock(),
+                         ledger=ledger)
 
 
 class SpecShortCircuitTest(unittest.TestCase):
@@ -2070,6 +2071,90 @@ class TrackerWriteTest(unittest.TestCase):
         tracker.reclose(1, was=inbox.CLOSED_MERGED)
         self.assertTrue(any(c[:1] == ["api"] and "--method" in c
                             and "PATCH" in c for c in calls), calls)
+
+
+class ObservedRunTest(unittest.TestCase):
+    """The run ledger and the expectation gate on the bolt loop."""
+
+    def shell(self):
+        return FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                          ("git", "merge-base"): Result(0)})
+
+    def a_ready_item(self):
+        return Snapshot(items=[item(1, inbox.READY, change="add-thing")],
+                        milestone="bolt/x")
+
+    def observed(self, tracker, root, gate_mode="gate", runner=None):
+        led = obs.RunLedger(root, "bolt-x", gate_mode=gate_mode)
+        runner = runner or ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
+                                          reports=["No findings."] * 12)
+        return a_loop(tracker, runner=runner, shell=self.shell(),
+                      ledger=led), led, runner
+
+    def test_an_unapproved_pass_gates_before_any_drive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = FakeTracker(self.a_ready_item())
+            l, led, runner = self.observed(tracker, tmp)
+            result = l.cycle(1)
+            self.assertIn("gated", result.stopped)
+            self.assertEqual(runner.launched, [], "nothing may be driven")
+            scope = Path(tmp) / "bolt-x"
+            self.assertTrue((scope / "pending.json").exists())
+            self.assertTrue(list(scope.glob("*.plan.md")))
+
+    def test_an_approved_plan_drives_and_does_not_regate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = FakeTracker(self.a_ready_item(),
+                                  comments={1: [{"body": "built it"}]})
+            l, led, runner = self.observed(tracker, tmp)
+            l.cycle(1)
+            obs.approve(tmp, "bolt-x")
+            l2, led2, runner2 = self.observed(
+                FakeTracker(self.a_ready_item(),
+                            comments={1: [{"body": "built it"}]}), tmp)
+            result = l2.cycle(1)
+            self.assertNotIn("gated", result.stopped or "")
+            self.assertTrue(runner2.launched)
+
+    def test_a_changed_plan_regates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            l, led, _ = self.observed(FakeTracker(self.a_ready_item()), tmp)
+            l.cycle(1)
+            obs.approve(tmp, "bolt-x")
+            other = Snapshot(items=[item(2, inbox.READY, change="other")],
+                             milestone="bolt/x")
+            l2, led2, runner2 = self.observed(FakeTracker(other), tmp)
+            result = l2.cycle(1)
+            self.assertIn("gated", result.stopped)
+            self.assertEqual(runner2.launched, [])
+
+    def test_courtesy_mode_writes_the_plan_and_drives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = FakeTracker(self.a_ready_item(),
+                                  comments={1: [{"body": "built it"}]})
+            l, led, runner = self.observed(tracker, tmp, gate_mode="courtesy")
+            result = l.cycle(1)
+            self.assertNotIn("gated", result.stopped or "")
+            self.assertTrue(runner.launched)
+            self.assertTrue(list((Path(tmp) / "bolt-x").glob("*.plan.md")))
+
+    def test_an_acting_run_renders_the_report_with_actuals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = FakeTracker(self.a_ready_item(),
+                                  comments={1: [{"body": "built it"}]})
+            l, led, _ = self.observed(tracker, tmp, gate_mode="courtesy")
+            l.run(max_cycles=1, land=False)
+            report = next((Path(tmp) / "bolt-x").glob("*.report.md"))
+            text = report.read_text()
+            self.assertIn("spec:add-thing", text)
+            self.assertIn("✓", text)
+
+    def test_a_no_action_run_still_records_its_preconditions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            l, led, _ = self.observed(FakeTracker(Snapshot()), tmp)
+            l.run(max_cycles=1, land=False)
+            report = next((Path(tmp) / "bolt-x").glob("*.report.md"))
+            self.assertIn("nothing ready", report.read_text())
 
 
 if __name__ == "__main__":

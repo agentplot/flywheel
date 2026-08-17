@@ -46,6 +46,7 @@ rather than a branch in this file.
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -56,6 +57,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _flywheel_inbox as inbox        # noqa: E402
+import _flywheel_ledger as obs         # noqa: E402
 import _flywheel_sessions as sessions  # noqa: E402
 
 
@@ -882,10 +884,11 @@ class BoltLoop:
     """
 
     def __init__(self, params, tracker, runner_factory=None, run=_run_subprocess,
-                 clock=time.time, log=None, dry_run=False):
+                 clock=time.time, log=None, dry_run=False, ledger=None):
         self.params = params
         self.tracker = tracker
         self.dry_run = dry_run
+        self.ledger = ledger or obs.NullLedger()
         self._run = run
         self._clock = clock
         self._log = log or (lambda message: None)
@@ -2222,6 +2225,47 @@ class BoltLoop:
 
     # -- the cycle ---------------------------------------------------------
 
+    def _batch_plan(self, batch):
+        """One batch's drive expectations, keyed by stage — the rows the
+        gate hashes and the drive records as it goes."""
+        config = self.params.config
+        items = ", ".join(f"#{n}" for n in batch.numbers)
+        branch = f"build/{batch.slug}"
+        rows = {}
+        if config.runs("spec"):
+            rows["spec"] = {"step": f"spec:{batch.slug}",
+                            "trigger": f"{items} ready",
+                            "expected": f"change validates, commit on {branch}"}
+        if config.runs("build"):
+            rows["build"] = {"step": f"build:{batch.slug}",
+                             "trigger": "spec validated",
+                             "expected": f"commit by pathspec on {branch}"}
+        if config.runs("verify"):
+            rows["verify"] = {"step": f"verify:{batch.slug}",
+                              "trigger": "build commit landed",
+                              "expected": f"{VERIFY_REPORT} = {NO_FINDINGS}"}
+        if config.runs("merge"):
+            rows["merge"] = {"step": f"merge:{batch.slug}",
+                             "trigger": "verify clean",
+                             "expected": (f"{branch} merged to "
+                                          f"{self.params.bolt_branch}")}
+        return rows
+
+    def drive_plan(self, batches):
+        return [row for batch in batches
+                for row in self._batch_plan(batch).values()]
+
+    def _drive(self, batch, stage_name, stage_call):
+        """One drive stage, its expect written before and its actual after."""
+        row = self._batch_plan(batch).get(stage_name)
+        if row:
+            self.ledger.expect(row["step"], row["trigger"], row["expected"])
+        outcome = stage_call()
+        self.ledger.actual(f"{outcome.stage}:{batch.slug}",
+                           f"{outcome.status}: {outcome.detail}",
+                           ok=outcome.ok)
+        return outcome
+
     def cycle(self, number):
         result = CycleResult(number=number)
         snapshot = self.tracker.snapshot(self.params.milestone)
@@ -2238,6 +2282,15 @@ class BoltLoop:
             snapshot = self.tracker.snapshot(self.params.milestone)
         box = inbox.bolt_inbox(snapshot, self.params.slug)
         result.ready = tuple(i.number for i in box.ready)
+        self.ledger.precondition(
+            ("ready " + ", ".join(f"#{n}" for n in result.ready))
+            if result.ready else "nothing ready")
+        for index, action in enumerate(actions):
+            # Guards write as they check, so expected and actual are the
+            # same sentence — recorded, per the spec, but never gated.
+            step = f"guard:{result.number}.{index}"
+            self.ledger.expect(step, "idempotent repair", action)
+            self.ledger.actual(step, action)
         if not box.ready and not box.in_progress and not actions:
             result.stopped = "nothing is ready and the guards wrote nothing"
             return result
@@ -2267,19 +2320,25 @@ class BoltLoop:
                 for b in batches)
             result.stopped = "dry run — nothing launched, nothing written"
             return result
+        if not self.ledger.gate(self.drive_plan(batches)):
+            result.stopped = ("gated — the expectation report awaits "
+                              "flywheel approve")
+            return result
         outcomes = []
         merged = 0
         for batch in batches:
             paused, found = self.andon(batch.numbers)
             if found:
                 self.pause([paused], f"A session raised the andon cord: {found.reason}")
+                self.ledger.note(f"andon on #{paused}: {found.reason}")
                 outcomes.append(StageOutcome("batch", "paused",
                                              f"andon on #{paused}: {found.reason}"))
                 continue
             self.flip_in_progress(batch.numbers)
             config = self.params.config
             if config.runs("spec"):
-                spec = self.spec_stage(batch)
+                spec = self._drive(batch, "spec",
+                                   lambda: self.spec_stage(batch))
                 outcomes.append(spec)
                 if not spec.ok:
                     continue
@@ -2292,7 +2351,8 @@ class BoltLoop:
             build = StageOutcome("build", "skipped",
                                  "the type declares no build stage")
             if config.runs("build"):
-                build = self.build_stage(batch)
+                build = self._drive(batch, "build",
+                                    lambda: self.build_stage(batch))
                 outcomes.append(build)
                 if not build.ok:
                     continue
@@ -2309,7 +2369,8 @@ class BoltLoop:
                         self.tracker.comment(
                             n, f"Built on build/{batch.slug} as {sha}.")
             if config.runs("verify"):
-                verify = self.verify_stage(batch, build)
+                verify = self._drive(batch, "verify",
+                                     lambda: self.verify_stage(batch, build))
                 outcomes.append(verify)
                 if not verify.ok:
                     continue
@@ -2319,7 +2380,8 @@ class BoltLoop:
                 if verify.ran:
                     self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
             if config.runs("merge"):
-                merge = self.merge_stage(batch, build)
+                merge = self._drive(batch, "merge",
+                                    lambda: self.merge_stage(batch, build))
                 outcomes.append(merge)
                 if merge.ran:
                     # merge_stage returns done only on ancestry git confirmed.
@@ -2361,8 +2423,12 @@ class BoltLoop:
             result = self.cycle(number)
             report.cycles.append(result)
             self._log(self.describe(result))
+            if result.stopped:
+                self.ledger.note(f"STOP — {result.stopped}")
             if result.halted:
                 report.halted = result.halted
+                self.ledger.note(f"HALTED — {result.halted}")
+                self._finish_observation()
                 return report
             if result.stopped:
                 break
@@ -2375,10 +2441,38 @@ class BoltLoop:
         report.queue = [f"#{i.number} {i.title}" for i in open_items if i.queued]
         unlanded = open_items + [i for i in on_milestone if i.merge_closed]
         if not self.landing_wanted(land, box, unlanded):
+            self._finish_observation()
             return report
+        landing_plan = [{
+            "step": "landing",
+            "trigger": f"every assertion merged to {self.params.bolt_branch}",
+            "expected": ("merge criteria green; bolt landed on "
+                         f"{self.params.main_branch}")}]
+        if not self.ledger.gate(landing_plan):
+            report.landing = ("gated — the expectation report awaits "
+                              "flywheel approve")
+            self._finish_observation()
+            return report
+        row = landing_plan[0]
+        self.ledger.expect(row["step"], row["trigger"], row["expected"])
         outcome = self.land_stage(snapshot)
         report.landing = f"{outcome.status}: {outcome.detail}"
+        self.ledger.actual("landing", report.landing, ok=outcome.ok)
+        self._finish_observation()
         return report
+
+    def _finish_observation(self):
+        """Render the run's report and offer it to the observer hook.
+        Best-effort throughout — observation never fails a run."""
+        if not self.ledger.entries:
+            return
+        path = self.ledger.write_report()
+        if not path:
+            return
+        self._log(f"observation report: {path}")
+        hook = os.environ.get("FLYWHEEL_OBSERVER")
+        if hook:
+            self.shell([hook, str(path)])
 
     def landing_wanted(self, land, box, unlanded):
         """Whether this run should reach for a landing.

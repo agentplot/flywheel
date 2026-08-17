@@ -6,6 +6,7 @@
   flywheel server [--host H] [--fleet PATH] [--interval SECONDS]
                   [--once] [--dry-run]
   flywheel down   [--fleet PATH]
+  flywheel approve <bolt/slug | intent/slug | dispatch>  [--fleet PATH]
   flywheel version
 
 The manifest is `fleet.yaml` at the org folder root — the directory above
@@ -83,6 +84,7 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _flywheel_inbox as inbox    # noqa: E402
+import _flywheel_ledger as ledger_mod  # noqa: E402
 import _flywheel_server as server  # noqa: E402
 from _flywheel_gh import GraphqlError, resolve_token  # noqa: E402
 
@@ -966,9 +968,12 @@ def serve(manifest: dict, host: str, session: str, env: dict,
     config = server_config(manifest, host, interval)
     tracker = inbox.Tracker(resolve_token(config.org), config.org, config.repo,
                             project_title=config.project)
+    dispatch_ledger = ledger_mod.RunLedger(
+        ledger_mod.observations_root(config.org), "dispatch",
+        gate_mode="courtesy")
     daemon = server.Server(
         config, tracker=tracker, gate=fresh_gate, nudge=dispatch_nudge(env),
-        dry_run=dry_run)
+        dry_run=dry_run, ledger=dispatch_ledger)
 
     print(f"server · {config.org}/{config.repo}  ·  host: {host}  ·  "
           f"loops in {config.loops_cwd}"
@@ -1109,6 +1114,28 @@ def down(manifest: dict) -> int:
     return 0
 
 
+def manifest_org(manifest: dict) -> str:
+    tracker = manifest["top"].get("tracker", "")
+    return tracker.split("/", 1)[0] if "/" in tracker else manifest["root"].name
+
+
+def approve_cmd(manifest: dict, rest: list) -> int:
+    """Grant the pending expectation approval for one loop scope."""
+    if len(rest) != 1:
+        print("usage: flywheel approve <bolt/slug | intent/slug | dispatch>")
+        return 2
+    org = manifest_org(manifest)
+    scope = rest[0].replace("/", "-")
+    record = ledger_mod.approve(ledger_mod.observations_root(org), scope)
+    if not record:
+        print(f"nothing to approve for {scope}")
+        return 0
+    print(f"approved {scope} — key {record['key']}")
+    if record.get("plan_path"):
+        print(f"plan: {record['plan_path']}")
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     overrides = {}
@@ -1126,6 +1153,9 @@ def main() -> int:
     once = "--once" in args
     if once:
         args.remove("--once")
+    if args and args[0] == "approve":
+        manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
+        return approve_cmd(manifest, args[1:])
     if len(args) != 1 or args[0] not in {"up", "status", "server", "down",
                                          "version"}:
         print(__doc__.strip())

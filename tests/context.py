@@ -20,6 +20,7 @@ if str(BIN) not in sys.path:
 
 import _flywheel_inbox as inbox        # noqa: E402
 import _flywheel_intent as intent      # noqa: E402
+import _flywheel_ledger as ledger      # noqa: E402
 import _flywheel_sessions as sessions  # noqa: E402
 
-__all__ = ["ROOT", "BIN", "FIXTURES", "inbox", "intent", "sessions"]
+__all__ = ["ROOT", "BIN", "FIXTURES", "inbox", "intent", "ledger", "sessions"]

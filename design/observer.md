@@ -1,6 +1,7 @@
 # Decision draft: every loop run is observed; the machinery never files issues about itself
 
-Status: DRAFT — awaiting operator ruling, 2026-08-17
+Status: RULED by the operator, 2026-08-17 — the change `observer`
+(openspec/changes/observer/) carries the build.
 
 ## Why
 
@@ -103,11 +104,12 @@ report + commentary and fixes the flywheel → next run. Tighter than
 live-fire-and-forensics, and the only loop in which machinery fixes
 happen.
 
-## Open questions
+## Rulings (operator, 2026-08-17)
 
-- R1 — Does the ledger subsume the server/loop logs, or sit beside
-  them? (Lean: beside; logs stay raw, the ledger is curated.)
-- R2 — Is the expectation report a gate (run pauses for approval) or a
-  courtesy (run proceeds, operator can halt)? (Lean: gate while the
-  flywheel is under repair; courtesy once trusted.)
-- R3 — Does the observer watch dispatch too, or only milestone loops?
+- R1 — The ledger sits beside the server/loop logs; logs stay raw, the
+  ledger is curated.
+- R2 — The expectation report is a gate: an acting pass pauses for
+  `flywheel approve` while the flywheel is under repair. `FLYWHEEL_GATE=
+  courtesy` is the relaxation for when it is trusted.
+- R3 — Dispatch is observed too: the server ledgers every nudge it
+  sends under `observations/dispatch/`.
