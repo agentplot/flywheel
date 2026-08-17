@@ -29,10 +29,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_gh import resolve_token, gh
 ```
 
-Whether shared modules like these belong here at all or under `../tools/` is
-an open question — the bar stated below is "self-contained", and a command
-importing a sibling module is arguably not that. It is queued rather than
-settled mid-bolt, because moving `_flywheel_gh.py` touches five commands.
+The shared modules live here by decision
+(`openspec/changes/loops-run-unattended/decisions/shared-module-home.md`):
+a command must be reachable by name; its logic lives in an importable
+sibling module when tests need it or commands share it; `../tools/` is for
+a large command's whole implementation behind a thin entry point here,
+never for shared libraries.
 
 The commands here are zero-dependency stdlib scripts, which is the bar for
 skipping the `../tools/` split:

@@ -37,9 +37,16 @@ through GitHub issues, and each consumer has an exact filter:
 - **server**: milestones with a job — any open `intent/*` or `bolt/*`
   milestone holding an open item labelled `state:ready` or
   `state:in-progress`, or a bolt milestone holding a `closed:merged`
-  item still awaiting its landing, or a batch at board Status Ready;
-  plus closed
+  item still awaiting its landing, or a batch at board Status Ready,
+  or an open `intent/*` milestone holding guard-only work: settled
+  unbatched assertions (handoff birth) or orphan `state:queued` items
+  (compose); plus closed
   milestones whose change still sits in openspec/changes/ (archive).
+  The guard-only test is a sweep, and the asymmetry licensing it is a
+  rule: **a server filter may over-approximate; a loop filter must be
+  exact** — a false positive costs one process start and a clean exit
+  (the loop STOPs when nothing is ready and the guards wrote nothing),
+  while a false negative costs work that never happens.
 - **bolt loop for bolt/<slug>**: open items on that milestone
   labelled `state:ready`, plus that bolt's units at board Status
   Ready (their `state:queued` sub-issues are relabelled first).
@@ -134,9 +141,16 @@ declares only the boundaries its own stages create.
 
 ## The intent loop — its own program
 
-    query+guards (flip-consume, handoff birth, compose) ->
-    typed design sessions -> collect deliverables ->
+    query+guards (scaffold-if-missing, flip-consume, handoff birth,
+    compose) -> typed design sessions -> collect deliverables ->
     merge sess/* branches -> re-query ... STOP
+
+Guard 0 is scaffold-if-missing, exactly as on the bolt loop and as a
+program step — `openspec new change <slug> --schema flywheel-intent`
+is non-interactive, so no model is involved. Triage creates intent
+milestones without inception; the loop is the only actor guaranteed
+to be there when the change dir is missing
+(decision: openspec/changes/loops-run-unattended/decisions/intent-scaffold-guard.md).
 
 Design-session completion is OPERATOR-DRIVEN, one path, and the signal
 is the `stage:done` label: the operator marks an item done — by saying
