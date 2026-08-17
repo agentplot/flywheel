@@ -534,9 +534,10 @@ class Server:
         for name, binding in sorted((self.config.books or {}).items()):
             try:
                 failures += self._plan_run(name, binding, snapshot)
-            except Exception as error:  # noqa: BLE001 — a binding must not
+            except (Exception, SystemExit) as error:  # noqa: BLE001 — a
                 self.log(f"plan {name}: {error.__class__.__name__}: {error}")
-                failures += 1           # kill the pass for its siblings
+                failures += 1           # binding must not kill the pass
+                                        # (gh raises SystemExit on failure)
         return failures
 
     def _plan_run(self, name, binding, snapshot):

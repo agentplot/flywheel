@@ -103,6 +103,8 @@ LABELS = {
                               "its sub-issues"),
     "plan": ("8a63d2", "one proposed bolt awaiting approval; the plan "
                        "document is the card body"),
+    "stale": ("ededed", "inputs moved since this plan card was derived; "
+                        "still approvable"),
     "needs-operator": ("e99695",
                        "blocked on the operator's word; the question is the "
                        "latest comment"),

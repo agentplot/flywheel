@@ -93,10 +93,11 @@ class VocabularyTest(unittest.TestCase):
 
     def test_the_three_batch_kinds_are_defined_in_flywheel_setups_labels(self):
         source = (BIN / "flywheel-setup").read_text()
-        defined = set(re.findall(r'^\s*"(unit|elaboration|plan)":', source,
-                                 re.MULTILINE))
-        self.assertEqual(defined, {"unit", "elaboration", "plan"},
-                         "a planner writing plan must move a label, not fail")
+        defined = set(re.findall(r'^\s*"(unit|elaboration|plan|stale)":',
+                                 source, re.MULTILINE))
+        self.assertEqual(defined, {"unit", "elaboration", "plan", "stale"},
+                         "a loop writing a label the repo does not define "
+                         "is a failed edit, not a created label")
 
     def test_stage_planned_description_is_the_books(self):
         source = (BIN / "flywheel-setup").read_text()
