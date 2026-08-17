@@ -64,6 +64,14 @@ class PlanCardTest(unittest.TestCase):
         self.assertEqual(inbox.server_inbox(snap), [])
 
 
+class DispatchFilterTest(unittest.TestCase):
+    def test_a_plan_card_is_never_triage(self):
+        item = inbox.Item(number=12, title="Bolt: x",
+                          labels=frozenset({"plan"}), milestone=None)
+        box = inbox.dispatch_inbox(inbox.TrackerSnapshot(items=[item]))
+        self.assertEqual(box.triage, ())
+
+
 class AddressRoutingTest(unittest.TestCase):
     def plan_for(self, host):
         job = inbox.Job("bolt/x", "run", "why")

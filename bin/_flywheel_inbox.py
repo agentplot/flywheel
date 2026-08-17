@@ -791,7 +791,13 @@ def dispatch_inbox(snapshot):
     """
     live = [i for i in snapshot.items if i.is_open or i.merge_closed]
     return DispatchInbox(
-        triage=tuple(i for i in live if i.is_open and not i.milestone),
+        # A plan card is open and unmilestoned BY CONTRACT — it is the
+        # planner's, awaiting board approval, and it is never triage.
+        # Live fire: dispatch routed a fresh card onto a milestone with a
+        # state label, which started phantom bolt loops.
+        triage=tuple(i for i in live
+                     if i.is_open and not i.milestone
+                     and PLAN not in i.labels),
         relay=tuple(i for i in live if NEEDS_OPERATOR in i.labels),
     )
 
