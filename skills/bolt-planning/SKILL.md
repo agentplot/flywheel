@@ -35,6 +35,13 @@ the scope limits which cuts you propose, not how carefully you read.
 - Sequence bolts by dependency and by risk: what unlocks the rest
   comes first. State the order and the reason for each boundary —
   what you left for a later bolt, and why.
+- A dependency exists on exactly three grounds, and you name which:
+  **derivation** (this work's specs derive from specs another task or
+  bolt advances at its merge), **contention** (two tasks would write
+  deltas to the same capability — chain them or fold them into one),
+  or **runtime precondition** (the behavior needs an artifact the
+  other work produces in the world). Anything else is independent; a
+  chain without one of these grounds serializes work for nothing.
 - Every task cites the chapter or chapters it derives from, by path
   (`books/<book>/src/<chapter>.md`). A task you cannot tie to a
   chapter does not go in a plan — if the code clearly needs work the
