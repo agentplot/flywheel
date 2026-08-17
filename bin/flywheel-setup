@@ -77,7 +77,7 @@ LABELS = {
     # one `stage:*` naming the leading edge. Four are the bolt loop's, two
     # the intent loop's, and `stage:done` is the OPERATOR's — the one signal
     # the intent loop's completion filter consumes.
-    "stage:planned": ("c2e0c6", "its spec validates, or its plan is approved"),
+    "stage:planned": ("c2e0c6", "its spec validates"),
     "stage:built": ("c2e0c6", "the change is applied; a commit is on the "
                               "item's branch"),
     "stage:verified": ("c2e0c6", "verify came back clean"),
@@ -101,6 +101,8 @@ LABELS = {
                        "its sub-issues"),
     "elaboration": ("bfd4f2", "a proposed batch of design work; items are "
                               "its sub-issues"),
+    "plan": ("8a63d2", "one proposed bolt awaiting approval; the plan "
+                       "document is the card body"),
     "needs-operator": ("e99695",
                        "blocked on the operator's word; the question is the "
                        "latest comment"),

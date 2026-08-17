@@ -91,6 +91,19 @@ class VocabularyTest(unittest.TestCase):
         self.assertIn("closed:merged", defined,
                       "the loop cannot write a label the repo does not define")
 
+    def test_the_three_batch_kinds_are_defined_in_flywheel_setups_labels(self):
+        source = (BIN / "flywheel-setup").read_text()
+        defined = set(re.findall(r'^\s*"(unit|elaboration|plan)":', source,
+                                 re.MULTILINE))
+        self.assertEqual(defined, {"unit", "elaboration", "plan"},
+                         "a planner writing plan must move a label, not fail")
+
+    def test_stage_planned_description_is_the_books(self):
+        source = (BIN / "flywheel-setup").read_text()
+        m = re.search(r'"stage:planned": \("[0-9a-f]{6}", "([^"]+)"\)', source)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1), "its spec validates")
+
     def test_the_construction_stages_are_in_the_order_the_cycle_runs_them(self):
         self.assertEqual(inbox.CONSTRUCTION_STAGES,
                          ("stage:planned", "stage:built", "stage:verified",
