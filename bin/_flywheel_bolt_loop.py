@@ -22,7 +22,7 @@ answers; a session saying "green" is not evidence and is not read as any.
 
 *Judgment is asked for in a session and answered in one parsed line, and
 the loop performs the write.* Four places need it: the construction work
-itself; the merge-criteria test that routes a discovery (guard 2); the
+itself; the
 plan-mode approval; and which merge criterion failed at landing. In each
 the session supplies a verdict and this program supplies the writes, so
 that what changed on the tracker is always something the loop can name.
@@ -76,7 +76,6 @@ STAGE_MODELS = {
     "merge": "sonnet",
     "land": "opus[1m]",
     "scaffold": "sonnet",
-    "route": "sonnet",     # the merge-criteria test — one item, one verdict
     "plan": "sonnet",      # a plan against a claim
 }
 
@@ -124,8 +123,6 @@ _SESSION = re.compile(
 #: The one line a judgment session's answer is read from. Anything else is
 #: unreadable on purpose: a verdict the loop cannot parse is a verdict it
 #: does not act on.
-_ROUTE = re.compile(r"^ROUTE:[ \t]*(?P<route>keep|intent/[\w.-]+|unmilestoned)[ \t]*$",
-                    re.MULTILINE)
 _PLAN = re.compile(r"^(?P<verdict>APPROVED|RETURNED)\b[ \t]*:?[ \t]*(?P<why>.*)$",
                    re.MULTILINE)
 
@@ -1319,11 +1316,13 @@ class BoltLoop:
         topology = self.guard_topology(actions)
         if topology is not None:
             return actions, topology
-        flipped = self.guard_flip_consume(snapshot, actions)
-        failure = self.guard_route(snapshot, actions, skip=flipped)
-        if failure is None:
-            self.guard_stages(snapshot, actions)
-        return actions, failure
+        self.guard_flip_consume(snapshot, actions)
+        # A queued item on the milestone is inert to machinery: it waits
+        # until an author — the planner, dispatch, or the operator — folds
+        # it into a plan card. Expansion of an approved card is the only
+        # birth of work items.
+        self.guard_stages(snapshot, actions)
+        return actions, None
 
     def guard_stages(self, snapshot, actions):
         """3 — re-derive `stage:built` and `stage:merged` from the tree.
@@ -1398,7 +1397,7 @@ class BoltLoop:
                 # The merged edge is ONE fact with TWO writes, so a process
                 # killed between them leaves an item half-merged in the
                 # tracker's eyes. Repair the close as well as the label.
-                if not item.is_assertion:
+                if item.is_container:
                     continue
                 if item.merge_closed:
                     continue            # closed WITH the reason; nothing torn
@@ -1580,73 +1579,6 @@ class BoltLoop:
             flipped.append(number)
         return flipped
 
-    def guard_route(self, snapshot, actions, skip=()):
-        """2 — discovery routing, by the merge-criteria test.
-
-        The record's test is "a discovery joins the bolt's milestone only
-        when the bolt's merge criteria need it; otherwise it goes to the
-        intent that owns its subject, or unmilestoned for dispatch". That
-        is a judgment about this bolt's criteria and this item's subject,
-        so the loop asks one short session per orphan — with the criteria
-        and the item body in front of it — and then makes the move itself.
-
-        Idempotent in both directions: a routed item leaves the milestone
-        and the next snapshot cannot see it; a kept item is composed into a
-        unit and is no longer an orphan. So a second cycle asks nothing and
-        writes nothing.
-
-        **Batch parents are excluded**, the same way `compose_plan`,
-        `server_inbox` and `guard_stages` exclude them. A `unit` or
-        `elaboration` is a container, not composable work, and it matches
-        the orphan shape exactly — labelled `state:queued`, on the
-        milestone, nobody's sub-issue. Without this the born-ready release's
-        own parent is read as a discovery: it gets routed off the milestone,
-        or composed into a second unit which is itself a fresh orphan next
-        cycle. Neither converges, and the guard writing an action every pass
-        means `cycle`'s STOP can never fire.
-        """
-        claimed = parented(snapshot)
-        orphans = [
-            i for i in snapshot.on(self.params.milestone)
-            if i.is_open and i.queued and i.number not in skip
-            and i.parent_batch is None and i.number not in claimed
-            # A container is never work: routing a unit asks the
-            # merge-criteria test of a box, and the keep path then wraps
-            # the box in another box, forever (observed live: #120 → #121).
-            and not i.is_container
-        ]
-        if not orphans:
-            return None
-        if self.dry_run:
-            actions.append("would apply the merge-criteria test to " +
-                           ", ".join(f"#{i.number}" for i in orphans))
-            return None
-        criteria = self.merge_criteria()
-        intents = self.open_intents()
-        keep = []
-        for item in orphans:
-            route, why = self.route_discovery(item, criteria, intents)
-            if route == "keep":
-                keep.append(item)
-                continue
-            reason = (f"Routed off bolt/{self.params.slug} by the merge-criteria "
-                      f"test: this bolt can land without it. {why}".strip())
-            if route == "unmilestoned":
-                self.tracker.comment(item.number, reason +
-                                     "\n\nUnmilestoned for dispatch to triage.")
-                self.tracker.clear_milestone(item.number)
-                actions.append(f"#{item.number} unmilestoned for triage")
-            else:
-                self.tracker.comment(item.number, reason +
-                                     f"\n\nMoved to {route}, the intent that owns its subject.")
-                self.tracker.set_milestone(item.number, route)
-                actions.append(f"#{item.number} moved to {route}")
-        if keep:
-            composed = self.compose(keep, snapshot)
-            if composed:
-                actions.append(composed)
-        return None
-
     def merge_criteria(self):
         """The Merge criteria section of this bolt's bolt.md, from disk."""
         record = self.params.change_dir / "bolt.md"
@@ -1661,98 +1593,6 @@ class BoltLoop:
         """`Landing: merge` (the default) or `Landing: pr`, per bolt.md."""
         match = re.search(r"Landing:\s*(merge|pr)\b", self.merge_criteria() or "", re.I)
         return match.group(1).lower() if match else "merge"
-
-    def open_intents(self):
-        try:
-            rows = self.tracker.milestones("open")
-        except Exception:
-            return []
-        return [r["title"] for r in rows
-                if str(r.get("title", "")).startswith(inbox.INTENT_PREFIX)]
-
-    def route_discovery(self, item, criteria, intents):
-        """One item, one verdict: the merge-criteria test, asked of a session.
-
-        Unreadable answers route `keep`. Nothing leaves this bolt on a
-        verdict the loop could not parse — the safe direction, because a
-        kept item is visible in the queue and a wrongly-routed one is not.
-        """
-        name = session_name("route", f"{self.params.slug}-{item.number}")
-        destinations = ", ".join(intents) or "(no open intent milestones)"
-        order = sessions.work_order(
-            f"Apply the merge-criteria test to one discovery on bolt/{self.params.slug}.",
-            (f"The test, from the flywheel's tracker contract: a discovery made "
-             f"during construction joins the bolt's milestone ONLY when the bolt's "
-             f"merge criteria need it; otherwise it goes to the intent that owns its "
-             f"subject, or stays unmilestoned for dispatch to triage.\n\n"
-             f"THE ITEM — #{item.number} {item.title}\n{item.body}\n\n"
-             f"THIS BOLT'S MERGE CRITERIA\n{criteria or '(none recorded)'}\n\n"
-             f"Open intent milestones: {destinations}\n\n"
-             f"Decide, and write nothing anywhere — the loop makes the move. "
-             f"Answer with exactly two lines and nothing after them:\n"
-             f"ROUTE: keep | intent/<slug> | unmilestoned\n"
-             f"WHY: <one sentence naming the criterion that needs it, or why none does>"))
-        outcome = self.drive("route", self.spec_for(
-            "route", name, self.params.repo_dir, order))
-        if not outcome.ok:
-            return "keep", "the routing session did not answer; kept on the bolt"
-        match = _ROUTE.search(outcome.report or "")
-        if not match:
-            return "keep", "the routing verdict was unreadable; kept on the bolt"
-        route = match.group("route")
-        why = ""
-        found = re.search(r"^WHY:[ \t]*(?P<why>.+)$", outcome.report or "", re.MULTILINE)
-        if found:
-            why = found.group("why").strip()
-        if route.startswith("intent/") and intents and route not in intents:
-            return "keep", f"the verdict named {route}, which is not an open intent"
-        return route, why
-
-    def compose(self, items, snapshot=None):
-        """What stays on the bolt becomes one unit at Backlog.
-
-        Backlog, never Ready: composing is the loop's, approving is the
-        operator's, and a batch born at Ready would make the loop the
-        approver of its own discoveries.
-        """
-        numbers = [str(i.number) for i in items]
-        batch = Path(__file__).resolve().parent / "flywheel-batch"
-        argv = [
-            str(batch), "--kind", "unit", "--org", self.params.org,
-            "--repo", self.params.repo, "--milestone", self.params.milestone,
-            "--title", f"Work the discoveries queued on bolt/{self.params.slug}"]
-        # AMEND, like the intent side: while an open unit for this bolt
-        # sits at Backlog, newcomers join it rather than fragmenting into
-        # near-identical containers.
-        if snapshot is not None:
-            for b in sorted(snapshot.batches, key=lambda b: b.number):
-                if (b.kind == inbox.UNIT and b.status == inbox.STATUS_BACKLOG
-                        and b.milestone == self.params.milestone):
-                    argv += ["--into", str(b.number)]
-                    break
-        proc = self.shell(argv + numbers, cwd=self.params.repo_dir)
-        if proc.returncode != 0:
-            self._log(f"compose failed: {(proc.stderr or proc.stdout or '').strip()}")
-            return None
-        self._await_listed(proc.stdout)
-        return f"composed #{', #'.join(numbers)} into a unit at Backlog"
-
-    def _await_listed(self, stdout):
-        """Read-your-writes: do not finish the guard until a batch this
-        cycle created is visible in the list the next snapshot reads."""
-        if self.dry_run or isinstance(self.tracker, FixtureTracker):
-            return
-        match = re.search(r"^unit #(\d+):", stdout or "", re.MULTILINE)
-        if not match:
-            return
-        number = int(match.group(1))
-        for _ in range(6):
-            snap = self.tracker.snapshot(self.params.milestone)
-            if any(i.number == number for i in snap.items):
-                return
-            time.sleep(5)
-
-    # -- stages ------------------------------------------------------------
 
     def spec_stage(self, batch):
         """The type's strategy, run as prompts on one spec session.
@@ -2205,17 +2045,13 @@ class BoltLoop:
         return StageOutcome("merge", "done", f"{branch} merged{note}")
 
     def close_merged(self, items, sha=None):
-        """Close these assertion items `closed:merged`, with the SHA.
+        """Close these work items `closed:merged`, with the SHA.
 
         The unit parent's progress bar is GitHub's own and counts CLOSED
         sub-issues, so the check-off happens here rather than at the
         landing. `closed:merged` — not a close with no reason — is what
         keeps tracker.md invariant 5 verbatim: exactly one `closed:*`
         reason on a closed item, at every moment. The landing upgrades it.
-
-        **Only `type:assertion` items.** A discovery queued on the bolt
-        closes on its own evidence, as it does today, and a batch merging
-        past it must not sweep it up.
 
         Closing is the LOOP's, made against git's ancestry answer — the
         merge session comments and closes nothing, for the reason the
@@ -2233,8 +2069,6 @@ class BoltLoop:
         sha = sha or self.head_sha(self.params.bolt_branch)
         closed = []
         for item in items:
-            if not item.is_assertion:
-                continue
             if self.tracker.closed_with(item.number, inbox.CLOSED_MERGED):
                 continue
             self.tracker.close(
@@ -2335,7 +2169,7 @@ class BoltLoop:
                                 f"{self.params.main_branch}", report=outcome.report)
         sha = self.head_sha(self.params.main_branch)
         for item in items:
-            if not item.is_assertion:
+            if item.is_container:
                 continue
             if inbox.CLOSED_DONE in item.labels and not item.is_open:
                 continue                      # already landed; never re-closed
@@ -2382,8 +2216,7 @@ class BoltLoop:
         landed = {i.number for i in items}
         numbers = {b.number for b in snapshot.batches
                    if b.kind == inbox.UNIT and b.milestone == self.params.milestone}
-        numbers |= {i.parent_batch for i in items
-                    if i.is_assertion and i.parent_batch}
+        numbers |= {i.parent_batch for i in items if i.parent_batch}
         for number in sorted(numbers - landed):
             batch = snapshot.batch(number)
             if batch is not None and batch.kind == inbox.ELABORATION:
@@ -2696,8 +2529,8 @@ class BoltLoop:
         # so a bolt whose every unlanded assertion is merge-closed has no
         # sibling still building, and the criteria are verified against a
         # whole branch rather than a half-built one.
-        assertions = [i for i in unlanded if i.is_assertion]
-        return bool(assertions) and all(i.merge_closed for i in assertions)
+        work = [i for i in unlanded if not i.is_container]
+        return bool(work) and all(i.merge_closed for i in work)
 
     def describe(self, result):
         parts = [f"cycle {result.number}:"]

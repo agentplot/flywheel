@@ -160,23 +160,21 @@ raw idea — say which you chose:
 1. **New intent** — dedupe against the open `intent/*` milestones, then
    create the milestone and its originating item, assigned to the
    developer whose word settles it.
-2. **Assertion on an existing intent** — an idea that arrives
-   work-shaped becomes a queued item on that intent's milestone; a design
-   session writes the assertion record from it.
+2. **Question on an existing intent** — an idea that arrives
+   design-shaped becomes a queued item on that intent's milestone,
+   joining an elaboration for the operator to approve.
 3. **Item on a running bolt** — construction-scoped work a live bolt
-   covers: queue it on the bolt's milestone.
-4. **Quick bolt** — small, fully defined work gets a `bolt/<slug>`
-   milestone and its items born `state:ready` on the operator's word at
-   triage, released under **one `unit` parent** whose sub-issues they
-   are (`flywheel-batch --kind unit`), and that parent goes on the board
-   at Status **Ready** from birth (`flywheel-board --status Ready
-   <parent>`) — the operator's word at triage IS the approval, so there
-   is nothing left to approve. The parent is the board row; the released
-   items themselves are not added to the board, or the one row per bolt
-   this buys is lost. One item or four, the parent is created either
-   way. Something that is
-   genuinely two shell commands is still two shell commands; run them
-   and say so.
+   covers: queue it on the bolt's milestone, where it is inert to
+   machinery until an author — the planner, dispatch on the operator's
+   dictation, or the operator — folds it into a plan card.
+4. **Dictated card** — the operator states construction work exactly:
+   author a plan card, the same artifact the bolt planner files.
+   Create the `bolt/<slug>` milestone when no open bolt fits, file one
+   `plan`-labeled card titled `Unit: <slug>` on it, its body a unit
+   document — a task table with one change per row, the unit's type,
+   its price — at board Backlog with the fleet's Team. No work items,
+   no `state:*` labels, and never Status Ready: the word that
+   authorizes filing the card is not the gesture that starts the work.
 5. **Dropped** — say so; record nothing.
 
 Loops are started by `flywheel server`, never by dispatch.

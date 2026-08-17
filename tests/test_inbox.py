@@ -622,6 +622,20 @@ class RecordConsistencyTest(unittest.TestCase):
                       ("skills", "_reference", "herdr.md")):
             self.assertIn("closed:merged", self.read(*parts), str(parts))
 
+    def test_the_born_ready_release_cannot_return_to_dispatch_surfaces(self):
+        # dispatch-to-bolt: dictated work arrives as a plan card the operator
+        # approves on the board — never items born state:ready on a word at
+        # triage. The phrasing that carried the retired route must not creep
+        # back into the surfaces dispatch reads.
+        for parts in (("agents", "flywheel-dispatch.md"),
+                      ("skills", "inception", "SKILL.md")):
+            flat = " ".join(self.read(*parts).split())
+            self.assertNotIn("born `state:ready` on the operator's word",
+                             flat, str(parts))
+            self.assertNotIn("Status **Ready** from birth", flat, str(parts))
+            self.assertNotIn("nothing left to approve", flat, str(parts))
+            self.assertIn("never Status Ready", flat, str(parts))
+
     def test_no_reader_still_says_items_close_at_the_landing(self):
         record = self.read("design", "loop-programs.md")
         self.assertNotIn("Items close at landing with the SHA", record)

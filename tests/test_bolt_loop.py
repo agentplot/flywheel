@@ -288,21 +288,6 @@ class RelaunchOriginTest(unittest.TestCase):
         self.assertEqual(l.launch_origin([7], "build-b1"), 900)
 
 
-class ComposeAmendTest(unittest.TestCase):
-
-    def test_bolt_compose_appends_to_the_open_backlog_unit(self):
-        shell = FakeShell()
-        snap = Snapshot(
-            items=[item(120, inbox.QUEUED, inbox.UNIT, milestone="bolt/x")],
-            batches=[Batch(120, kind=inbox.UNIT,
-                           status=inbox.STATUS_BACKLOG, milestone="bolt/x")])
-        l = a_loop(FakeTracker(snap), shell=shell)
-        l.compose([item(7, inbox.QUEUED, milestone="bolt/x")], snap)
-        call = next(a for a, _ in shell.calls if "flywheel-batch" in str(a[0]))
-        self.assertIn("--into", call)
-        self.assertEqual(call[call.index("--into") + 1], "120")
-
-
 class StatelessResumeTest(unittest.TestCase):
     """A restarted loop re-adopts its own in-progress items (observed live:
     a restart saw only state:ready, found nothing, and stranded the bolt)."""
@@ -340,25 +325,6 @@ class StatelessResumeTest(unittest.TestCase):
         l = a_loop(FakeTracker(self._snap()), shell=shell)
         result = l.cycle(1)
         self.assertNotIn("awaiting the landing", result.stopped or "")
-
-
-class ContainerRoutingTest(unittest.TestCase):
-
-    def test_a_unit_parent_is_never_routed(self):
-        # Observed live: the loop composed discoveries into unit #120, then
-        # the next cycle routed the container itself and the keep path
-        # wrapped it in #121. A container is never work.
-        snap = Snapshot(items=[
-            item(120, inbox.QUEUED, inbox.UNIT, milestone="bolt/x"),
-            item(7, inbox.QUEUED, milestone="bolt/x"),
-        ])
-        l = a_loop(FakeTracker())
-        l.dry_run = True
-        actions = []
-        l.guard_route(snap, actions)
-        said = " ".join(actions)
-        self.assertIn("#7", said)
-        self.assertNotIn("#120", said)
 
 
 class WorktreeOrchestrationTest(unittest.TestCase):
@@ -673,117 +639,37 @@ class GuardTest(unittest.TestCase):
         self.assertEqual(loop.parented(snapshot), {1})
 
 
-class RoutingTest(unittest.TestCase):
-    """Guard 2 — discovery routing, by the merge-criteria test."""
+class InertQueueTest(unittest.TestCase):
+    """A queued item on a bolt milestone is inert to machinery: no routing
+    session, no composed unit, no move — it waits until an author folds it
+    into a plan card. Expansion of an approved card is the only birth."""
 
-    def orphan_snapshot(self):
-        return Snapshot(items=[item(5, inbox.QUEUED, title="a discovery")],
-                        milestone="bolt/x")
-
-    def routed(self, verdict, intents=("intent/y",)):
-        snapshot = self.orphan_snapshot()
-        tracker = FakeTracker(snapshot,
-                              milestones=[{"title": t} for t in intents])
-        runner = ScriptedRunner(reports=[verdict])
-        program = a_loop(tracker, runner=runner)
-        actions, failure = program.guards(snapshot)
-        return tracker, actions, failure
-
-    def test_a_discovery_the_bolt_can_land_without_moves_to_its_intent(self):
-        tracker, actions, _ = self.routed("ROUTE: intent/y\nWHY: no criterion needs it")
-        self.assertIn(("set_milestone", 5, "intent/y"), tracker.writes)
-        self.assertTrue(any("moved to intent/y" in a for a in actions))
-
-    def test_a_discovery_belonging_to_no_intent_is_left_for_dispatch(self):
-        tracker, actions, _ = self.routed("ROUTE: unmilestoned\nWHY: nobody owns it")
-        self.assertIn(("clear_milestone", 5, ""), tracker.writes)
-
-    def test_a_discovery_the_criteria_need_stays_and_is_composed_at_backlog(self):
-        tracker, actions, _ = self.routed("ROUTE: keep\nWHY: criterion two needs it")
-        self.assertNotIn("set_milestone", tracker.kinds())
-        self.assertNotIn("clear_milestone", tracker.kinds())
-        self.assertTrue(any("composed" in a for a in actions), actions)
-
-    def test_an_unreadable_verdict_moves_nothing(self):
-        # Nothing leaves the bolt on a verdict the loop could not parse:
-        # a kept item is visible in the queue, a wrongly-routed one is not.
-        tracker, actions, _ = self.routed("I think it probably belongs elsewhere?")
-        self.assertNotIn("set_milestone", tracker.kinds())
-        self.assertNotIn("clear_milestone", tracker.kinds())
-
-    def test_a_verdict_naming_a_milestone_that_is_not_an_open_intent_is_refused(self):
-        tracker, _, _ = self.routed("ROUTE: intent/z\nWHY: guessing",
-                                    intents=("intent/y",))
-        self.assertNotIn("set_milestone", tracker.kinds())
-
-    def test_a_born_ready_unit_parent_is_not_a_discovery_and_is_never_composed(self):
-        """A release's own container is not work the release discovered.
-
-        The born-ready unit parent this change introduces is labelled
-        `unit` + `state:queued`, sits on `bolt/<slug>`, and is nobody's
-        sub-issue — which is the orphan filter's shape exactly. Left in,
-        the guard composes a SECOND unit over the release's own container,
-        and that unit is itself a fresh orphan next cycle: it does not
-        converge, and `cycle`'s STOP can never fire because the guard
-        writes an action every pass.
-
-        The three sibling sweeps all carry this exclusion
-        (`_flywheel_inbox.compose_plan`, `server_inbox`, `guard_stages`);
-        this one is the outlier. It is the first sweep to meet a unit on a
-        bolt milestone, because on the handoff path the unit sits on the
-        intent milestone.
-        """
-        snapshot = Snapshot(
-            items=[item(9, inbox.UNIT, inbox.QUEUED, title="the release")],
-            milestone="bolt/x")
+    def test_a_queued_orphan_charges_no_session_and_moves_nowhere(self):
+        snapshot = Snapshot(items=[item(5, inbox.QUEUED, title="a note")],
+                            milestone="bolt/x")
         shell = FakeShell()
         tracker = FakeTracker(snapshot)
-        program = a_loop(tracker, runner=ScriptedRunner(reports=["ROUTE: keep"]),
-                         shell=shell)
+        runner = ScriptedRunner(reports=["should never be read"])
+        program = a_loop(tracker, runner=runner, shell=shell)
         actions, failure = program.guards(snapshot)
         self.assertIsNone(failure)
-        self.assertEqual(actions, [], "a container is not a discovery")
-        self.assertEqual([c for c, _ in shell.calls
-                          if "flywheel-batch" in c[0]], [],
-                         "and nothing composes a unit over a unit")
-
-    def test_an_elaboration_parent_is_excluded_on_the_same_grounds(self):
-        snapshot = Snapshot(
-            items=[item(8, inbox.ELABORATION, inbox.QUEUED)],
-            milestone="bolt/x")
-        shell = FakeShell()
-        program = a_loop(FakeTracker(snapshot),
-                         runner=ScriptedRunner(reports=["ROUTE: keep"]),
-                         shell=shell)
-        actions, _ = program.guards(snapshot)
         self.assertEqual(actions, [])
+        self.assertNotIn("set_milestone", tracker.kinds())
+        self.assertNotIn("clear_milestone", tracker.kinds())
         self.assertEqual([c for c, _ in shell.calls
-                          if "flywheel-batch" in c[0]], [])
+                          if "flywheel-batch" in str(c[0])], [],
+                         "nothing composes a unit from queued items")
 
-    def test_a_real_discovery_beside_a_unit_parent_is_still_routed(self):
-        """The exclusion must not swallow the guard's actual job."""
+    def test_containers_and_orphans_alike_are_left_alone(self):
         snapshot = Snapshot(
             items=[item(9, inbox.UNIT, inbox.QUEUED),
-                   item(5, inbox.QUEUED, title="a discovery")],
+                   item(8, inbox.ELABORATION, inbox.QUEUED),
+                   item(5, inbox.QUEUED, title="a note")],
             milestone="bolt/x")
-        tracker = FakeTracker(snapshot, milestones=[{"title": "intent/y"}])
-        program = a_loop(tracker, runner=ScriptedRunner(
-            reports=["ROUTE: intent/y\nWHY: no criterion needs it"]))
-        program.guards(snapshot)
-        self.assertIn(("set_milestone", 5, "intent/y"), tracker.writes)
-        self.assertNotIn(9, [w[1] for w in tracker.writes])
-
-    def test_the_composed_unit_is_born_at_backlog_and_never_at_ready(self):
-        snapshot = self.orphan_snapshot()
-        shell = FakeShell()
         tracker = FakeTracker(snapshot)
-        program = a_loop(tracker, runner=ScriptedRunner(reports=["ROUTE: keep"]),
-                         shell=shell)
-        program.guards(snapshot)
-        composed = [c for c, _ in shell.calls if "flywheel-batch" in c[0]]
-        self.assertTrue(composed)
-        self.assertIn("--kind", composed[0])
-        self.assertNotIn("Ready", composed[0])
+        actions, _ = a_loop(tracker).guards(snapshot)
+        self.assertEqual(actions, [])
+        self.assertEqual(tracker.writes, [])
 
 
 # ---------------------------------------------------------------------------
@@ -1733,14 +1619,15 @@ class MergeCloseTest(unittest.TestCase):
         self.assertTrue(all("abc1234" in w[2] for w in tracker.writes
                             if w[0] == "close"))
 
-    def test_a_discovery_item_on_the_bolt_is_untouched_by_the_merge(self):
-        # A discovery closes on its own evidence, as it does today.
+    def test_every_work_item_closes_whatever_labels_it_carries(self):
+        # Expansion-born items carry no type label; no carve-out exempts an
+        # item from its merge close.
         tracker = FakeTracker()
         program = a_loop(tracker, shell=self.shell())
         program.close_merged([
             item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
-            item(5, inbox.IN_PROGRESS, title="a discovery")])
-        self.assertEqual([n for n, _ in tracker.reasons], [1])
+            item(5, inbox.IN_PROGRESS, title="an expansion-born item")])
+        self.assertEqual(sorted(n for n, _ in tracker.reasons), [1, 5])
 
     def test_a_full_cycle_merges_and_closes_in_one_go(self):
         snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.READY,
