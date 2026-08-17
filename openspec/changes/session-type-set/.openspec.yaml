@@ -1,0 +1,7 @@
+schema: bolt-quick
+created: 2026-08-17
+# A bolt change is a construction tracking record, not a spec-driven change:
+# its deltas, when it has any, live in the built repo's own change. The built
+# repo here is this one, so a spec-writing session's `/opsx:ff` change lands
+# beside this record under the repo's `spec-driven` schema — never inside it.
+skip_specs: true
