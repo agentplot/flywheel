@@ -929,6 +929,12 @@ def server_config(manifest: dict, host: str, interval: int):
     if not loops_cwd.is_dir():
         sys.exit(f"loops_cwd: {cwd_rel} does not resolve under "
                  f"{manifest['root']}")
+    operator = top.get("operator", "")
+    default_host = next(
+        (name for name, entry in manifest["hosts"].items()
+         if str(entry.get("default", "")).lower() == "true"),
+        next(iter(manifest["hosts"]), host))
+    default_team = f"{operator}@{default_host}" if operator else ""
     books = {}
     for name, entry in (manifest.get("books") or {}).items():
         book_p, repo_p = entry.get("book"), entry.get("repo")
@@ -941,14 +947,15 @@ def server_config(manifest: dict, host: str, interval: int):
             return p if p.is_absolute() else (manifest["root"] / p).resolve()
         books[name] = {
             "book": _resolve(book_p), "repo": _resolve(repo_p),
-            "team": entry.get("team", ""),
+            "team": (entry.get("runs_on") or entry.get("team")
+                     or default_team),
             "settle_minutes": int(entry.get("settle_minutes", 90)),
         }
     return server.ServerConfig(
         org=org, repo=repo, project=top.get("project", "Flywheel"),
         host=host, loops_cwd=loops_cwd, teams=manifest["teams"],
         interval=interval, bin_dir=Path(__file__).resolve().parent,
-        books=books)
+        operator=operator, books=books)
 
 
 def fresh_gate(cwd: Path):

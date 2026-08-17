@@ -64,6 +64,31 @@ class PlanCardTest(unittest.TestCase):
         self.assertEqual(inbox.server_inbox(snap), [])
 
 
+class AddressRoutingTest(unittest.TestCase):
+    def plan_for(self, host):
+        job = inbox.Job("bolt/x", "run", "why")
+        return server.plan([job], host=host,
+                           board_teams={"bolt/x": "afterthought@mac-studio"},
+                           argv_for=lambda j: ["argv"])
+
+    def test_address_routes_to_its_host(self):
+        current = self.plan_for("mac-studio")
+        self.assertEqual([w.milestone for w in current.start], ["bolt/x"])
+
+    def test_address_routes_away_from_other_hosts(self):
+        current = self.plan_for("macbook-pro")
+        self.assertEqual(current.start, ())
+        self.assertEqual(current.elsewhere, (("bolt/x", "mac-studio"),))
+
+    def test_bare_value_still_uses_the_legacy_map(self):
+        job = inbox.Job("bolt/x", "run", "why")
+        current = server.plan([job], host="mac-studio",
+                              teams={"flywheel": "mac-studio"},
+                              board_teams={"bolt/x": "flywheel"},
+                              argv_for=lambda j: ["argv"])
+        self.assertEqual([w.milestone for w in current.start], ["bolt/x"])
+
+
 class RecordingTracker:
     def __init__(self):
         self.labels_added = []

@@ -219,7 +219,15 @@ def plan(jobs, *, teams=None, host=None, running=(), board_teams=None,
         if milestone_kind(job.milestone) is None:
             continue
         team = board_teams.get(job.milestone)
-        want_host = teams.get(team, host) if team else host
+        # A Team value is an address, `<operator>@<host>` — the value
+        # carries its own routing. A bare value falls back to the legacy
+        # translation map so an un-migrated board still routes.
+        if team and "@" in team:
+            want_host = team.rsplit("@", 1)[1]
+        elif team:
+            want_host = teams.get(team, host)
+        else:
+            want_host = host
         if host is not None and want_host != host:
             elsewhere.append((job.milestone, want_host))
             continue
@@ -297,6 +305,7 @@ class ServerConfig:
     interval: int = INTERVAL_S
     bin_dir: Path = None
     state: Path = None
+    operator: str = ""
     # system name -> {"book": Path, "repo": Path, "team": str,
     #                 "settle_minutes": int}. The homing rule as a fact on
     # disk: only bound systems get planning runs.
