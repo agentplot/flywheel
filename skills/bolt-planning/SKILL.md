@@ -100,9 +100,12 @@ The work order says which mode you are in:
   Project at Status Backlog with the work order's Team, and each
   "builds on" claim mirrored as a blocked-by relationship between the
   cards, superseding any unapproved plan cards from earlier runs
-  (close them `closed:superseded`). No milestones, no work items, no other issue,
-  comment, or label — expansion is the bolt loop's job, after board
-  approval.
+  (close them `closed:superseded`). Nothing else: no milestone on any
+  card, no `state:*` label, no work items, no other issue, comment,
+  or label — the milestone and the items are born at expansion, which
+  is the bolt loop's job, after board approval. A card that arrives
+  already milestoned starts phantom loops and is invisible to
+  expansion.
 
 ## Boundaries
 
