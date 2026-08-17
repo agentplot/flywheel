@@ -207,7 +207,11 @@ class IdempotentLaunchTest(unittest.TestCase):
                       if a[1:3] == ["agent", "send-keys"] and a[4] == "esc")
         self.assertLess(esc_at, prompt_at)
 
-    def test_a_failed_rename_clears_its_stranded_text(self):
+    def test_a_stubborn_title_never_provokes_a_typed_rename(self):
+        # The glued line `/rename scaffold-…/opsx:new …` observed live on
+        # bolt/matches-the-book: anything typed for a title can strand in
+        # the composer and swallow the order. A title that never converges
+        # costs nothing — the order still delivers, and no /rename is typed.
         class StubbornTitle(FakeHerdr):
             def __call__(self, argv, cwd=None, env=None, timeout=None):
                 out = super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
@@ -218,12 +222,31 @@ class IdempotentLaunchTest(unittest.TestCase):
         runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
                                       submit_attempts=2)
         runner.launch(spec())
-        escs = [i for i, a in enumerate(herdr.calls)
-                if a[1:3] == ["agent", "send-keys"] and a[4] == "esc"]
-        prompts = [i for i, a in enumerate(herdr.calls)
-                   if a[1:3] == ["agent", "prompt"] and not a[4].startswith("/rename")]
-        self.assertTrue(escs and prompts and min(escs) < min(prompts),
-                        "the stranded rename must be cleared before the order")
+        prompts = [a[4] for a in herdr.calls if a[1:3] == ["agent", "prompt"]]
+        self.assertFalse([p for p in prompts if p.startswith("/rename")],
+                         "a title is never worth typing into the composer")
+        self.assertTrue([p for p in prompts if p.startswith("/flywheel:build")],
+                        "the order must still deliver")
+
+    def test_a_pane_that_never_reaches_its_composer_fails_the_launch(self):
+        # Typing into a not-ready pane buffers keystrokes that land glued
+        # once claude comes up — refuse instead, pane kept for inspection.
+        class NeverReady(FakeHerdr):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                out = super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+                if argv[1:3] == ["agent", "start"]:
+                    self.roster[argv[3]]["interactive_ready"] = False
+                return out
+        herdr = NeverReady()
+        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+                                      ready_attempts=2)
+        with self.assertRaises(sessions.SessionError):
+            runner.launch(spec())
+        self.assertNotIn("agent prompt", herdr.verbs(),
+                         "nothing is typed into a pane that never got ready")
+        renames = [a for a in herdr.calls if a[1:3] == ["agent", "rename"]]
+        self.assertTrue(renames and renames[-1][4].endswith("-notready"),
+                        "the failed launch must release the name")
 
     def test_an_order_that_never_submits_fails_the_launch(self):
         class DeafComposer(FakeHerdr):

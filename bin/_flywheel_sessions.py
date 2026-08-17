@@ -250,9 +250,10 @@ class HerdrRunner(Runner):
 
     Mechanics are herdr.md's, with one deliberate improvement carried from
     the fleet driver (`bin/flywheel:start_actor`): the name is set at launch
-    with `-n`, so there is no rename to race with the work order. The
-    `/rename` dance stays as the fallback for the case where the title does
-    not converge, which is what herdr.md is protecting against.
+    with `-n`, so there is no rename to race with the work order. There is
+    no typed `/rename` fallback — the title is cosmetic, the roster keys on
+    the start name first, and anything typed for a title can strand in the
+    composer and swallow the work order.
     """
 
     kind = "herdr"
@@ -359,7 +360,13 @@ class HerdrRunner(Runner):
             name=spec.name, runner=self.kind,
             ref={"pane_id": pane, "tab_id": tab_id},
         )
-        self._await_ready(spec.name)
+        if not self._await_ready(spec.name):
+            # Typing into a pane that never reached its composer is how
+            # keystrokes buffer and land glued once claude comes up.
+            self._herdr("agent", "rename", spec.name, f"{spec.name}-notready")
+            raise SessionError(
+                f"{spec.name}: claude never reached its composer — the pane "
+                f"is left open for inspection as {spec.name}-notready")
         self._ensure_named(spec.name)
         if not self._deliver(spec.name, spec.order):
             # Release the NAME while keeping the pane: launch is idempotent
@@ -461,23 +468,19 @@ class HerdrRunner(Runner):
         return strip_glyph(row.get("terminal_title_stripped")) == name
 
     def _ensure_named(self, name):
-        """`-n` set the title at launch. If it did not take, fall back to
-        herdr.md's rename-confirm dance — alone, never queued ahead of the
-        work order, because two back-to-back prompts concatenate in the
-        composer and the order is lost."""
-        if self._named(name):
-            return True
-        self._herdr("agent", "prompt", name, f"/rename {name}")
-        for _ in range(self.submit_attempts):
-            self._sleep(self.poll_s)
+        """`-n` set the title at launch; the title field only lags it. Wait
+        for convergence and never type. The old `/rename` fallback is how a
+        work order gets swallowed: the dance could exit on `-n`'s own late
+        convergence with the unsubmitted `/rename` still in the composer,
+        where the next order pasted straight onto it and submitted as one
+        garbage line (`/rename scaffold-…/opsx:new …`, observed live on
+        bolt/matches-the-book). The title is cosmetic either way — the
+        roster keys on the start name first — so a title that never
+        converges costs nothing beyond this False."""
+        for _ in range(3):
             if self._named(name):
                 return True
-            self._herdr("agent", "send-keys", name, "enter")
-        # The rename never took. Whatever is stranded in the composer must
-        # not prefix the next prompt — a dirty composer concatenates two
-        # slash commands into one garbage line — so clear it and carry on:
-        # the agent stays addressable by its start name either way.
-        self._herdr("agent", "send-keys", name, "esc")
+            self._sleep(self.poll_s)
         return False
 
     def _deliver(self, name, order):
