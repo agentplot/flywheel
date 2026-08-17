@@ -452,7 +452,8 @@ class TrackerSnapshot:
                          team=i.get("team"),
                          stale=STALE in i.get("labels", ()),
                          blocked_by=tuple(i.get("blocked_by", ())),
-                         milestone=i.get("milestone"))
+                         milestone=i.get("milestone", milestone),
+                         milestone_state=i.get("milestone_state", "open"))
                 for i in raw.get("items", ())
                 if PLAN in i.get("labels", ())
                 and i.get("state", "open") == "open"
@@ -636,11 +637,23 @@ def operator_waits(snapshot, jobs=()):
             lines.append(
                 f"plan card #{card.number} at Backlog on {card.bolt} — "
                 f"flip to Ready to release")
-        elif card.at_ready and card.bolt not in routed:
-            why = ("its milestone is closed" if card.milestone_state != "open"
-                   else "no job names it")
+        elif card.at_ready:
+            # Counted by its milestone's job row — unless that milestone has
+            # no `run` job, which means nothing will expand the card and this
+            # line is the only place it can surface.
+            if card.bolt not in routed:
+                why = ("its milestone is closed"
+                       if card.milestone_state != "open" else "no job names it")
+                lines.append(
+                    f"plan card #{card.number} at Ready on {card.bolt} — {why}")
+        else:
+            # Every open card is outstanding work on its bolt, so a card with
+            # no board Status at all is reported rather than falling through
+            # both surfaces: it yields no job, and the two arms above only
+            # enumerate Ready and Backlog.
             lines.append(
-                f"plan card #{card.number} at Ready on {card.bolt} — {why}")
+                f"plan card #{card.number} on {card.bolt} is not on the board — "
+                f"it has no Status, so nothing releases it")
     for item in snapshot.items:
         if item.is_open and NEEDS_OPERATOR in item.labels:
             lines.append(f"#{item.number} needs-operator — "
@@ -1323,27 +1336,47 @@ class Tracker:
                 number=item.number, title=item.title, body=item.body,
                 status=row.get("status"), team=row.get("team"),
                 stale=STALE in item.labels,
-                blocked_by=tuple(self.blocked_by(item.number)),
+                # Gated like the item block above: the one reader of a card's
+                # blockers is the expansion guard, which runs under
+                # `snapshot(milestone)` with edges on. The server's sweep and
+                # `status` pass `with_edges=False` precisely to avoid a
+                # per-issue GET, and this was making one per open plan card.
+                blocked_by=(tuple(self.blocked_by(item.number))
+                            if with_edges else ()),
                 milestone=item.milestone,
                 milestone_state=item.milestone_state,
             ))
 
         # A batch's Ready flip is the approval, and a batch may sit on the
         # board without being an open issue we listed above.
+        #
+        # `milestone_state` is carried from the same closed-milestone list
+        # this snapshot reports, not defaulted. A Ready plan card reaches
+        # `server_inbox` twice — as a card and as one of these synthetic
+        # batches — and the card block declines a closed milestone while the
+        # Ready-batch set would not have known to. Left defaulting to "open"
+        # the backfill re-adds the very `run` job the card block declined,
+        # colliding with the `archive` job the same sweep adds for that
+        # milestone: the exact collision both other guards exist to prevent.
+        closed = self.closed_milestones()
         known = {b.number for b in batches}
         for number, row in board.items():
             if number in known or row.get("status") != STATUS_READY:
                 continue
             if row.get("state") != "OPEN":
                 continue
-            batches.append(Batch(number=number, status=STATUS_READY,
-                                 milestone=row.get("milestone")))
+            row_milestone = row.get("milestone")
+            batches.append(Batch(
+                number=number, status=STATUS_READY,
+                milestone=row_milestone,
+                milestone_state=("closed" if row_milestone in closed else "open"),
+            ))
 
         items = backfill_parentage(items, batches)
 
         return TrackerSnapshot(
             items=items, batches=batches,
-            closed_milestones=self.closed_milestones(),
+            closed_milestones=closed,
             milestone=milestone, plan_cards=cards,
         )
 

@@ -140,6 +140,15 @@ class OperatorWaitsTest(unittest.TestCase):
         self.assertIn("plan card #12", lines[0])
         self.assertIn("no bolt milestone", lines[0])
 
+    def test_a_card_with_no_board_status_is_reported(self):
+        # "every open, unexpanded `plan` card" — a card with no board row at
+        # all yields no job, so the report is the only surface it has.
+        snap = inbox.TrackerSnapshot(plan_cards=[card(status=None)])
+        lines = inbox.operator_waits(snap, inbox.server_inbox(snap))
+        self.assertEqual(len(lines), 1)
+        self.assertIn("plan card #12", lines[0])
+        self.assertIn("not on the board", lines[0])
+
     def test_batches_and_needs_operator_items_still_read_as_one_list(self):
         snap = inbox.TrackerSnapshot(
             items=[inbox.Item(number=5, title="a defect",
@@ -153,6 +162,96 @@ class OperatorWaitsTest(unittest.TestCase):
         self.assertTrue(lines[0].startswith("batch #9 at Backlog"))
         self.assertTrue(lines[1].startswith("plan card #12 at Backlog"))
         self.assertTrue(lines[2].startswith("#5 needs-operator"))
+
+
+class CardThroughTheRealSnapshotTest(unittest.TestCase):
+    """One Ready card reaches `server_inbox` as **two** objects: the card,
+    and the synthetic Ready `Batch` that `Tracker.snapshot`'s board backfill
+    builds for the same row. A hand-built `TrackerSnapshot` carries only the
+    first, so the card block's closed-milestone guard can look right there
+    while the backfill re-adds the job it declined. These drive the real
+    `Tracker.snapshot` so both objects are in play."""
+
+    class FakeTracker(inbox.Tracker):
+        def __init__(self, milestone_state="open"):
+            super().__init__("token", "org", "repo", project_title="Flywheel")
+            self.milestone_state = milestone_state
+
+        def open_issues(self):
+            return [{"number": 12, "title": "Unit: observer-rework",
+                     "body": PLAN_BODY, "state": "open",
+                     "labels": [{"name": "plan"}],
+                     "milestone": {"title": "bolt/observer-rework",
+                                   "state": self.milestone_state}}]
+
+        def merge_closed_issues(self):
+            return []
+
+        def board_items(self):
+            return [{"number": 12, "status": "Ready", "team": "workstation",
+                     "state": "OPEN", "milestone": "bolt/observer-rework"}]
+
+        def closed_milestones(self):
+            return (["bolt/observer-rework"]
+                    if self.milestone_state == "closed" else [])
+
+        def sub_issues(self, number):
+            return []
+
+        def blocked_by(self, number):
+            # `with_edges=False` is the server's and `status`'s whole reason
+            # for existing: no per-issue calls. A card must not make one.
+            raise AssertionError(
+                f"per-issue edge call for #{number} under with_edges=False")
+
+    def snapshot(self, milestone_state="open"):
+        return self.FakeTracker(milestone_state).snapshot(with_edges=False)
+
+    def test_the_backfilled_batch_carries_the_real_milestone_state(self):
+        snap = self.snapshot("closed")
+        self.assertEqual([b.milestone_state for b in snap.batches], ["closed"])
+
+    def test_a_ready_card_on_a_closed_milestone_yields_no_run_job(self):
+        # The card block declines; the backfilled batch must not re-add it,
+        # or the run job collides with this milestone's archive job.
+        snap = self.snapshot("closed")
+        jobs = inbox.server_inbox(snap)
+        self.assertEqual([(j.milestone, j.kind) for j in jobs],
+                         [("bolt/observer-rework", "archive")])
+
+    def test_that_card_is_reported_as_waiting_instead(self):
+        snap = self.snapshot("closed")
+        lines = inbox.operator_waits(snap, inbox.server_inbox(snap))
+        self.assertEqual(len(lines), 1)
+        self.assertIn("plan card #12", lines[0])
+        self.assertIn("its milestone is closed", lines[0])
+
+    def test_an_open_milestone_still_yields_the_cards_run_job(self):
+        snap = self.snapshot("open")
+        jobs = inbox.server_inbox(snap)
+        self.assertEqual([(j.milestone, j.kind) for j in jobs],
+                         [("bolt/observer-rework", "run")])
+        self.assertEqual(jobs[0].why,
+                         "plan card #12 at Ready, awaiting expansion")
+        self.assertEqual(inbox.operator_waits(snap, jobs), ())
+
+
+class FixtureCardTest(unittest.TestCase):
+    """`from_fixture` must reach a card's milestone fields the way it already
+    reaches its sibling `Batch`'s — until it does, no fixture can express the
+    closed-milestone scenario at all, and both loops build snapshots from
+    fixtures."""
+
+    def test_a_fixture_card_inherits_the_milestone_and_carries_its_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = fixture(tmp, [{"number": 12,
+                                  "title": "Unit: observer-rework",
+                                  "body": PLAN_BODY, "labels": ["plan"],
+                                  "milestone_state": "closed"}])
+            snap = inbox.TrackerSnapshot.from_fixture(path)
+        card_ = snap.plan_cards[0]
+        self.assertEqual(card_.bolt, "bolt/observer-rework")
+        self.assertEqual(card_.milestone_state, "closed")
 
 
 class DispatchFilterTest(unittest.TestCase):
