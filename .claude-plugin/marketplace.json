@@ -13,7 +13,7 @@
       "name": "flywheel",
       "source": "./",
       "description": "Two coupled loops for turning intent into built code: a design loop that burns fog into decisions, and a construction loop that drives proposals to merged.",
-      "version": "0.12.2",
+      "version": "0.12.3",
       "keywords": [
         "openspec",
         "design-loop",
