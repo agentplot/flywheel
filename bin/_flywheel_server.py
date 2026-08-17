@@ -245,6 +245,38 @@ def plan(jobs, *, teams=None, host=None, running=(), board_teams=None,
                       elsewhere=tuple(elsewhere), waiting=tuple(waiting))
 
 
+def _sha_match(recorded, current):
+    """Shas from different `--format` widths still name the same commit."""
+    if not recorded or not current:
+        return False
+    return recorded.startswith(current) or current.startswith(recorded)
+
+
+def git_heads(binding, run=None):
+    """(book sha, book last-commit epoch, specs sha) for one binding.
+
+    Subtree commits, not repo HEAD: a book inside a larger repo goes stale
+    only when a commit touches the book, and specs only when a commit
+    touches `openspec/specs/`.
+    """
+    run = run or _run
+    book = str(binding["book"])
+    repo = str(binding["repo"])
+    got = run(["git", "-C", book, "log", "-1", "--format=%h %ct", "--", "."])
+    if got.returncode != 0 or not got.stdout.strip():
+        return None
+    book_sha, _, epoch = got.stdout.strip().partition(" ")
+    got = run(["git", "-C", repo, "log", "-1", "--format=%h", "--",
+               "openspec/specs"])
+    if got.returncode != 0:
+        return None
+    specs_sha = got.stdout.strip() or "none"
+    try:
+        return book_sha, int(epoch), specs_sha
+    except ValueError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # The executor
 # ---------------------------------------------------------------------------
@@ -265,6 +297,10 @@ class ServerConfig:
     interval: int = INTERVAL_S
     bin_dir: Path = None
     state: Path = None
+    # system name -> {"book": Path, "repo": Path, "team": str,
+    #                 "settle_minutes": int}. The homing rule as a fact on
+    # disk: only bound systems get planning runs.
+    books: dict = field(default_factory=dict)
 
     @property
     def changes_dir(self):
@@ -293,13 +329,16 @@ class Server:
     def __init__(self, config, tracker=None, gate=None, nudge=None,
                  run=_run, popen=subprocess.Popen, clock=time.time,
                  sleep=time.sleep, log=None, dry_run=False, opener=None,
-                 ledger=None):
+                 ledger=None, planner=None, heads=None):
         self.config = config
         self.tracker = tracker
         self.gate = gate            # injected: bin/flywheel's gate_readiness
         self.nudge = nudge          # injected: dispatch's herdr prompt
         self.ledger = ledger or obs.NullLedger()
+        self.planner = planner      # injected: charge one planning run
+        self.heads = heads or git_heads
         self._nudges = 0
+        self._plan_charges = 0
         self.run = run
         self.popen = popen
         self.clock = clock
@@ -413,6 +452,7 @@ class Server:
         self.write_state(current)
 
         failures += self.relay(snapshot)
+        failures += self.plan_runs(snapshot)
         if current.quiet and not current.keep:
             self.log("nothing actionable on the tracker")
         return 1 if failures else 0
@@ -468,6 +508,79 @@ class Server:
         self.ledger.actual(step, "delivered" if delivered else
                            "delivery failed", ok=delivered)
         return 0 if delivered else 1
+
+    # -- planning runs -----------------------------------------------------
+
+    def plan_runs(self, snapshot):
+        """The bolt planner's triggers, one bound system at a time.
+
+        Staleness is marked whenever an unapproved card's recorded input
+        commits no longer match the current heads; a run is charged when a
+        system's standing cards are missing or all stale AND the book has
+        been quiet for the settle window. A landing needs no code of its
+        own: the archive advances `openspec/specs/`, the specs head moves,
+        the cards go stale, and the next quiet pass charges the run.
+        """
+        failures = 0
+        for name, binding in sorted((self.config.books or {}).items()):
+            try:
+                failures += self._plan_run(name, binding, snapshot)
+            except Exception as error:  # noqa: BLE001 — a binding must not
+                self.log(f"plan {name}: {error.__class__.__name__}: {error}")
+                failures += 1           # kill the pass for its siblings
+        return failures
+
+    def _plan_run(self, name, binding, snapshot):
+        heads = self.heads(binding, self.run)
+        if not heads:
+            self.log(f"plan {name}: heads unreadable — skipped")
+            return 0
+        book_sha, book_epoch, specs_sha = heads
+
+        cards = [c for c in snapshot.plan_cards if c.system == name]
+        standing = [c for c in cards if not c.at_ready]
+        fresh = []
+        for card in standing:
+            book_rec, specs_rec = card.derived_from
+            current = (_sha_match(book_rec, book_sha)
+                       and _sha_match(specs_rec, specs_sha))
+            if current:
+                fresh.append(card)
+            elif not card.stale:
+                if self.dry_run:
+                    self.log(f"plan {name}: would mark #{card.number} stale")
+                else:
+                    self.tracker.add_label(card.number, inbox.STALE)
+                    self.ledger.note(
+                        f"#{card.number} marked stale — inputs moved "
+                        f"(book {book_sha}, specs {specs_sha}) — Kanban")
+
+        settle_s = int(binding.get("settle_minutes", 90)) * 60
+        quiet = (self.clock() - book_epoch) >= settle_s
+        if fresh or not quiet or not self.planner:
+            return 0
+
+        key = (f"plan/{name}", "planner")
+        held = self.backoff.get(key)
+        why = f"cards {'stale' if standing else 'missing'}, book settled"
+        if held and held.wait_left(self.clock(), why) > 0:
+            return 0
+
+        order = (f"bolt planning for {name} — book {binding['book']}, "
+                 f"repo {binding['repo']}, mode: board, tracker "
+                 f"{self.config.org}/{self.config.repo}, team "
+                 f"{binding.get('team', '')}")
+        if self.dry_run:
+            self.log(f"plan {name}: would charge a planning run — {why}")
+            return 0
+        self._plan_charges += 1
+        step = f"plan:{name}:{self._plan_charges}"
+        self.ledger.expect(step, why, "plan cards filed at Backlog")
+        charged = bool(self.planner(name, binding, order))
+        self.ledger.actual(step, "charged" if charged else "charge failed",
+                           ok=charged)
+        self.backoff.setdefault(key, Backoff()).record_exit(why, self.clock())
+        return 0 if charged else 1
 
     # -- processes ---------------------------------------------------------
 

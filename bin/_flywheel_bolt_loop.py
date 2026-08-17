@@ -555,7 +555,8 @@ class ReadOnlyTracker:
 
     WRITES = ("add_label", "remove_label", "swap_label", "comment",
               "set_milestone", "clear_milestone", "close", "reclose",
-              "create_item")
+              "create_item", "create_milestone", "attach_sub_issue",
+              "clear_board_status")
 
     def __init__(self, tracker):
         self._tracker = tracker
@@ -598,7 +599,7 @@ class FixtureTracker:
             snap = inbox.TrackerSnapshot(
                 items=[i for i in snap.items if i.milestone == milestone],
                 batches=snap.batches, closed_milestones=snap.closed_milestones,
-                milestone=milestone)
+                milestone=milestone, plan_cards=snap.plan_cards)
         return snap
 
     def comments(self, number):
@@ -689,6 +690,30 @@ class FixtureTracker:
             if was and was != now and was in raw["labels"]:
                 raw["labels"].remove(was)
         self._record("reclose", number, comment or "")
+
+    def create_milestone(self, title):
+        self.raw.setdefault("milestones", [])
+        if title not in self.raw["milestones"]:
+            self.raw["milestones"].append(title)
+        self._record("create_milestone", 0, title)
+        return 1
+
+    def attach_sub_issue(self, parent, child):
+        raw = self._item(parent)
+        if raw is not None:
+            subs = raw.setdefault("sub_issues", [])
+            if child not in subs:
+                subs.append(child)
+        child_raw = self._item(child)
+        if child_raw is not None:
+            child_raw["parent_batch"] = parent
+        self._record("attach_sub_issue", parent, str(child))
+
+    def clear_board_status(self, number):
+        raw = self._item(number)
+        if raw is not None:
+            raw["status"] = None
+        self._record("clear_board_status", number, "")
 
     def create_item(self, title, body, labels=(), milestone=None):
         number = max([i["number"] for i in self.raw.get("items", ())] or [100]) + 1
@@ -1224,6 +1249,9 @@ class BoltLoop:
         result, and the STOP condition is built on exactly that.
         """
         actions = []
+        expanded = self.guard_expand(snapshot, actions)
+        if expanded is not None:
+            return actions, expanded
         scaffolded = self.guard_scaffold(actions)
         if scaffolded is not None:
             return actions, scaffolded
@@ -1328,6 +1356,78 @@ class BoltLoop:
                     actions.append(f"#{item.number} closed {inbox.CLOSED_MERGED} "
                                    f"(re-derived from {branch})")
 
+    def guard_expand(self, snapshot, actions):
+        """-1 — expansion: the approved plan card becomes this bolt.
+
+        The card is `plan`-labeled, milestone-less, at board Status Ready,
+        its title naming this slug. Board approval reaches construction
+        here and nowhere else. Idempotent by construction: once expanded
+        the card carries the milestone and the `unit` label, so the guard
+        finds no card and does nothing.
+
+        A card with no Team refuses (an unroutable bolt is a defect at
+        approval time); a card blocked by an issue not yet closed done
+        defers — the pass records the wait and stops, and the server's
+        interval retries.
+        """
+        card = next((c for c in getattr(snapshot, "plan_cards", ())
+                     if c.slug == self.params.slug and c.at_ready), None)
+        if card is None:
+            return None
+        if self.dry_run:
+            actions.append(f"would expand plan card #{card.number}")
+            return None
+        if not card.team:
+            self.tracker.add_label(card.number, inbox.NEEDS_OPERATOR)
+            self.tracker.comment(card.number, (
+                "Expansion refused: the card carries no Team, so the bolt "
+                "is unroutable. Set Team on the board and the next pass "
+                "expands it."))
+            actions.append(f"card #{card.number}: no Team — needs-operator")
+            return f"expansion: card #{card.number} carries no Team"
+        for blocker in card.blocked_by:
+            if not self.tracker.closed_with(blocker, inbox.CLOSED_DONE):
+                self.ledger.note(
+                    f"expansion deferred — card #{card.number} blocked by "
+                    f"#{blocker}, not closed done")
+                self._log(f"expansion deferred: #{card.number} waits on "
+                          f"#{blocker}")
+                return None
+        tasks = inbox.plan_tasks(card.body)
+        if not tasks:
+            return (f"expansion: no task table parses from plan card "
+                    f"#{card.number}")
+        milestone = self.params.milestone
+        self.ledger.expect(
+            f"expand:{card.number}",
+            f"plan card #{card.number} at Ready",
+            f"{milestone}: unit + {len(tasks)} item(s), status consumed")
+        self.tracker.create_milestone(milestone)
+        self.tracker.set_milestone(card.number, milestone)
+        self.tracker.swap_label(card.number, inbox.UNIT, inbox.PLAN)
+        if card.stale:
+            self.tracker.remove_label(card.number, inbox.STALE)
+        made = []
+        for task in tasks:
+            body_lines = [task.get("delivers", "")]
+            if task.get("chapters"):
+                body_lines.append(f"Chapters: {task['chapters']}")
+            if task.get("after"):
+                body_lines.append(f"After: {task['after']}")
+            number = self.tracker.create_item(
+                task["change"], "\n\n".join(l for l in body_lines if l),
+                labels=(inbox.READY,), milestone=milestone)
+            if number:
+                self.tracker.attach_sub_issue(card.number, number)
+                made.append(number)
+        self.tracker.clear_board_status(card.number)
+        self.ledger.actual(
+            f"expand:{card.number}",
+            f"unit #{card.number}, items {', '.join(f'#{n}' for n in made)}")
+        actions.append(f"expanded plan card #{card.number} into {milestone} "
+                       f"with {len(made)} item(s)")
+        return None
+
     def guard_scaffold(self, actions):
         """0 — scaffold-if-missing.
 
@@ -1345,7 +1445,9 @@ class BoltLoop:
         name = session_name("scaffold", self.params.slug)
         order = sessions.work_order(f"/opsx:new {self.params.slug}", (
             f"Scaffold the bolt record for bolt/{self.params.slug} and bind the "
-            f"{self.params.type_name} schema. Write bolt.md from what the milestone "
+            f"{self.params.type_name} schema. If the milestone's unit parent "
+            f"carries a plan document as its body, copy it into bolt.md "
+            f"verbatim; otherwise write bolt.md from what the milestone "
             f"and its items say; commit by pathspec, in THIS worktree on the "
             f"branch already checked out — never create a branch or worktree; "
             f"the loop cuts the bolt branch after you settle. Do not start any other work, "

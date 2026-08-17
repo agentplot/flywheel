@@ -16,9 +16,11 @@ The work order names the design book and the built repo.
 
 1. **The design book, whole.** Every chapter. The destination is
    stated across chapters — synthesize; a single task may draw on
-   several. Record the book's current commit.
+   several. Record the book's subtree commit
+   (`git -C <book> log -1 --format=%h -- .`).
 2. **The implemented specs** — `openspec/specs/` in the built repo:
-   what the repo actually does today. Record the specs commit.
+   what the repo actually does today. Record the specs subtree commit
+   (`git -C <repo> log -1 --format=%h -- openspec/specs`).
 3. **The changes in flight** — `openspec/changes/` in the built repo:
    what is already being built. Never plan work a change in flight
    already covers, and never contradict its sequencing.
@@ -92,11 +94,13 @@ The work order says which mode you are in:
 - **Files** — write each plan document to the directory the work
   order names. Nothing touches any tracker.
 - **Board** — file exactly one card per proposed bolt on the tracker
-  the work order names: label `plan`, no milestone, board Status
-  Backlog, the plan document as the card body, and each "builds on"
-  claim mirrored as a blocked-by relationship between the cards,
-  superseding any unapproved plan cards from earlier runs (close them
-  `closed:superseded`). No milestones, no work items, no other issue,
+  the work order names: title `Bolt: <slug>`, label `plan`, no
+  milestone, the plan document as the card body with a
+  `System: <name>` line under the title, the card added to the org
+  Project at Status Backlog with the work order's Team, and each
+  "builds on" claim mirrored as a blocked-by relationship between the
+  cards, superseding any unapproved plan cards from earlier runs
+  (close them `closed:superseded`). No milestones, no work items, no other issue,
   comment, or label — expansion is the bolt loop's job, after board
   approval.
 

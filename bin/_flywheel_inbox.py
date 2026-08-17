@@ -44,6 +44,8 @@ QUEUED = "state:queued"
 NEEDS_OPERATOR = "needs-operator"
 UNIT = "unit"
 ELABORATION = "elaboration"
+PLAN = "plan"
+STALE = "stale"
 TYPE_ASSERTION = "type:assertion"
 TYPE_HANDOFF = "type:handoff"
 
@@ -261,6 +263,79 @@ class Batch:
         return self.status == STATUS_READY
 
 
+@dataclass(frozen=True)
+class PlanCard:
+    """One proposed bolt: a `plan`-labeled, milestone-less issue whose body
+    is the plan document. The card becomes the unit at expansion, so its
+    number is stable across the whole bolt."""
+
+    number: int
+    title: str = ""
+    body: str = ""
+    status: str = None        # board Status: Backlog | Ready | None
+    team: str = None
+    stale: bool = False
+    blocked_by: tuple = ()
+
+    @property
+    def slug(self):
+        m = re.match(r"^\s*(?:Plan|Bolt):\s*([a-z0-9][a-z0-9-]*)\s*$",
+                     self.title, re.IGNORECASE)
+        return m.group(1) if m else None
+
+    @property
+    def system(self):
+        m = re.search(r"^System:\s*(\S+)\s*$", self.body, re.MULTILINE)
+        return m.group(1) if m else None
+
+    @property
+    def derived_from(self):
+        """(book sha, specs sha) the plan recorded, or (None, None)."""
+        m = re.search(r"Derived from:\s*book\s+([0-9a-f]+)\s*[·,]\s*specs\s+"
+                      r"([0-9a-f]+)", self.body)
+        return (m.group(1), m.group(2)) if m else (None, None)
+
+    @property
+    def at_ready(self):
+        return self.status == STATUS_READY
+
+
+def plan_tasks(body):
+    """The plan document's task table, as dicts keyed by its header row.
+
+    The format is the bolt-planning skill's: a pipe table whose header
+    carries at least `change`; `delivers`, `chapters` and `after` ride
+    along when present. Rows outside a recognized table are ignored, so a
+    stray pipe elsewhere in the document costs nothing.
+    """
+    lines = body.splitlines()
+    header, tasks = None, []
+    for line in lines:
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if header is None:
+            lowered = [c.lower() for c in cells]
+            if line.strip().startswith("|") and "change" in lowered:
+                header = lowered
+            continue
+        if set(line.strip()) <= {"|", "-", " ", ":"}:
+            continue
+        if not line.strip().startswith("|"):
+            header = None
+            continue
+        row = dict(zip(header, cells))
+        change = row.get("change", "").strip("`")
+        if not change or change == "<change-slug>":
+            continue
+        after = row.get("after", "").strip().strip("`")
+        tasks.append({
+            "change": change,
+            "delivers": row.get("delivers", ""),
+            "chapters": row.get("chapters", ""),
+            "after": "" if after in ("", "—", "-", "none") else after,
+        })
+    return tasks
+
+
 @dataclass
 class TrackerSnapshot:
     """Everything the filters read, and nothing they do not."""
@@ -269,11 +344,13 @@ class TrackerSnapshot:
     batches: tuple = ()
     closed_milestones: tuple = ()
     milestone: str = None
+    plan_cards: tuple = ()
 
     def __post_init__(self):
         self.items = tuple(self.items)
         self.batches = tuple(self.batches)
         self.closed_milestones = tuple(self.closed_milestones)
+        self.plan_cards = tuple(self.plan_cards)
 
     def item(self, number):
         for candidate in self.items:
@@ -322,6 +399,16 @@ class TrackerSnapshot:
             ],
             closed_milestones=raw.get("closed_milestones", ()),
             milestone=milestone,
+            plan_cards=[
+                PlanCard(number=i["number"], title=i.get("title", ""),
+                         body=i.get("body", ""), status=i.get("status"),
+                         team=i.get("team"),
+                         stale=STALE in i.get("labels", ()),
+                         blocked_by=tuple(i.get("blocked_by", ())))
+                for i in raw.get("items", ())
+                if PLAN in i.get("labels", ()) and not i.get("milestone")
+                and i.get("state", "open") == "open"
+            ],
         )
 
 
@@ -415,6 +502,13 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
     for milestone in ready_batch_milestones:
         if milestone_slug(milestone) is not None:
             add(milestone, "run", "a batch at board Status Ready")
+
+    # An approved plan card has no milestone yet — expansion creates it.
+    # The job is synthesized from the card's slug so a bolt loop starts.
+    for card in snapshot.plan_cards:
+        if card.at_ready and card.slug:
+            add(BOLT_PREFIX + card.slug, "run",
+                f"plan card #{card.number} at Ready, awaiting expansion")
 
     for milestone in snapshot.closed_milestones:
         slug = milestone_slug(milestone)
@@ -1054,7 +1148,8 @@ class Tracker:
         Open issues **plus** the `closed:merged` ones, which are closed and
         still in flight — see `merge_closed_issues`.
         """
-        raws = self.open_issues() + self.merge_closed_issues()
+        all_raws = self.open_issues() + self.merge_closed_issues()
+        raws = all_raws
         if milestone:
             raws = [r for r in raws
                     if (r.get("milestone") or {}).get("title") == milestone]
@@ -1084,6 +1179,19 @@ class Tracker:
                     milestone_state=item.milestone_state,
                 ))
 
+        cards = []
+        for raw in all_raws:
+            item = Item.from_api(raw)
+            if PLAN not in item.labels or item.milestone or not item.is_open:
+                continue
+            row = board.get(item.number, {})
+            cards.append(PlanCard(
+                number=item.number, title=item.title, body=item.body,
+                status=row.get("status"), team=row.get("team"),
+                stale=STALE in item.labels,
+                blocked_by=tuple(self.blocked_by(item.number)),
+            ))
+
         # A batch's Ready flip is the approval, and a batch may sit on the
         # board without being an open issue we listed above.
         known = {b.number for b in batches}
@@ -1100,7 +1208,7 @@ class Tracker:
         return TrackerSnapshot(
             items=items, batches=batches,
             closed_milestones=self.closed_milestones(),
-            milestone=milestone,
+            milestone=milestone, plan_cards=cards,
         )
 
     # -- the small writes --------------------------------------------------
@@ -1186,6 +1294,91 @@ class Tracker:
         tail = text.strip().rsplit("/", 1)[-1]
         return int(tail) if tail.isdigit() else None
 
+    def create_milestone(self, title):
+        """Create the milestone if it does not exist; idempotent by title."""
+        pages = self._gh(self.token, "api",
+                         f"/repos/{self.org}/{self.repo}/milestones"
+                         "?state=all&per_page=100", "--paginate", "--slurp")
+        for page in pages or ():
+            for m in page:
+                if m.get("title") == title:
+                    return m.get("number")
+        made = self._gh(self.token, "api", "-X", "POST",
+                        f"/repos/{self.org}/{self.repo}/milestones",
+                        "-f", f"title={title}")
+        return (made or {}).get("number")
+
+    def set_milestone(self, number, title):
+        self._gh(self.token, "issue", "edit", str(number),
+                 "--repo", f"{self.org}/{self.repo}", "--milestone", title)
+
+    def issue_id(self, number):
+        raw = self._gh(self.token, "api",
+                       f"/repos/{self.org}/{self.repo}/issues/{number}")
+        return (raw or {}).get("id")
+
+    def attach_sub_issue(self, parent, child):
+        child_id = self.issue_id(child)
+        if not child_id:
+            return
+        self._gh(self.token, "api", "-X", "POST",
+                 f"/repos/{self.org}/{self.repo}/issues/{parent}/sub_issues",
+                 "-F", f"sub_issue_id={child_id}")
+
+    def clear_board_status(self, number):
+        """Consume an approval: clear the board Status on the issue's row.
+
+        Field and item ids come from the same project the board query
+        reads; a card off the board is a no-op, not an error.
+        """
+        meta = self._project_meta()
+        if not meta:
+            return
+        project_id, status_field_id, item_ids = meta
+        item_id = item_ids.get(number)
+        if not item_id:
+            return
+        self._graphql(self.token, _CLEAR_STATUS_MUTATION, {
+            "project": project_id, "item": item_id,
+            "field": status_field_id,
+        })
+
+    def _project_meta(self):
+        if not self.project_title:
+            return None
+        data = self._graphql(self.token, _PROJECT_META_QUERY, {
+            "org": self.org, "title": self.project_title,
+        })
+        projects = data["organization"]["projectsV2"]["nodes"]
+        project = next(
+            (p for p in projects if p["title"] == self.project_title), None)
+        if project is None:
+            return None
+        field = next((f for f in project["fields"]["nodes"]
+                      if f.get("name") == "Status"), None)
+        if field is None:
+            return None
+        item_ids = {}
+        cursor = None
+        while True:
+            page = self._graphql(self.token, _PROJECT_ITEM_IDS_QUERY, {
+                "org": self.org, "title": self.project_title, "after": cursor,
+            })
+            node = next(
+                (p for p in page["organization"]["projectsV2"]["nodes"]
+                 if p["title"] == self.project_title), None)
+            if node is None:
+                break
+            items = node["items"]
+            for row in items["nodes"]:
+                content = row.get("content") or {}
+                if content.get("number"):
+                    item_ids[content["number"]] = row["id"]
+            if not items["pageInfo"]["hasNextPage"]:
+                break
+            cursor = items["pageInfo"]["endCursor"]
+        return project["id"], field["id"], item_ids
+
     def close_issue(self, number, comment=None, reason=CLOSED_DONE):
         if reason:
             self.add_label(number, reason)
@@ -1195,6 +1388,42 @@ class Tracker:
             args += ["--comment", comment]
         self._gh(self.token, *args)
 
+
+_PROJECT_META_QUERY = """
+  query($org: String!, $title: String!) {
+    organization(login: $org) {
+      projectsV2(first: 10, query: $title) {
+        nodes {
+          id title
+          fields(first: 30) {
+            nodes { ... on ProjectV2SingleSelectField { id name } }
+          }
+        }
+      }
+    }
+  }"""
+
+_PROJECT_ITEM_IDS_QUERY = """
+  query($org: String!, $title: String!, $after: String) {
+    organization(login: $org) {
+      projectsV2(first: 10, query: $title) {
+        nodes {
+          title
+          items(first: 100, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes { id content { ... on Issue { number } } }
+          }
+        }
+      }
+    }
+  }"""
+
+_CLEAR_STATUS_MUTATION = """
+  mutation($project: ID!, $item: ID!, $field: ID!) {
+    clearProjectV2ItemFieldValue(input: {
+      projectId: $project, itemId: $item, fieldId: $field
+    }) { projectV2Item { id } }
+  }"""
 
 _BOARD_QUERY = """
   query($org: String!, $title: String!, $after: String) {
