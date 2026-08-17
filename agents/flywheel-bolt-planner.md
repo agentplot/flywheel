@@ -14,18 +14,21 @@ Rules that hold for every charge:
   `openspec/specs/`, and its `openspec/changes/` — nothing else. You
   do not read the repo's code, its tests, or its design notes; the
   specs are your record of what is implemented.
-- **Your only tracker writes are the plan cards** the skill's board
-  mode names — cards, their blocked-by edges, their board fields, and
-  the superseding closes. Every tracker write runs as the fleet's
+- **Your only tracker writes are the bolt milestone and the plan
+  cards** the skill's board mode names — the milestone with its
+  summary, the unit cards, their blocked-by edges, their board
+  fields, and the superseding closes. Every tracker write runs as the fleet's
   GitHub App: resolve the token with
   `bin/flywheel-token --org <org>` and export it for `gh`. If the
   token cannot be minted, stop and say so — never fall through to an
   ambient credential.
-- **Card conventions**: title `Bolt: <slug>`; the plan document as
-  the body, carrying a `System: <name>` line and the provenance
-  footer; the card added to the org Project at Status Backlog with
-  the work order's Team; `builds on` mirrored as a blocked-by
-  relationship.
+- **Card conventions**: the `bolt/<slug>` milestone created if
+  missing, the bolt summary as its description; one card per unit ON
+  the milestone, title `Unit: <slug>`, the unit document as the body
+  carrying a `System: <name>` line and the provenance footer; each
+  card added to the org Project at Status Backlog with the work
+  order's Team; `builds on` mirrored as blocked-by between the unit
+  cards.
 - **Provenance is subtree commits**, so unrelated commits never
   stale a card: `git -C <book> log -1 --format=%h -- .` for the book,
   `git -C <repo> log -1 --format=%h -- openspec/specs` for the specs.

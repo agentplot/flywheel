@@ -10,8 +10,11 @@ tracker tools share. Import from a sibling script:
 import datetime
 import json
 import os
+import random
+import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -32,12 +35,38 @@ def resolve_token(org):
     return proc.stdout.strip()
 
 
+# Retry-worthy failures: GitHub's rate limits (primary and secondary)
+# and transient 5xx. Anything else fails immediately — a 404 or a 422
+# retried is the same mistake made slower.
+_RETRYABLE = re.compile(
+    r"HTTP (429|502|503|504)|rate limit|secondary rate|abuse detection",
+    re.IGNORECASE)
+_BACKOFF_S = (2, 8, 30, 60)
+
+
+def _sleep(seconds):     # seam for tests
+    time.sleep(seconds)
+
+
 def gh(token, *args, input_json=None):
     env = dict(os.environ, GH_TOKEN=token)
     stdin = json.dumps(input_json) if input_json is not None else None
-    proc = subprocess.run(
-        ["gh", *args], env=env, input=stdin, capture_output=True, text=True
-    )
+    proc = None
+    for attempt, wait in enumerate((0,) + _BACKOFF_S):
+        if wait:
+            _sleep(wait + random.uniform(0, wait / 4))
+        proc = subprocess.run(
+            ["gh", *args], env=env, input=stdin, capture_output=True,
+            text=True
+        )
+        if proc.returncode == 0:
+            break
+        err = proc.stderr.strip() or proc.stdout.strip()
+        if not _RETRYABLE.search(err):
+            break
+        retry_after = re.search(r"[Rr]etry.[Aa]fter[:\s]+(\d+)", err)
+        if retry_after:
+            _sleep(min(int(retry_after.group(1)), 300))
     if proc.returncode != 0:
         sys.exit(f"flywheel: gh {' '.join(args[:2])} failed: "
                  f"{proc.stderr.strip() or proc.stdout.strip()}")

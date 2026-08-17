@@ -33,10 +33,11 @@ Derived from: book abc1234 · specs def5678
 
 
 def card(number=12, status="Ready", team="workstation", body=PLAN_BODY,
-         stale=False, blocked_by=(), title="Bolt: observer-rework"):
+         stale=False, blocked_by=(), title="Unit: observer-rework",
+         milestone="bolt/observer-rework"):
     return inbox.PlanCard(number=number, title=title, body=body,
                           status=status, team=team, stale=stale,
-                          blocked_by=tuple(blocked_by))
+                          blocked_by=tuple(blocked_by), milestone=milestone)
 
 
 class PlanCardTest(unittest.TestCase):
@@ -66,7 +67,7 @@ class PlanCardTest(unittest.TestCase):
 
 class DispatchFilterTest(unittest.TestCase):
     def test_a_plan_card_is_never_triage(self):
-        item = inbox.Item(number=12, title="Bolt: x",
+        item = inbox.Item(number=12, title="Unit: x",
                           labels=frozenset({"plan"}), milestone=None)
         box = inbox.dispatch_inbox(inbox.TrackerSnapshot(items=[item]))
         self.assertEqual(box.triage, ())
@@ -199,9 +200,9 @@ def fixture(tmp, items):
 
 
 def card_item(**kw):
-    base = {"number": 12, "title": "Bolt: observer-rework", "body": PLAN_BODY,
-            "labels": ["plan"], "milestone": None, "status": "Ready",
-            "team": "workstation", "blocked_by": []}
+    base = {"number": 12, "title": "Unit: observer-rework", "body": PLAN_BODY,
+            "labels": ["plan"], "milestone": "bolt/observer-rework",
+            "status": "Ready", "team": "workstation", "blocked_by": []}
     base.update(kw)
     return base
 
@@ -220,7 +221,8 @@ class ExpansionTest(unittest.TestCase):
             self.assertIsNone(failure)
             kinds = [w[0] for w in tracker.writes]
             self.assertIn("create_milestone", kinds)
-            self.assertIn("set_milestone", kinds)
+            self.assertNotIn("set_milestone", kinds,
+                             "the planner already milestoned the card")
             self.assertIn("clear_board_status", kinds)
             self.assertEqual(kinds.count("create_item"), 2)
             self.assertEqual(kinds.count("attach_sub_issue"), 2)

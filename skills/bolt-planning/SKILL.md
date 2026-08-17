@@ -29,17 +29,24 @@ The gap is destination minus implemented minus in-flight. If the work
 order scopes the run ("the smallest useful bolt", "a bolt about X"),
 the scope limits which cuts you propose, not how carefully you read.
 
-## Cutting the gap into bolts
+## Cutting the gap into a bolt of units
 
-- A bolt is one coherent construction iteration: buildable in one
-  pass of the construction loop, leaving the repo consistent. Prefer
-  the smallest cut that delivers something whole.
-- Sequence bolts by dependency and by risk: what unlocks the rest
+Two levels, two different objects:
+
+- A **bolt** is the operator's delivery boundary: one milestone, one
+  branch, one landing to main. It lives for days and absorbs several
+  units. Propose ONE bolt per run unless the gap genuinely splits
+  into independent deliveries — many small bolts is the failure mode
+  this shape exists to avoid.
+- A **unit** is one coherent batch inside the bolt: buildable in one
+  pass of the construction loop, leaving the branch consistent.
+  Prefer small units inside one bolt over many bolts.
+- Sequence units by dependency and by risk: what unlocks the rest
   comes first. State the order and the reason for each boundary —
-  what you left for a later bolt, and why.
+  what you left for a later unit, and why.
 - A dependency exists on exactly three grounds, and you name which:
   **derivation** (this work's specs derive from specs another task or
-  bolt advances at its merge), **contention** (two tasks would write
+  unit advances at its merge), **contention** (two tasks would write
   deltas to the same capability — chain them or fold them into one),
   or **runtime precondition** (the behavior needs an artifact the
   other work produces in the world). Anything else is independent; a
@@ -51,18 +58,21 @@ the scope limits which cuts you propose, not how carefully you read.
   instead: the book is silent, and silence is a design gap, not a
   license to invent.
 
-## The plan document
+## The plan documents
 
-One document per proposed bolt, written to be approved at a glance
-and annotated like a chapter. Plain language throughout — no coined
-terms; the book's glossary is the vocabulary.
+One short **bolt summary** (it becomes the milestone description):
+two or three sentences on what the bolt delivers, the unit sequence
+as one line each, and the bolt's total price. Then one **unit
+document** per unit (it becomes the unit card's body), written to be
+approved at a glance and annotated like a chapter. Plain language
+throughout — no coined terms; the book's glossary is the vocabulary.
 
 ```markdown
-# Bolt: <slug>
+# Unit: <slug>
 
-<Two or three sentences: what this bolt delivers and why it is next.>
+<Two or three sentences: what this unit delivers and why it is next.>
 
-Sequence: <n> of <total> · builds on: <prior bolt or none>
+Sequence: <n> of <total> · builds on: <prior unit or none>
 
 | # | change | delivers | chapters | after | why this bolt |
 |---|--------|----------|----------|-------|---------------|
@@ -83,9 +93,9 @@ labeled arrows, nothing decorative.>
 Derived from: book <sha> · specs <sha> · in flight: <change ids or none>
 ```
 
-If the run proposes more than one bolt, also write a one-page summary:
-a table of the sequence (order, slug, goal, size) and one paragraph on
-the shape of the whole cut.
+If the run proposes more than one bolt — the exception — each gets
+its own summary and unit set, and one page states why the deliveries
+are separate.
 
 ## Delivery
 
@@ -93,19 +103,18 @@ The work order says which mode you are in:
 
 - **Files** — write each plan document to the directory the work
   order names. Nothing touches any tracker.
-- **Board** — file exactly one card per proposed bolt on the tracker
-  the work order names: title `Bolt: <slug>`, label `plan`, no
-  milestone, the plan document as the card body with a
+- **Board** — create the `bolt/<slug>` milestone if it does not
+  exist, with the bolt summary as its description; then file exactly
+  one card per proposed unit ON that milestone: title `Unit: <slug>`,
+  label `plan`, the unit document as the card body with a
   `System: <name>` line under the title, the card added to the org
   Project at Status Backlog with the work order's Team, and each
   "builds on" claim mirrored as a blocked-by relationship between the
-  cards, superseding any unapproved plan cards from earlier runs
-  (close them `closed:superseded`). Nothing else: no milestone on any
-  card, no `state:*` label, no work items, no other issue, comment,
-  or label — the milestone and the items are born at expansion, which
-  is the bolt loop's job, after board approval. A card that arrives
-  already milestoned starts phantom loops and is invisible to
-  expansion.
+  unit cards. Supersede any unapproved plan cards from earlier runs
+  (close them `closed:superseded`). Nothing else: no `state:*` label
+  on any card, no work items, no other issue, comment, or label — the
+  items are born at expansion, which is the bolt loop's job, after
+  board approval.
 
 ## Boundaries
 

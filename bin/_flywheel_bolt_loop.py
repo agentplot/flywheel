@@ -1370,13 +1370,21 @@ class BoltLoop:
         defers — the pass records the wait and stops, and the server's
         interval retries.
         """
-        card = next((c for c in getattr(snapshot, "plan_cards", ())
-                     if c.slug == self.params.slug and c.at_ready), None)
-        if card is None:
+        cards = [c for c in getattr(snapshot, "plan_cards", ())
+                 if c.at_ready and c.bolt == self.params.milestone]
+        if not cards:
             return None
         if self.dry_run:
-            actions.append(f"would expand plan card #{card.number}")
+            actions.append("would expand plan card(s) "
+                           + ", ".join(f"#{c.number}" for c in cards))
             return None
+        for card in cards:
+            failure = self._expand_card(card, actions)
+            if failure:
+                return failure
+        return None
+
+    def _expand_card(self, card, actions):
         if not card.team:
             self.tracker.add_label(card.number, inbox.NEEDS_OPERATOR)
             self.tracker.comment(card.number, (
@@ -1403,7 +1411,8 @@ class BoltLoop:
             f"plan card #{card.number} at Ready",
             f"{milestone}: unit + {len(tasks)} item(s), status consumed")
         self.tracker.create_milestone(milestone)
-        self.tracker.set_milestone(card.number, milestone)
+        if card.milestone != milestone:
+            self.tracker.set_milestone(card.number, milestone)
         self.tracker.swap_label(card.number, inbox.UNIT, inbox.PLAN)
         if card.stale:
             self.tracker.remove_label(card.number, inbox.STALE)
@@ -2542,6 +2551,16 @@ class BoltLoop:
         open_items = [i for i in on_milestone if i.is_open]
         report.queue = [f"#{i.number} {i.title}" for i in open_items if i.queued]
         unlanded = open_items + [i for i in on_milestone if i.merge_closed]
+        planned = [c for c in getattr(snapshot, "plan_cards", ())
+                   if c.bolt == self.params.milestone]
+        if planned and self.landing_wanted(land, box, unlanded):
+            self._log("landing held — unit card(s) still open: "
+                      + ", ".join(f"#{c.number}" for c in planned))
+            self.ledger.note(
+                "landing held — the bolt still holds open unit card(s) "
+                + ", ".join(f"#{c.number}" for c in planned))
+            self._finish_observation()
+            return report
         if not self.landing_wanted(land, box, unlanded):
             self._finish_observation()
             return report

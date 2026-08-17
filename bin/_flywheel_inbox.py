@@ -265,9 +265,10 @@ class Batch:
 
 @dataclass(frozen=True)
 class PlanCard:
-    """One proposed bolt: a `plan`-labeled, milestone-less issue whose body
-    is the plan document. The card becomes the unit at expansion, so its
-    number is stable across the whole bolt."""
+    """One proposed unit: a `plan`-labeled issue on its bolt's milestone,
+    whose body is the unit's plan document. The planner creates the
+    milestone and files the card onto it; the card becomes the unit at
+    expansion, so its number is stable across the whole bolt."""
 
     number: int
     title: str = ""
@@ -276,12 +277,21 @@ class PlanCard:
     team: str = None
     stale: bool = False
     blocked_by: tuple = ()
+    milestone: str = None     # bolt/<slug>, set by the planner at filing
 
     @property
     def slug(self):
-        m = re.match(r"^\s*(?:Plan|Bolt):\s*([a-z0-9][a-z0-9-]*)\s*$",
+        m = re.match(r"^\s*(?:Unit|Plan|Bolt):\s*([a-z0-9][a-z0-9-]*)\s*$",
                      self.title, re.IGNORECASE)
         return m.group(1) if m else None
+
+    @property
+    def bolt(self):
+        """The bolt milestone this unit belongs to; falls back to the
+        title slug for a card filed before milestones were the planner's."""
+        if self.milestone and self.milestone.startswith(BOLT_PREFIX):
+            return self.milestone
+        return BOLT_PREFIX + self.slug if self.slug else None
 
     @property
     def system(self):
@@ -404,9 +414,10 @@ class TrackerSnapshot:
                          body=i.get("body", ""), status=i.get("status"),
                          team=i.get("team"),
                          stale=STALE in i.get("labels", ()),
-                         blocked_by=tuple(i.get("blocked_by", ())))
+                         blocked_by=tuple(i.get("blocked_by", ())),
+                         milestone=i.get("milestone"))
                 for i in raw.get("items", ())
-                if PLAN in i.get("labels", ()) and not i.get("milestone")
+                if PLAN in i.get("labels", ())
                 and i.get("state", "open") == "open"
             ],
         )
@@ -503,11 +514,11 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         if milestone_slug(milestone) is not None:
             add(milestone, "run", "a batch at board Status Ready")
 
-    # An approved plan card has no milestone yet — expansion creates it.
-    # The job is synthesized from the card's slug so a bolt loop starts.
+    # An approved plan card is a job for its bolt: the loop's first pass
+    # expands it into the unit and its items.
     for card in snapshot.plan_cards:
-        if card.at_ready and card.slug:
-            add(BOLT_PREFIX + card.slug, "run",
+        if card.at_ready and card.bolt:
+            add(card.bolt, "run",
                 f"plan card #{card.number} at Ready, awaiting expansion")
 
     for milestone in snapshot.closed_milestones:
@@ -1188,7 +1199,7 @@ class Tracker:
         cards = []
         for raw in all_raws:
             item = Item.from_api(raw)
-            if PLAN not in item.labels or item.milestone or not item.is_open:
+            if PLAN not in item.labels or not item.is_open:
                 continue
             row = board.get(item.number, {})
             cards.append(PlanCard(
@@ -1196,6 +1207,7 @@ class Tracker:
                 status=row.get("status"), team=row.get("team"),
                 stale=STALE in item.labels,
                 blocked_by=tuple(self.blocked_by(item.number)),
+                milestone=item.milestone,
             ))
 
         # A batch's Ready flip is the approval, and a batch may sit on the
