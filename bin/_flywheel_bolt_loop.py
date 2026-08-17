@@ -1966,6 +1966,11 @@ class BoltLoop:
              f'  {{"action": "proceed", "reason": "<why these findings do not block the merge>"}}\n'
              f'  {{"action": "refix", "prompt": "<the exact prompt to send the build session>"}}\n'
              f'  {{"action": "escalate", "reason": "<what the operator must look at>"}}\n\n'
+             f"Escalate ONLY when the operator must decide something before "
+             f"the merge. A change you judge merge-ready is a proceed, "
+             f"whatever else you want the operator to know — put it in the "
+             f"reason; an escalation on merge-ready work pauses the bolt "
+             f"for nothing.\n\n"
              f"FINDINGS>>>\n{report}\n<<<FINDINGS"))
         outcome = self.drive("review", self.spec_for(
             "review", name, cwd, order), batch.numbers)
