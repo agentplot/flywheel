@@ -93,8 +93,9 @@ The work order says which mode you are in:
   order names. Nothing touches any tracker.
 - **Board** — file exactly one card per proposed bolt on the tracker
   the work order names: label `plan`, no milestone, board Status
-  Backlog, the plan document as the card body, superseding any
-  unapproved plan cards from earlier runs (close them
+  Backlog, the plan document as the card body, and each "builds on"
+  claim mirrored as a blocked-by relationship between the cards,
+  superseding any unapproved plan cards from earlier runs (close them
   `closed:superseded`). No milestones, no work items, no other issue,
   comment, or label — expansion is the bolt loop's job, after board
   approval.
