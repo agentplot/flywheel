@@ -173,9 +173,11 @@ class CardThroughTheRealSnapshotTest(unittest.TestCase):
     `Tracker.snapshot` so both objects are in play."""
 
     class FakeTracker(inbox.Tracker):
-        def __init__(self, milestone_state="open"):
+        def __init__(self, milestone_state="open", status="Ready", edges=False):
             super().__init__("token", "org", "repo", project_title="Flywheel")
             self.milestone_state = milestone_state
+            self.status = status
+            self.edges = edges
 
         def open_issues(self):
             return [{"number": 12, "title": "Unit: observer-rework",
@@ -188,7 +190,9 @@ class CardThroughTheRealSnapshotTest(unittest.TestCase):
             return []
 
         def board_items(self):
-            return [{"number": 12, "status": "Ready", "team": "workstation",
+            if self.status is None:
+                return []
+            return [{"number": 12, "status": self.status, "team": "workstation",
                      "state": "OPEN", "milestone": "bolt/observer-rework"}]
 
         def closed_milestones(self):
@@ -201,11 +205,13 @@ class CardThroughTheRealSnapshotTest(unittest.TestCase):
         def blocked_by(self, number):
             # `with_edges=False` is the server's and `status`'s whole reason
             # for existing: no per-issue calls. A card must not make one.
-            raise AssertionError(
-                f"per-issue edge call for #{number} under with_edges=False")
+            if not self.edges:
+                raise AssertionError(
+                    f"per-issue edge call for #{number} under with_edges=False")
+            return [11]
 
-    def snapshot(self, milestone_state="open"):
-        return self.FakeTracker(milestone_state).snapshot(with_edges=False)
+    def snapshot(self, milestone_state="open", status="Ready"):
+        return self.FakeTracker(milestone_state, status).snapshot(with_edges=False)
 
     def test_the_backfilled_batch_carries_the_real_milestone_state(self):
         snap = self.snapshot("closed")
@@ -234,6 +240,36 @@ class CardThroughTheRealSnapshotTest(unittest.TestCase):
         self.assertEqual(jobs[0].why,
                          "plan card #12 at Ready, awaiting expansion")
         self.assertEqual(inbox.operator_waits(snap, jobs), ())
+
+    def test_a_card_in_a_third_board_column_is_reported_where_it_sits(self):
+        # The board's Status single-select holds whatever the Project
+        # defines; `Backlog` and `Ready` are only the two this module names.
+        # Such a card IS placed, so it must not be told to get on the board.
+        snap = self.snapshot("open", status="In Progress")
+        jobs = inbox.server_inbox(snap)
+        self.assertEqual(jobs, [])
+        lines = inbox.operator_waits(snap, jobs)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("plan card #12", lines[0])
+        self.assertIn("at Status In Progress", lines[0])
+        self.assertIn("only Ready releases it", lines[0])
+        self.assertNotIn("not on the board", lines[0])
+
+    def test_a_card_on_no_board_row_still_says_it_is_not_on_the_board(self):
+        snap = self.snapshot("open", status=None)
+        self.assertEqual(inbox.server_inbox(snap), [])
+        lines = inbox.operator_waits(snap, ())
+        self.assertEqual(len(lines), 1)
+        self.assertIn("not on the board", lines[0])
+
+    def test_with_edges_on_a_cards_blockers_are_populated(self):
+        # The negative above pins that `with_edges=False` makes no per-issue
+        # call. This is the positive: the expansion guard at
+        # `_flywheel_bolt_loop.py` is the sole reader of `card.blocked_by`
+        # and runs under `snapshot(milestone)` with edges on, so the gate
+        # must still fill the field there. Inverting the gate fails here.
+        snap = self.FakeTracker(edges=True).snapshot("bolt/observer-rework")
+        self.assertEqual(snap.plan_cards[0].blocked_by, (11,))
 
 
 class FixtureCardTest(unittest.TestCase):

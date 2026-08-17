@@ -646,14 +646,24 @@ def operator_waits(snapshot, jobs=()):
                        if card.milestone_state != "open" else "no job names it")
                 lines.append(
                     f"plan card #{card.number} at Ready on {card.bolt} — {why}")
-        else:
-            # Every open card is outstanding work on its bolt, so a card with
-            # no board Status at all is reported rather than falling through
-            # both surfaces: it yields no job, and the two arms above only
-            # enumerate Ready and Backlog.
+        elif card.status is None:
+            # Every open card is outstanding work on its bolt, so a card that
+            # is on no board row is reported rather than falling through both
+            # surfaces: it yields no job, and the arms above enumerate only
+            # Backlog and Ready.
             lines.append(
                 f"plan card #{card.number} on {card.bolt} is not on the board — "
                 f"it has no Status, so nothing releases it")
+        else:
+            # On the board, in some third column. `Backlog` and `Ready` are
+            # the only Status values this module names, but the board's
+            # single-select holds whatever the Project defines — the default
+            # `Todo`/`In Progress`/`Done` sit alongside them. Such a card is
+            # placed, so telling the operator to place it would name a cause
+            # that is not the cause; say where it actually sits instead.
+            lines.append(
+                f"plan card #{card.number} on {card.bolt} at Status "
+                f"{card.status} — only Ready releases it")
     for item in snapshot.items:
         if item.is_open and NEEDS_OPERATOR in item.labels:
             lines.append(f"#{item.number} needs-operator — "
