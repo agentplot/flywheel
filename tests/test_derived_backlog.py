@@ -375,3 +375,14 @@ class PerChangeDriveTest(unittest.TestCase):
             bolt.BoltLoop(params, tracker).guard_expand(tracker.snapshot(), [])
             self.assertTrue(tracker._item(13)["body"].startswith(
                 "Change: first-change"))
+
+    def test_an_open_predecessor_at_stage_merged_satisfies_the_chain(self):
+        # The merge step may leave the item open at stage:merged awaiting
+        # the landing — merged is merged, whichever closure model wrote it.
+        merged = self.sibling(13, "first-change",
+                              labels=("state:in-progress", "stage:merged"))
+        second = self.sibling(14, "second-change", after=("first-change",))
+        runnable, held = bolt.after_split(
+            self.snapshot([merged, second]), (second,))
+        self.assertEqual([i.number for i in runnable], [14])
+        self.assertEqual(held, ())

@@ -839,8 +839,12 @@ def after_split(snapshot, items):
                     None)
             if target is None or target.number == item.number:
                 continue
-            merged = (not target.is_open) and bool(
-                {inbox.CLOSED_MERGED, inbox.CLOSED_DONE} & target.labels)
+            # Merged is merged whichever closure model wrote it: an item
+            # closed `closed:merged`/`closed:done`, or one the merge step
+            # left open at `stage:merged` awaiting the landing.
+            merged = inbox.STAGE_MERGED in target.labels or (
+                (not target.is_open) and bool(
+                    {inbox.CLOSED_MERGED, inbox.CLOSED_DONE} & target.labels))
             if not merged:
                 blocker = target.number
                 break
