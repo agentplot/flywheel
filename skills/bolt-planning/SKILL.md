@@ -55,9 +55,14 @@ terms; the book's glossary is the vocabulary.
 
 Sequence: <n> of <total> · builds on: <prior bolt or none>
 
-| # | change | delivers | chapters | why this bolt |
-|---|--------|----------|----------|---------------|
-| 1 | <change-slug> | <one line> | <chapter path(s)> | <one line> |
+| # | change | delivers | chapters | after | why this bolt |
+|---|--------|----------|----------|-------|---------------|
+| 1 | <change-slug> | <one line> | <chapter path(s)> | — | <one line> |
+
+The `after` column names the task a task builds on, or `—`. Unmarked
+tasks are independent and run concurrently; a marked task waits for
+its predecessor's merge. Mark only real dependencies — a chain that
+exists to look tidy serializes work for nothing.
 
 <One mermaid diagram: what the cut builds or touches, boxes and
 labeled arrows, nothing decorative.>
