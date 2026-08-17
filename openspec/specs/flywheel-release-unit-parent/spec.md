@@ -7,82 +7,6 @@ exactly one row on the board carrying GitHub's native sub-issue progress bar
 — including the born-ready release, which today produces loose items and no
 container at all.
 ## Requirements
-### Requirement: Every release creates exactly one unit parent
-
-A release of assertions to construction SHALL create exactly one issue
-labelled `unit`, whose sub-issues are the items the release carries. This
-SHALL hold for both release paths, and the two paths SHALL differ in the
-parent's milestone and in whether the handoff item is among the sub-issues:
-
-- **the born-ready operator release** — the operator's word at triage is
-  itself the approval and the work goes straight to a `bolt/<slug>`
-  milestone. The parent SHALL be created **on that bolt milestone**, and its
-  sub-issues SHALL be **exactly the released assertions**.
-- **handoff birth** — the intent loop's, where a handoff item and its unit
-  are born together and the operator's flip to Ready seals the batch. The
-  parent SHALL be created **on the intent milestone**, because it is born
-  before any assertion has moved to a bolt and the assertions reach
-  `bolt/<slug>` later by the handoff session's custody move, staying
-  sub-issues across it. Its sub-issues SHALL be **the handoff item together
-  with the released assertions**.
-
-The handoff item's membership is load-bearing and not incidental: a second
-handoff birth on the same intent SHALL recover the already-open unit through
-the handoff item's own parent, so that newcomers join the open Backlog batch
-rather than starting a second one. An implementation that attached only the
-assertions would have no handle to recover the unit by.
-
-The born-ready path is the one that changes shape from before this
-capability. Today it puts a lone item on the board and creates no parent, so
-a born-ready bolt has as many board rows as it has items and no progress bar
-on any of them.
-
-A release SHALL create exactly one unit however many items it carries, and a
-release of a single item SHALL still create one — "born-ready included" is
-the whole point, and a special case for one item would put the bolt back to
-having no container.
-
-#### Scenario: The operator releases four assertions born ready
-
-- **WHEN** four assertions are released born-ready onto a fresh
-  `bolt/<slug>` milestone
-- **THEN** one `unit` parent is created on that bolt milestone with the four
-  as its sub-issues, and nothing else is attached
-
-#### Scenario: The operator releases a single assertion born ready
-
-- **WHEN** one assertion is released born-ready
-- **THEN** a unit parent is still created, with that one item as its sole
-  sub-issue
-
-#### Scenario: A handoff release is unchanged in shape
-
-- **WHEN** the intent loop births a handoff and its unit
-- **THEN** the release produces exactly one unit parent carrying the whole
-  release, which is what it shares with the born-ready path — the two paths
-  differing only in that parent's milestone and in whether the handoff item
-  is among its sub-issues
-
-#### Scenario: A handoff release names its own milestone and carries its handoff item
-
-- **WHEN** the intent loop births a handoff and its unit for four assertions
-- **THEN** the unit parent is created on the `intent/<slug>` milestone, and
-  its sub-issues are the handoff item and the four assertions — five in all
-
-#### Scenario: A later wave joins an open handoff unit
-
-- **WHEN** a second settled assertion appears while the handoff's unit still
-  sits at Backlog
-- **THEN** the open unit is recovered through the handoff item's own parent
-  and the newcomer is attached to it, rather than a second unit being created
-
-#### Scenario: The assertions keep their parent across the custody move
-
-- **WHEN** the handoff session moves the released assertions from
-  `intent/<slug>` to `bolt/<slug>`
-- **THEN** each stays a sub-issue of the same unit parent, which does not
-  move with them
-
 ### Requirement: The unit parent is the board row and the approval carrier
 
 The unit parent SHALL sit on the org Project, and it SHALL be what carries
@@ -273,4 +197,53 @@ parent is a container.
 - **WHEN** the operator flips a unit to Ready on an open milestone
 - **THEN** the sweep reports a job for that milestone exactly as it does
   today, because only the closed-milestone case is being excluded
+
+### Requirement: On a bolt milestone, a unit parent is born only by expansion
+
+On a `bolt/<slug>` milestone, a unit parent SHALL come into being by exactly
+one path: the bolt loop's expansion of an approved plan card, which relabels
+the card `plan` → `unit` and files the unit's work items as its sub-issues.
+No actor creates a `unit`-labeled issue on a bolt milestone directly — not
+dispatch, not a session, not the loop outside expansion — and no such
+parent exists whose number was not first a plan card's. One card, one unit,
+however many items the expansion files; an item joins exactly one unit,
+ever.
+
+The intent loop's handoff birth is the one other unit birth and it happens
+on the `intent/<slug>` milestone: the handoff item and its unit are born
+together, and the release produces exactly one unit parent carrying the
+whole release.
+
+#### Scenario: An approved card becomes the unit
+
+- **WHEN** the bolt loop expands a plan card at board Status Ready
+- **THEN** that card itself carries the `unit` label, its sub-issues are
+  the work items the expansion filed, and no other unit parent was created
+
+#### Scenario: No path but expansion makes a unit on a bolt milestone
+
+- **WHEN** dispatch triages, a session settles, or an operator's word
+  arrives outside the board
+- **THEN** no `unit`-labeled issue is created on any `bolt/*` milestone by
+  any of them
+
+#### Scenario: A handoff release names its own milestone and carries its handoff item
+
+- **WHEN** the intent loop births a handoff and its unit for four assertions
+- **THEN** the unit parent is created on the `intent/<slug>` milestone, and
+  its sub-issues are the handoff item and the four assertions — five in all
+
+#### Scenario: A later wave joins an open handoff unit
+
+- **WHEN** a second settled assertion appears while the handoff's unit still
+  sits at Backlog
+- **THEN** the open unit is recovered through the handoff item's own parent
+  and the newcomer is attached to it, rather than a second unit being created
+
+#### Scenario: The assertions keep their parent across the custody move
+
+- **WHEN** the handoff session moves the released assertions from
+  `intent/<slug>` to `bolt/<slug>`
+- **THEN** each stays a sub-issue of the same unit parent, which does not
+  move with them
 
