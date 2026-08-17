@@ -317,6 +317,19 @@ class PlannerRecordConsistencyTest(unittest.TestCase):
             self.assertIn("bolt/<slug>` milestone", flat, str(parts))
             self.assertIn("bolt summary as its description", flat, str(parts))
 
+    def test_every_surface_creates_the_milestone_only_when_it_is_missing(self):
+        # Scenario "the milestone already exists": a second run files onto
+        # the existing milestone rather than creating a second one. Without
+        # this, a rewrite that drops the conditional — leaving a flat
+        # "create the milestone" — stays green and the scenario is lost.
+        for parts in self.SURFACES:
+            self.assertRegex(
+                self.flat(*parts),
+                r"if it does not (already )?exist"
+                r"|created if missing"
+                r"|if it is missing",
+                str(parts))
+
     def test_every_surface_files_the_cards_on_that_milestone(self):
         for parts in self.SURFACES:
             flat = self.flat(*parts)
@@ -356,12 +369,19 @@ class PlannerRecordConsistencyTest(unittest.TestCase):
             self.assertNotIn("Bolt: ", self.flat(*parts), str(parts))
 
     def test_no_surface_still_says_the_filed_card_is_milestone_less(self):
-        # Catches "no milestone", "unmilestoned", and "already milestoned"
-        # — the three ways the old shape stated it.
+        # Bans the retired proposition — the filed card has no milestone —
+        # in the three ways it was and would be written: "no milestone",
+        # "unmilestoned"/"un-milestoned", "without a milestone".
+        #
+        # Deliberately NOT a ban on the bare substring "milestoned": an
+        # affirmative statement of the NEW shape ("the card is milestoned
+        # on `bolt/<slug>`") must stay green, and a guard on the old shape
+        # that trips on the new one pins phrasing rather than proposition.
         for parts in self.SURFACES:
-            flat = self.flat(*parts)
-            self.assertNotIn("no milestone", flat, str(parts))
-            self.assertNotIn("milestoned", flat, str(parts))
+            self.assertNotRegex(
+                self.flat(*parts),
+                r"no milestone|un-?milestoned|without a milestone",
+                str(parts))
 
 
 if __name__ == "__main__":
