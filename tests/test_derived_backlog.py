@@ -34,10 +34,11 @@ Derived from: book abc1234 · specs def5678
 
 def card(number=12, status="Ready", team="workstation", body=PLAN_BODY,
          stale=False, blocked_by=(), title="Unit: observer-rework",
-         milestone="bolt/observer-rework"):
+         milestone="bolt/observer-rework", milestone_state="open"):
     return inbox.PlanCard(number=number, title=title, body=body,
                           status=status, team=team, stale=stale,
-                          blocked_by=tuple(blocked_by), milestone=milestone)
+                          blocked_by=tuple(blocked_by), milestone=milestone,
+                          milestone_state=milestone_state)
 
 
 class PlanCardTest(unittest.TestCase):
@@ -46,6 +47,7 @@ class PlanCardTest(unittest.TestCase):
         self.assertEqual(c.slug, "observer-rework")
         self.assertEqual(c.system, "flywheel")
         self.assertEqual(c.derived_from, ("abc1234", "def5678"))
+        self.assertEqual(c.bolt, "bolt/observer-rework")
 
     def test_task_table_parses_with_after(self):
         tasks = inbox.plan_tasks(PLAN_BODY)
@@ -54,15 +56,103 @@ class PlanCardTest(unittest.TestCase):
         self.assertEqual(tasks[0]["after"], "")
         self.assertEqual(tasks[1]["after"], "first-change")
 
+    def test_a_card_with_no_bolt_milestone_names_no_bolt(self):
+        # No fallback to the title slug: a name synthesized from a title is
+        # not a milestone the tracker holds. `slug` still parses.
+        c = card(milestone=None)
+        self.assertIsNone(c.bolt)
+        self.assertEqual(c.slug, "observer-rework")
+        self.assertIsNone(card(milestone="intent/design").bolt)
+
+
+class ReadyCardIsABoltJobTest(unittest.TestCase):
+    """The server inbox's card block: which milestone the job carries, and
+    which reason that milestone reports."""
+
     def test_ready_card_is_a_server_job(self):
         snap = inbox.TrackerSnapshot(plan_cards=[card()])
         jobs = inbox.server_inbox(snap)
         self.assertIn(("bolt/observer-rework", "run"),
                       [(j.milestone, j.kind) for j in jobs])
+        # The reason is what the run record prints and what the restart
+        # backoff fingerprints, so the card must be legible in it.
+        why = [j.why for j in jobs if j.milestone == "bolt/observer-rework"]
+        self.assertEqual(why, ["plan card #12 at Ready, awaiting expansion"])
 
     def test_backlog_card_is_not_a_job(self):
         snap = inbox.TrackerSnapshot(plan_cards=[card(status="Backlog")])
         self.assertEqual(inbox.server_inbox(snap), [])
+
+    def test_a_ready_card_with_no_bolt_milestone_is_not_a_job(self):
+        # The title still says `Unit: observer-rework`; the server no longer
+        # reads it as one. Nothing may name `bolt/observer-rework` here.
+        snap = inbox.TrackerSnapshot(plan_cards=[card(milestone=None)])
+        self.assertEqual(inbox.server_inbox(snap), [])
+
+    def test_a_ready_card_on_a_closed_milestone_is_not_a_run_job(self):
+        # The same test the Ready-batch set and the per-item loop make: a run
+        # job on a closed milestone collides with that milestone's archive job.
+        snap = inbox.TrackerSnapshot(
+            plan_cards=[card(milestone_state="closed")])
+        self.assertEqual(
+            [j for j in inbox.server_inbox(snap) if j.kind == "run"], [])
+
+    def test_the_cards_reason_wins_over_every_other_reason(self):
+        # A Ready card also reaches the pass as a synthetic Ready batch, and
+        # its milestone may hold a state:ready item too. One run job, and the
+        # card is what it says the loop was started for.
+        snap = inbox.TrackerSnapshot(
+            items=[inbox.Item(number=7, milestone="bolt/observer-rework",
+                              labels=frozenset({inbox.READY}))],
+            batches=[inbox.Batch(number=9, kind=inbox.UNIT,
+                                 status=inbox.STATUS_READY,
+                                 milestone="bolt/observer-rework")],
+            plan_cards=[card()])
+        jobs = inbox.server_inbox(snap)
+        self.assertEqual([(j.milestone, j.kind) for j in jobs],
+                         [("bolt/observer-rework", "run")])
+        self.assertEqual(jobs[0].why,
+                         "plan card #12 at Ready, awaiting expansion")
+
+
+class OperatorWaitsTest(unittest.TestCase):
+    """`flywheel status`'s "waiting on the operator" block, at the pure seam
+    `server_rows` builds it from."""
+
+    def test_a_backlog_card_waits_on_the_operator(self):
+        snap = inbox.TrackerSnapshot(plan_cards=[card(status="Backlog")])
+        lines = inbox.operator_waits(snap, inbox.server_inbox(snap))
+        self.assertEqual(len(lines), 1)
+        self.assertIn("plan card #12", lines[0])
+        self.assertIn("bolt/observer-rework", lines[0])
+        self.assertIn("flip to Ready", lines[0])
+
+    def test_a_ready_card_is_counted_by_its_job_row_not_here(self):
+        snap = inbox.TrackerSnapshot(plan_cards=[card()])
+        jobs = inbox.server_inbox(snap)
+        self.assertEqual(inbox.operator_waits(snap, jobs), ())
+
+    def test_a_ready_card_naming_no_bolt_milestone_is_reported(self):
+        # It yields no job, so this line is the only place it can surface.
+        snap = inbox.TrackerSnapshot(plan_cards=[card(milestone=None)])
+        lines = inbox.operator_waits(snap, inbox.server_inbox(snap))
+        self.assertEqual(len(lines), 1)
+        self.assertIn("plan card #12", lines[0])
+        self.assertIn("no bolt milestone", lines[0])
+
+    def test_batches_and_needs_operator_items_still_read_as_one_list(self):
+        snap = inbox.TrackerSnapshot(
+            items=[inbox.Item(number=5, title="a defect",
+                              labels=frozenset({inbox.NEEDS_OPERATOR}),
+                              milestone="bolt/observer-rework")],
+            batches=[inbox.Batch(number=9, kind=inbox.UNIT, status="Backlog",
+                                 milestone="bolt/observer-rework")],
+            plan_cards=[card(number=12, status="Backlog")])
+        lines = inbox.operator_waits(snap, ())
+        self.assertEqual(len(lines), 3)
+        self.assertTrue(lines[0].startswith("batch #9 at Backlog"))
+        self.assertTrue(lines[1].startswith("plan card #12 at Backlog"))
+        self.assertTrue(lines[2].startswith("#5 needs-operator"))
 
 
 class DispatchFilterTest(unittest.TestCase):

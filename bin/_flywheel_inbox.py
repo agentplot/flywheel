@@ -303,20 +303,32 @@ class PlanCard:
     stale: bool = False
     blocked_by: tuple = ()
     milestone: str = None     # bolt/<slug>, set by the planner at filing
+    milestone_state: str = "open"
 
     @property
     def slug(self):
+        """The unit name the card's title carries. Still the card's parsed
+        name — for the change id and the log line — but no longer a source
+        of milestones: see `bolt`."""
         m = re.match(r"^\s*(?:Unit|Plan|Bolt):\s*([a-z0-9][a-z0-9-]*)\s*$",
                      self.title, re.IGNORECASE)
         return m.group(1) if m else None
 
     @property
     def bolt(self):
-        """The bolt milestone this unit belongs to; falls back to the
-        title slug for a card filed before milestones were the planner's."""
+        """The bolt milestone this unit belongs to: the one the planner
+        filed the card onto, and nothing else.
+
+        No fallback to the title slug. The planner creates the milestone
+        and files the card onto it, so a card arrives already knowing where
+        it belongs; a name synthesized from a title is not a milestone the
+        tracker holds, and routing work to one starts a loop on a milestone
+        that does not exist while the card's own bolt goes unstarted. A card
+        with no `bolt/*` milestone answers `None` and is routed nowhere.
+        """
         if self.milestone and self.milestone.startswith(BOLT_PREFIX):
             return self.milestone
-        return BOLT_PREFIX + self.slug if self.slug else None
+        return None
 
     @property
     def system(self):
@@ -499,6 +511,30 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         if b.at_ready and b.milestone and b.milestone_state == "open"
     }
 
+    # An approved plan card is a job for its bolt: the loop's first pass
+    # expands it into the unit and its items.
+    #
+    # **First, so the card's reason wins.** `add` is `setdefault`, so the
+    # first reason for a milestone is the one reported — and a Ready card
+    # also reaches this pass as a synthetic Ready `Batch` out of
+    # `Tracker.snapshot`, which would otherwise claim the milestone with
+    # "a batch at board Status Ready". The reason is what the run record
+    # prints and what the restart backoff fingerprints, so the card has to
+    # be legible as the thing the loop was started for.
+    #
+    # Bounded by the milestone being open, the same test the Ready-batch set
+    # above and the per-item loop below make, and for the same reason: a run
+    # job on a closed milestone collides with the `archive` job this same
+    # sweep adds for it.
+    #
+    # `card.bolt` is the milestone the planner filed the card onto, or None.
+    # A card naming no `bolt/*` milestone yields nothing: the server does not
+    # synthesize a milestone name from a card's title.
+    for card in snapshot.plan_cards:
+        if card.at_ready and card.bolt and card.milestone_state == "open":
+            add(card.bolt, "run",
+                f"plan card #{card.number} at Ready, awaiting expansion")
+
     for item in snapshot.items:
         if item.milestone_state != "open":
             # The operator's close on a bolt milestone RELEASES the landing:
@@ -552,13 +588,6 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         if milestone_slug(milestone) is not None:
             add(milestone, "run", "a batch at board Status Ready")
 
-    # An approved plan card is a job for its bolt: the loop's first pass
-    # expands it into the unit and its items.
-    for card in snapshot.plan_cards:
-        if card.at_ready and card.bolt:
-            add(card.bolt, "run",
-                f"plan card #{card.number} at Ready, awaiting expansion")
-
     for milestone in snapshot.closed_milestones:
         slug = milestone_slug(milestone)
         if slug is None:
@@ -567,6 +596,56 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
             add(milestone, "archive", "closed milestone, change still in openspec/changes/")
 
     return sorted(jobs.values(), key=lambda j: (j.milestone, j.kind))
+
+
+def operator_waits(snapshot, jobs=()):
+    """The "waiting on the operator" lines of `flywheel status`, as strings.
+
+    Pure over `(snapshot, jobs)` — the same pair the status pass already
+    holds — so the report is testable without a tracker, and so `status`
+    keeps its one promise: it reads, it starts nothing, it writes nothing.
+
+    Three kinds of thing wait on the operator, in one list:
+
+    - a **batch at Backlog**, which the flip to Ready releases;
+    - an **unexpanded plan card**, which is now the whole approval surface
+      for construction work. A card at Ready on an open milestone is
+      already counted — its milestone carries a `run` job naming it — so
+      it is not repeated here. A card at Backlog is what stands between a
+      planned bolt and its construction, and a card the filter declines to
+      route is reported with its defect named rather than dropped silently;
+    - an open item labelled `needs-operator`.
+
+    `jobs` decides *whether* a Ready card is listed — a card whose milestone
+    already appears in the job rows is not repeated — while the card's own
+    state names *why* it is not there.
+    """
+    routed = {j.milestone for j in jobs if j.kind == "run"}
+    lines = []
+    for batch in snapshot.batches:
+        if batch.status == STATUS_BACKLOG:
+            where = f" on {batch.milestone}" if batch.milestone else ""
+            lines.append(
+                f"batch #{batch.number} at Backlog{where} — flip to Ready to release")
+    for card in snapshot.plan_cards:
+        if card.bolt is None:
+            lines.append(
+                f"plan card #{card.number} names no bolt milestone — "
+                f"the server yields no job for it")
+        elif card.status == STATUS_BACKLOG:
+            lines.append(
+                f"plan card #{card.number} at Backlog on {card.bolt} — "
+                f"flip to Ready to release")
+        elif card.at_ready and card.bolt not in routed:
+            why = ("its milestone is closed" if card.milestone_state != "open"
+                   else "no job names it")
+            lines.append(
+                f"plan card #{card.number} at Ready on {card.bolt} — {why}")
+    for item in snapshot.items:
+        if item.is_open and NEEDS_OPERATOR in item.labels:
+            lines.append(f"#{item.number} needs-operator — "
+                         f"{getattr(item, 'title', '')[:60]}")
+    return tuple(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1246,6 +1325,7 @@ class Tracker:
                 stale=STALE in item.labels,
                 blocked_by=tuple(self.blocked_by(item.number)),
                 milestone=item.milestone,
+                milestone_state=item.milestone_state,
             ))
 
         # A batch's Ready flip is the approval, and a batch may sit on the

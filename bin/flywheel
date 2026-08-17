@@ -1123,17 +1123,15 @@ def server_rows(manifest: dict) -> None:
         verb = row["state"] if row else job.kind
         detail = f"  · {row['detail']}" if row and row.get("detail") else ""
         print(f"  {job.milestone}  {verb}  ({job.why}){detail}")
-    flips = [b for b in snap.batches if b.status == "Backlog"]
-    ops = [i for i in snap.items
-           if i.is_open and inbox.NEEDS_OPERATOR in i.labels]
-    if flips or ops:
+    # Batches at Backlog, unexpanded plan cards, and `needs-operator` items,
+    # as one list — built by a pure function over the pair this pass already
+    # holds, so the report is testable without a tracker.
+    waits = inbox.operator_waits(snap, jobs)
+    if waits:
         print()
         print("waiting on the operator:")
-        for b in flips:
-            where = f" on {b.milestone}" if b.milestone else ""
-            print(f"  batch #{b.number} at Backlog{where} — flip to Ready to release")
-        for i in ops:
-            print(f"  #{i.number} needs-operator — {getattr(i, 'title', '')[:60]}")
+        for line in waits:
+            print(f"  {line}")
 
 def down(manifest: dict) -> int:
     """Stop the server and every loop process for this org.
