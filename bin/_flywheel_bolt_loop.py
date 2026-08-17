@@ -2460,30 +2460,35 @@ class BoltLoop:
         return StageOutcome("land", "done", f"landed as {sha}", report=outcome.report)
 
     def close_unit_parents(self, snapshot, items, sha):
-        """Close the release's unit parent at the landing. Containers only.
+        """Close the units this landing finishes. Containers only.
 
-        By here the bar is full and every assertion has been upgraded to
-        `closed:done`, so the release the parent carries is finished and
-        there is nothing further the container can gate. Nothing closed one
-        before, so a born-ready bolt's parent stayed open at Status Ready and
-        its milestone reported a job on every server sweep — before the
-        landing, after it, and after the operator closed the milestone, where
-        it collided with the `archive` job the same sweep adds.
+        A bolt milestone holds as many units as the operator has approved
+        cards on it, and one landing serves them all — so this closes
+        **every** open unit on the milestone, not one. By here each unit's
+        bar is full and every assertion has been upgraded to `closed:done`,
+        so the release each carries is finished and there is nothing further
+        any of them can gate. Nothing closed them before, so a born-ready
+        bolt's units stayed open at Status Ready and their milestone reported
+        a job on every server sweep — before the landing, after it, and after
+        the operator closed the milestone, where it collided with the
+        `archive` job the same sweep adds.
 
         **No sub-issue is touched.** The assertions' own closes belong to the
         merge boundary and to the upgrade above; a container's close is not a
         cascade, and the tracker's rule that whoever holds the evidence closes
-        with exactly one reason is not relaxed for a container.
+        with exactly one reason is not relaxed for a container. An elaboration
+        on the milestone is skipped — it authorizes design work, not this
+        release — and a unit already closed is not closed a second time.
 
-        Two handles, because the two release paths put the parent in
-        different places. The born-ready parent sits on this bolt's milestone
-        and is in the snapshot's own batches. The handoff parent sits on the
-        `intent/<slug>` milestone — deliberately, since it is born before any
-        assertion has moved — so it is reachable only through a landed item's
-        `parent_batch`, and only when the snapshot carries the edge at all.
-        Where it does not, the server's Ready-batch condition is what keeps a
-        stale parent from naming a job forever; the two answer the same
-        finding from opposite ends.
+        Two handles, because the two release paths put a unit in different
+        places. Born-ready units sit on this bolt's milestone and are in the
+        snapshot's own batches, however many of them there are. The handoff
+        parent sits on the `intent/<slug>` milestone — deliberately, since it
+        is born before any assertion has moved — so it is reachable only
+        through a landed item's `parent_batch`, and only when the snapshot
+        carries the edge at all. Where it does not, the server's Ready-batch
+        condition is what keeps a stale parent from naming a job forever; the
+        two answer the same finding from opposite ends.
         """
         landed = {i.number for i in items}
         numbers = {b.number for b in snapshot.batches
@@ -2702,6 +2707,12 @@ class BoltLoop:
         when this run merged something; `land="force"` is for the operator
         or the server resuming a run that died between the last merge and
         the landing, and `land=False` never lands at all.
+
+        **An open unit card outranks all of that.** `holding_cards` is asked
+        first and its answer is final: while the operator has a card left to
+        rule on this milestone the bolt is still being planned, so the run
+        reports the hold — by card number, on the landing line — and reaches
+        for no landing at all, `land="force"` included.
         """
         report = RunReport(milestone=self.params.milestone)
         number = 0
@@ -2727,14 +2738,14 @@ class BoltLoop:
         open_items = [i for i in on_milestone if i.is_open]
         report.queue = [f"#{i.number} {i.title}" for i in open_items if i.queued]
         unlanded = open_items + [i for i in on_milestone if i.merge_closed]
-        planned = [c for c in getattr(snapshot, "plan_cards", ())
-                   if c.bolt == self.params.milestone]
-        if planned and self.landing_wanted(land, box, unlanded):
-            self._log("landing held — unit card(s) still open: "
-                      + ", ".join(f"#{c.number}" for c in planned))
+        held = self.holding_cards(snapshot)
+        if held:
+            cards = ", ".join(f"#{c.number}" for c in held)
+            self._log(f"landing held — unit card(s) still open: {cards}")
             self.ledger.note(
-                "landing held — the bolt still holds open unit card(s) "
-                + ", ".join(f"#{c.number}" for c in planned))
+                f"landing held — the bolt still holds open unit card(s) {cards}")
+            report.landing = ("held — the bolt still holds open unit "
+                              f"card(s) {cards}")
             self._finish_observation()
             return report
         if not self.landing_wanted(land, box, unlanded):
@@ -2809,6 +2820,38 @@ class BoltLoop:
         # whole branch rather than a half-built one.
         work = [i for i in unlanded if not i.is_container]
         return bool(work) and all(i.merge_closed for i in work)
+
+    def holding_cards(self, snapshot):
+        """The open unit cards that hold this bolt's landing.
+
+        The landing is the bolt's boundary, not a unit's: one landing carries
+        the branch to main for every unit the milestone holds. So a card the
+        operator has not ruled yet is a bolt still being planned, and while
+        one sits here nothing is verified against the bolt branch, nothing
+        reaches main, and no `closed:merged` is upgraded.
+
+        **The `plan` label draws the line, not the board.** Expansion swaps
+        `plan` for `unit`, and `plan_cards` is the open `plan`-labelled
+        issues, so an expanded unit has already left this set — which is what
+        makes the hold satisfiable at all, since a unit stays open across the
+        landing precisely so the landing can close it. Board Status and
+        `stale` are not read: a card at Backlog holds exactly as one at Ready
+        does. A card whose own milestone is not this one — including a card
+        naming no `bolt/*` milestone, which `PlanCard.bolt` answers `None`
+        for — is no bolt's card to hold here.
+
+        **Asked before `landing_wanted`, and blind to `land`.** Two reasons,
+        and both are about what the run can then say. Folding the card test
+        into `landing_wanted` would collapse "held" and "nothing to land"
+        into one `False` and leave the report unable to tell the operator
+        which — that is how a held bolt came to read `not attempted`. And
+        `land="force"` is a claim about what *this process* knows, made by an
+        operator or a server resuming a run that died before its landing; an
+        open card is the operator's own unfinished gesture, and the way past
+        it is to rule the card, never a flag.
+        """
+        return [c for c in getattr(snapshot, "plan_cards", ())
+                if c.bolt == self.params.milestone]
 
     def describe(self, result):
         parts = [f"cycle {result.number}:"]
