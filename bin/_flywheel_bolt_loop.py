@@ -766,9 +766,13 @@ def analyse(items, snapshot=None, slug=""):
     Type is the hard boundary and relatedness decides within a type
     (tracker.md invariant 3); on a bolt every work item is `type:assertion`,
     so what remains is relatedness, and the tracker already carries it as
-    the unit an item was released in. Items sharing a parent ride together;
-    an unparented item rides alone. Computed from the fields — this step
-    reads and writes nothing, and reasons about nothing.
+    the unit an item was released in. Items sharing a parent ride together —
+    unless they name distinct changes: an expanded plan task IS its own
+    spec-driven change, and each change gets its own batch, its own
+    session, and its own `build/<change>` branch (construction-loop.md:
+    one writer per branch). An unparented item rides alone. Computed from
+    the fields — this step reads and writes nothing, and reasons about
+    nothing.
     """
     claimed = parented(snapshot) if snapshot is not None else set()
     groups, order = {}, []
@@ -787,11 +791,64 @@ def analyse(items, snapshot=None, slug=""):
     batches = []
     for key in order:
         members = sorted(groups[key], key=lambda i: i.number)
-        change = {i.change for i in members if i.change}
-        name = change.pop() if len(change) == 1 else (
-            f"{slug}-{members[0].number}" if slug else f"item-{members[0].number}")
-        batches.append(WorkBatch(slug=name, items=tuple(members)))
+        named, rest = {}, []
+        for item in members:
+            if item.change:
+                named.setdefault(item.change, []).append(item)
+            else:
+                rest.append(item)
+        for change_name, group in named.items():
+            batches.append(WorkBatch(slug=change_name, items=tuple(group)))
+        if rest:
+            name = (f"{slug}-{rest[0].number}" if slug
+                    else f"item-{rest[0].number}")
+            batches.append(WorkBatch(slug=name, items=tuple(rest)))
     return batches
+
+
+def after_split(snapshot, items):
+    """Honor the plan's task-level chain: an item whose `After:` names a
+    task not yet merged waits — "a task that builds on an earlier one waits
+    for that item's merge" (construction-loop.md), the defer predicate one
+    level below the unit cards' blocked-by. A token is a task ordinal — the
+    Nth sub-issue of the item's own unit, by ascending number — or a `#123`
+    issue number. An unresolvable token never holds the item: the plan's
+    failure modes are asymmetric, and the loud one — a spec session that
+    cannot derive, a red gate — is chosen over a silent deadlock.
+    """
+    runnable, held = [], []
+    by_number = {i.number: i for i in snapshot.items}
+    for item in items:
+        siblings = ()
+        for batch in snapshot.batches:
+            if item.number in batch.sub_issues:
+                siblings = tuple(sorted(batch.sub_issues))
+                break
+        blocker = None
+        for token in item.after:
+            token = str(token).lstrip("#")
+            if token.isdigit():
+                n = int(token)
+                target_num = siblings[n - 1] if 1 <= n <= len(siblings) else n
+                target = by_number.get(target_num)
+            else:
+                # A change name — the plan's own vocabulary for its tasks.
+                target = next(
+                    (by_number[n] for n in siblings if n in by_number
+                     and token in (by_number[n].change, by_number[n].title)),
+                    None)
+            if target is None or target.number == item.number:
+                continue
+            merged = (not target.is_open) and bool(
+                {inbox.CLOSED_MERGED, inbox.CLOSED_DONE} & target.labels)
+            if not merged:
+                blocker = target.number
+                break
+        if blocker is None:
+            runnable.append(item)
+        else:
+            held.append((item, f"waits for #{blocker} to merge"))
+    return tuple(runnable), tuple(held)
 
 
 def session_name(prefix, slug):
@@ -1418,7 +1475,10 @@ class BoltLoop:
             self.tracker.remove_label(card.number, inbox.STALE)
         made = []
         for task in tasks:
-            body_lines = [task.get("delivers", "")]
+            # `Change:` is the item's contract line — the batcher reads it
+            # to give each change its own session and branch; the title is
+            # display and may drift.
+            body_lines = [f"Change: {task['change']}", task.get("delivers", "")]
             if task.get("chapters"):
                 body_lines.append(f"Chapters: {task['chapters']}")
             if task.get("after"):
@@ -2405,12 +2465,19 @@ class BoltLoop:
         if not box.ready and not box.in_progress and not actions:
             result.stopped = "nothing is ready and the guards wrote nothing"
             return result
-        work = list(inbox.unblocked(snapshot, box.ready))
+        work, held = after_split(snapshot, inbox.unblocked(snapshot, box.ready))
+        work = list(work)
+        for item, why in held:
+            self.ledger.note(f"deferred #{item.number}: {why}")
         resume = [i for i in inbox.unblocked(snapshot, box.in_progress)
                   if i not in work]
         if not work and not resume:
-            result.stopped = ("every ready item is blocked by an open item — "
-                              "nothing to work this cycle")
+            result.stopped = (
+                ("every ready item waits on the plan's chain — "
+                 + ", ".join(f"#{i.number} {why}" for i, why in held))
+                if held else
+                "every ready item is blocked by an open item — "
+                "nothing to work this cycle")
             return result
         batches = analyse(tuple(work) + tuple(resume), snapshot, self.params.slug)
         done = [b for b in batches if self.batch_merged(b)]

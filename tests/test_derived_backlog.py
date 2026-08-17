@@ -288,3 +288,90 @@ class ExpansionTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PerChangeDriveTest(unittest.TestCase):
+    """Each expanded plan task is its own change, its own session, its own
+    `build/<change>` branch; the plan's After chain defers an item until
+    its predecessor merges (construction-loop.md)."""
+
+    def sibling(self, number, change, state="open", labels=(), after=()):
+        return inbox.Item(
+            number=number, title=change,
+            body=f"Change: {change}\n\ndelivers",
+            labels=frozenset(labels), state=state,
+            milestone="bolt/observer-rework", parent_batch=12,
+            change=change, after=tuple(after))
+
+    def snapshot(self, items):
+        return inbox.TrackerSnapshot(
+            items=items,
+            batches=[inbox.Batch(number=12, kind="unit",
+                                 sub_issues=tuple(i.number for i in items),
+                                 milestone="bolt/observer-rework")])
+
+    def test_distinct_changes_ride_alone(self):
+        a = self.sibling(13, "first-change")
+        b = self.sibling(14, "second-change")
+        batches = bolt.analyse((a, b), self.snapshot([a, b]),
+                               "observer-rework")
+        self.assertEqual([(x.slug, x.numbers) for x in batches],
+                         [("first-change", (13,)), ("second-change", (14,))])
+        self.assertEqual([x.change for x in batches],
+                         ["first-change", "second-change"])
+
+    def test_changeless_siblings_still_ride_together(self):
+        a = inbox.Item(number=13, title="a finding", parent_batch=12)
+        b = inbox.Item(number=14, title="another", parent_batch=12)
+        batches = bolt.analyse((a, b), self.snapshot([a, b]),
+                               "observer-rework")
+        self.assertEqual([(x.slug, x.numbers) for x in batches],
+                         [("observer-rework-13", (13, 14))])
+
+    def test_after_defers_until_the_predecessor_merges(self):
+        done = self.sibling(13, "first-change")
+        second = self.sibling(14, "second-change", after=("first-change",))
+        snap = self.snapshot([done, second])
+        runnable, held = bolt.after_split(snap, (done, second))
+        self.assertEqual([i.number for i in runnable], [13])
+        self.assertEqual([(i.number, why) for i, why in held],
+                         [(14, "waits for #13 to merge")])
+        merged = self.sibling(13, "first-change", state="closed",
+                              labels=("closed:merged",))
+        snap = self.snapshot([merged, second])
+        runnable, held = bolt.after_split(snap, (second,))
+        self.assertEqual([i.number for i in runnable], [14])
+        self.assertEqual(held, ())
+
+    def test_an_ordinal_after_resolves_to_the_nth_sibling(self):
+        first = self.sibling(13, "first-change")
+        second = self.sibling(14, "second-change", after=("1",))
+        snap = self.snapshot([first, second])
+        _runnable, held = bolt.after_split(snap, (second,))
+        self.assertEqual([(i.number, why) for i, why in held],
+                         [(14, "waits for #13 to merge")])
+
+    def test_an_unresolvable_after_never_deadlocks(self):
+        only = self.sibling(13, "first-change", after=("no-such-change",))
+        runnable, held = bolt.after_split(self.snapshot([only]), (only,))
+        self.assertEqual([i.number for i in runnable], [13])
+        self.assertEqual(held, ())
+
+    def test_live_items_carry_change_and_after_from_the_body(self):
+        raw = {"number": 14, "title": "second-change",
+               "body": "Change: second-change\n\nthe rest\n\n"
+                       "Chapters: books/flywheel/src/b.md\n\n"
+                       "After: first-change",
+               "labels": [{"name": "state:ready"}],
+               "milestone": {"title": "bolt/observer-rework"}}
+        item = inbox.Item.from_api(raw)
+        self.assertEqual(item.change, "second-change")
+        self.assertEqual(item.after, ("first-change",))
+
+    def test_expansion_stamps_the_change_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = bolt.FixtureTracker(fixture(tmp, [card_item()]))
+            params = bolt.BoltParams(slug="observer-rework", repo_dir=".")
+            bolt.BoltLoop(params, tracker).guard_expand(tracker.snapshot(), [])
+            self.assertTrue(tracker._item(13)["body"].startswith(
+                "Change: first-change"))

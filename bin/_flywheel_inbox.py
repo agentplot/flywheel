@@ -122,6 +122,27 @@ def milestone_slug(milestone):
 # The objects
 # ---------------------------------------------------------------------------
 
+_CHANGE_LINE = re.compile(r"^Change:\s*`?([A-Za-z0-9._/-]+)`?\s*$", re.MULTILINE)
+_AFTER_LINE = re.compile(r"^After:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def body_change(body):
+    """The `Change: <slug>` line an expanded plan task's item carries —
+    the one spec-driven change the item is. Absent on discovery items."""
+    match = _CHANGE_LINE.search(body or "")
+    return match.group(1) if match else None
+
+
+def body_after(body):
+    """The `After: …` line, as raw comma-separated tokens — the plan's
+    task-level chain, carried into the item at expansion."""
+    match = _AFTER_LINE.search(body or "")
+    if not match:
+        return ()
+    return tuple(t.strip().strip("`") for t in match.group(1).split(",")
+                 if t.strip())
+
+
 @dataclass(frozen=True)
 class Item:
     number: int
@@ -135,6 +156,7 @@ class Item:
     parent_batch: int = None
     record: str = None
     change: str = None
+    after: tuple = ()
 
     @property
     def is_open(self):
@@ -191,7 +213,8 @@ class Item:
             blocked_by=tuple(raw.get("blocked_by", ())),
             parent_batch=raw.get("parent_batch"),
             record=raw.get("record"),
-            change=raw.get("change"),
+            change=raw.get("change") or body_change(raw.get("body", "")),
+            after=tuple(raw.get("after", ())) or body_after(raw.get("body", "")),
         )
 
     @classmethod
@@ -211,6 +234,8 @@ class Item:
             state=raw.get("state", "open"),
             blocked_by=tuple(raw.get("blocked_by", ())),
             parent_batch=raw.get("parent_batch"),
+            change=body_change(raw.get("body") or ""),
+            after=body_after(raw.get("body") or ""),
         )
 
 
