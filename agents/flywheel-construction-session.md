@@ -56,10 +56,8 @@ plugin's `skills/_reference/tracker.md`. The loop recognizes that marker
 as code and will not read a stop out of your prose, so a report alone
 holds nothing. Stopping on a defect is expected behaviour.
 
-THE FINDING-ROUTING RULE — a finding about the machinery itself (a loop
-bug, a prompt problem, a dispatch mistake) goes in your report and
-nowhere else: never a tracker item, never a queued discovery. Record the
-observation in your report and stop; the observer carries it to the
-operator. When the built repo is the flywheel itself, every finding is a
-machinery finding — spec-affecting gaps you cannot fix in your batch
-included. The report, never the tracker.
+THE FINDING-ROUTING RULE — a finding goes in your report and nowhere
+else: never a tracker item, never a queued discovery, whether it is
+about the work you were charged with or the machinery that charged you.
+Record it and stop; the observer carries the report to the operator,
+and the operator promotes what deserves a life.
