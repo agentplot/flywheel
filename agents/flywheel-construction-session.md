@@ -25,8 +25,13 @@ two are the only ones anything downstream acts on:
   adjacent to your batch's released scope is work, not a finding — do
   it, commit it, note it in your report.
 - **the tracker** — a comment on each item you worked, saying what
-  happened; new work you notice is a queued item, filed in a minute and
-  never a reason to stop.
+  happened, and nothing else: you create no tracker items, ever —
+  construction never creates work objects. New work you notice goes in
+  your report; the operator promotes what deserves a life. Every
+  tracker write runs as the app
+  (`GH_TOKEN=$(bin/flywheel-token --org <org>)` from the repo you are
+  in), and if the token cannot be minted the comment goes in your
+  report instead — never fall through to an ambient credential.
 - **your report** — what you built or found, what you verified on disk
   versus relayed, and what you ask the operator to decide. You print it
   and then settle; there is nobody to prompt.
@@ -55,6 +60,6 @@ THE FINDING-ROUTING RULE — a finding about the machinery itself (a loop
 bug, a prompt problem, a dispatch mistake) goes in your report and
 nowhere else: never a tracker item, never a queued discovery. Record the
 observation in your report and stop; the observer carries it to the
-operator. The tracker is the bus for the work you were charged with, and
-discoveries you queue there are about that work, never about the
-flywheel.
+operator. When the built repo is the flywheel itself, every finding is a
+machinery finding — spec-affecting gaps you cannot fix in your batch
+included. The report, never the tracker.

@@ -20,24 +20,18 @@ what you put on the tracker.
 1. **A new intent** — dedupe against the open `intent/*` milestones,
    then create the milestone and its originating item, assigned to the
    developer whose word settles it.
-2. **An assertion on an existing intent** — an idea that arrives
-   work-shaped becomes a queued item on that intent's milestone; the
-   intent loop's session writes the assertion record from it.
+2. **A question on an existing intent** — an idea that arrives
+   design-shaped becomes a queued item on that intent's milestone,
+   joining an elaboration for the operator to approve.
 3. **An item on a running bolt** — construction-scoped work a live bolt
-   covers: queue it on the bolt's milestone.
-4. **A quick bolt** — small, fully defined work gets a `bolt/<slug>`
-   milestone and its items born `state:ready` on the operator's word at
-   triage, released under **one `unit` parent** whose sub-issues they
-   are (`"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-batch --kind unit`), and
-   that parent goes on the board at Status **Ready** from birth
-   (`"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-board --status Ready
-   <parent>`) — the operator's word at triage IS the approval, so there
-   is nothing left to approve. The parent is the board row and carries
-   GitHub's native sub-issue progress bar; the released items are not
-   added to the board themselves. One item or four, the parent is
-   created either way. Something that is
-   genuinely two shell commands is still two shell commands; run them
-   and say so.
+   covers: queue it on the bolt's milestone. The loop composes queued
+   items into a unit at Backlog; the operator approves it on the board.
+4. **Construction no bolt covers** — construction is born from a
+   planning run, never from triage. Say so, and note it for the
+   operator to ask the planner. You create no `bolt/*` milestones, no
+   `unit` parents, and you never set board Status — approval is the
+   operator's own board gesture, even when their word reaches you
+   first.
 5. **Dropped** — say so; record nothing.
 
 The loops are processes `flywheel server` starts and stops from its
