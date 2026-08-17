@@ -621,6 +621,10 @@ class FixtureTracker:
         raw = self._item(number) or {}
         return raw.get("state") == "closed" and label in raw.get("labels", ())
 
+    def closed(self, number):
+        raw = self._item(number) or {}
+        return raw.get("state") == "closed"
+
     def milestone(self, title):
         return {"title": title, "number": 1}
 
@@ -1341,6 +1345,8 @@ class BoltLoop:
         result, and the STOP condition is built on exactly that.
         """
         actions = []
+        # -1 expand, 0 scaffold, 0.5 topology, 0.6 charter, 1 flip-consume,
+        # 2 route, 3 stages.
         expanded = self.guard_expand(snapshot, actions)
         if expanded is not None:
             return actions, expanded
@@ -1350,6 +1356,9 @@ class BoltLoop:
         topology = self.guard_topology(actions)
         if topology is not None:
             return actions, topology
+        charter = self.guard_charter(snapshot, actions)
+        if charter is not None:
+            return actions, charter
         self.guard_flip_consume(snapshot, actions)
         # A queued item on the milestone is inert to machinery: it waits
         # until an author — the planner, dispatch, or the operator — folds
@@ -1451,21 +1460,32 @@ class BoltLoop:
                                    f"(re-derived from {branch})")
 
     def guard_expand(self, snapshot, actions):
-        """-1 — expansion: the approved plan card becomes this bolt.
+        """-1 — expansion: an approved plan card becomes a unit on this bolt.
 
-        The card is `plan`-labeled, milestone-less, at board Status Ready,
-        its title naming this slug. Board approval reaches construction
-        here and nowhere else. Idempotent by construction: once expanded
-        the card carries the milestone and the `unit` label, so the guard
-        finds no card and does nothing.
+        The card is `plan`-labeled, open, at board Status Ready, and
+        **already on this bolt's milestone** — the planner creates
+        `bolt/<slug>` and files the card onto it, so expansion reads the
+        card's own home and writes no milestone at all. The test is
+        `c.milestone`, not `PlanCard.bolt`: that property falls back to the
+        title slug for a card filed before milestones were the planner's,
+        and a card carrying another bolt's milestone, or none, is not this
+        bolt's to expand.
 
-        A card with no Team refuses (an unroutable bolt is a defect at
-        approval time); a card blocked by an issue not yet closed done
-        defers — the pass records the wait and stops, and the server's
+        Board approval reaches construction here and nowhere else, and it
+        reaches it once per APPROVAL rather than once per bolt. A bolt
+        carries as many units as the operator approves over its life; each
+        expansion adds one beside the units already there and touches
+        neither them nor their items. Idempotent by construction: expansion
+        swaps `plan` for `unit`, so an expanded card is no longer a plan
+        card and a later pass finds nothing.
+
+        A card with no Team refuses (an unroutable unit is a defect at
+        approval time); a card whose blocking predecessor's work is not all
+        in defers — the pass records the wait and stops, and the server's
         interval retries.
         """
         cards = [c for c in getattr(snapshot, "plan_cards", ())
-                 if c.at_ready and c.bolt == self.params.milestone]
+                 if c.at_ready and c.milestone == self.params.milestone]
         if not cards:
             return None
         if self.dry_run:
@@ -1473,25 +1493,66 @@ class BoltLoop:
                            + ", ".join(f"#{c.number}" for c in cards))
             return None
         for card in cards:
-            failure = self._expand_card(card, actions)
+            failure = self._expand_card(card, snapshot, actions)
             if failure:
                 return failure
         return None
 
-    def _expand_card(self, card, actions):
+    def _predecessor_in(self, number, snapshot):
+        """Is this blocker's work all in — the MERGE, not the close?
+
+        Closure of the blocker itself is the wrong predicate under
+        bolt-of-units, and provably deadlocking. A blocking card is now a
+        sibling unit on the same milestone; the loop closes a unit card
+        `closed:done` only AFTER the bolt lands, and the landing waits on
+        the milestone's open unit cards. So a card blocked by a sibling
+        could never expand before the landing, and the landing could never
+        run.
+
+        What "all in" means instead: the blocker is closed (however it was
+        closed), or it is an expanded `unit` every one of whose work items
+        is closed. An UNEXPANDED blocker is never satisfied — it has no
+        work items yet, so there is nothing that could be in, and its
+        dependent waits for the operator's approval. That is the book's
+        deferral, never a refusal.
+
+        Read from the snapshot the guard already holds. It is scoped to
+        this milestone and carries the open items PLUS the `closed:merged`
+        ones — exactly the two states a sibling unit's items can be in
+        while the unit is still open, since the landing that would close
+        them `closed:done` is the same act that closes the unit. So a
+        sibling's verdict costs no network call. The tracker read is the
+        fallback for the one case the snapshot cannot answer: a blocker
+        that is not on this milestone at all.
+        """
+        blocker = snapshot.item(number)
+        if blocker is None:
+            return self.tracker.closed(number)
+        if not blocker.is_open:
+            return True
+        if inbox.UNIT not in blocker.labels:
+            return False
+        # Its work items, by the parentage `backfill_parentage` derives from
+        # the batches' sub-issues — the same field `guard_route` keys on.
+        work = [i for i in snapshot.items if i.parent_batch == number]
+        return bool(work) and all(not i.is_open for i in work)
+
+    def _expand_card(self, card, snapshot, actions):
         if not card.team:
+            # The unroutable thing is the UNIT, not the bolt: the bolt's
+            # other units and their items are untouched by this refusal.
             self.tracker.add_label(card.number, inbox.NEEDS_OPERATOR)
             self.tracker.comment(card.number, (
-                "Expansion refused: the card carries no Team, so the bolt "
+                "Expansion refused: the card carries no Team, so the unit "
                 "is unroutable. Set Team on the board and the next pass "
                 "expands it."))
             actions.append(f"card #{card.number}: no Team — needs-operator")
             return f"expansion: card #{card.number} carries no Team"
         for blocker in card.blocked_by:
-            if not self.tracker.closed_with(blocker, inbox.CLOSED_DONE):
+            if not self._predecessor_in(blocker, snapshot):
                 self.ledger.note(
                     f"expansion deferred — card #{card.number} blocked by "
-                    f"#{blocker}, not closed done")
+                    f"#{blocker}, whose work is not all in")
                 self._log(f"expansion deferred: #{card.number} waits on "
                           f"#{blocker}")
                 return None
@@ -1504,9 +1565,10 @@ class BoltLoop:
             f"expand:{card.number}",
             f"plan card #{card.number} at Ready",
             f"{milestone}: unit + {len(tasks)} item(s), status consumed")
-        self.tracker.create_milestone(milestone)
-        if card.milestone != milestone:
-            self.tracker.set_milestone(card.number, milestone)
+        # No milestone write of any kind. The milestone and the card's home
+        # are the PLANNER's writes; the guard's selection already proved the
+        # card is on this one, so creating it or setting it again would be a
+        # write on every pass for a fact nothing had changed.
         self.tracker.swap_label(card.number, inbox.UNIT, inbox.PLAN)
         if card.stale:
             self.tracker.remove_label(card.number, inbox.STALE)
@@ -1530,8 +1592,8 @@ class BoltLoop:
         self.ledger.actual(
             f"expand:{card.number}",
             f"unit #{card.number}, items {', '.join(f'#{n}' for n in made)}")
-        actions.append(f"expanded plan card #{card.number} into {milestone} "
-                       f"with {len(made)} item(s)")
+        actions.append(f"expanded plan card #{card.number} into a unit on "
+                       f"{milestone} with {len(made)} item(s)")
         return None
 
     def guard_scaffold(self, actions):
@@ -1541,6 +1603,15 @@ class BoltLoop:
         is a session like every other act of judgment-free work the loop
         cannot do with a subprocess. Idempotent: the directory existing is
         the whole test.
+
+        Which is why the session copies exactly ONE unit's plan document —
+        the lowest-numbered, the unit this bolt was born around. A
+        milestone carries as many units as the operator approves, and "the
+        milestone's unit parent" stopped being a unique referent when it
+        did; `guard_charter` appends the rest, on the pass that sees them.
+        The fallback branch stays: a quick bolt born at triage carries no
+        unit card at all, and that session is still what writes its
+        charter.
         """
         if self.params.change_dir.exists():
             return None
@@ -1551,10 +1622,13 @@ class BoltLoop:
         name = session_name("scaffold", self.params.slug)
         order = sessions.work_order(f"/opsx:new {self.params.slug}", (
             f"Scaffold the bolt record for bolt/{self.params.slug} and bind the "
-            f"{self.params.type_name} schema. If the milestone's unit parent "
-            f"carries a plan document as its body, copy it into bolt.md "
-            f"verbatim; otherwise write bolt.md from what the milestone "
-            f"and its items say; commit by pathspec, in THIS worktree on the "
+            f"{self.params.type_name} schema. If the milestone carries any "
+            f"`unit`-labeled issue, copy the LOWEST-NUMBERED one's body into "
+            f"bolt.md verbatim, under a `# Unit: <slug>` heading naming that "
+            f"unit — that one and no other, because the loop appends every "
+            f"later unit's document itself; otherwise write bolt.md from "
+            f"what the milestone and its items say; "
+            f"commit by pathspec, in THIS worktree on the "
             f"branch already checked out — never create a branch or worktree; "
             f"the loop cuts the bolt branch after you settle. Do not start any other work, "
             f"and do not touch the items. Deliver by settling."))
@@ -1594,6 +1668,90 @@ class BoltLoop:
             actions.append(f"cut {self.params.bolt_branch} and its worktree")
         return None
 
+    #: A charter's per-unit heading. The scaffold session writes the first
+    #: one and this guard writes the rest, so the form is pinned here.
+    UNIT_HEADING = re.compile(r"^#\s+Unit:\s*(\S+?)\s*$", re.MULTILINE)
+
+    def guard_charter(self, snapshot, actions):
+        """0.6 — every expanded unit's plan document, durable in git.
+
+        A plan document is mutable tracker state until expansion; expansion
+        is what makes it prose in git. The scaffold's session copies the
+        FIRST unit's document when it writes `bolt.md`, and that used to be
+        the whole story, because a bolt saw expansion once in its life. A
+        bolt of units sees it once per approval, and `guard_scaffold`'s
+        only test is that the change directory is absent — so a second
+        unit's document would reach nothing at all.
+
+        **Ordered after `guard_topology`, not folded into `_expand_card`.**
+        Expansion runs at -1, before the bolt branch or its worktree exist
+        on a fresh process, so a git write from there would land on
+        whatever branch `repo_dir` has checked out. By 0.6
+        `params.bolt_worktree` names the bolt branch's worktree and the
+        append lands where the bolt's record lives. It also keeps
+        expansion's failure modes to one — the tracker's — rather than two.
+
+        **The test is the charter's content, not a stored flag.** The loop
+        is stateless by construction and re-derives what it can from the
+        tracker and the tree, as `guard_stages` does for `stage:*`. So this
+        compares the `# Unit: <slug>` headings already in `bolt.md` against
+        the `unit`-labeled issues on the milestone and appends only what is
+        missing: a killed process leaves nothing to repair, a hand-edited
+        section is never overwritten (durable prose in git outranks mutable
+        tracker state), and a pass with nothing newly expanded makes no
+        commit — the dry-cycle property every other guard has.
+
+        **Appended after whatever the charter already holds**, in card-number
+        order, which is expansion order. `merge_criteria()` reads the FIRST
+        `^## Merge criteria` in the file, and a unit document's own
+        subsections are `##`; prepending would shadow the bolt's criteria.
+        """
+        record = self.params.change_dir / "bolt.md"
+        if not record.exists():
+            return None      # the scaffold owes the charter its first unit
+        text = record.read_text()
+        present = set(self.UNIT_HEADING.findall(text))
+        missing = []
+        for item in sorted(snapshot.on(self.params.milestone),
+                           key=lambda i: i.number):
+            if inbox.UNIT not in item.labels:
+                continue
+            # The unit IS the card that was expanded, so the card's own
+            # title grammar is what names its slug.
+            slug = inbox.PlanCard(number=item.number, title=item.title).slug
+            if not slug or slug in present or not (item.body or "").strip():
+                continue
+            present.add(slug)
+            missing.append((slug, item.body))
+        if not missing:
+            return None
+        rel = f"openspec/changes/{self.params.slug}/bolt.md"
+        named = ", ".join(slug for slug, _ in missing)
+        if self.dry_run:
+            actions.append(f"would append unit section(s) {named} to {rel}")
+            return None
+        self.ledger.expect(f"charter:{self.params.slug}",
+                           f"{rel} missing {named}",
+                           f"one commit adding # Unit: {named}")
+        chunks = [text.rstrip("\n")]
+        chunks += [f"# Unit: {slug}\n\n{body.strip()}" for slug, body in missing]
+        record.write_text("\n\n".join(chunks) + "\n")
+        # By pathspec, on the branch the bolt's record lives on. Never `-a`
+        # and never `add -A`: a session's uncommitted work may share this
+        # worktree, and a tree-wide stage would sweep it into this commit.
+        self.git("add", "--", rel)
+        committed = self.git("commit", "-m",
+                             f"charter: {named} on {self.params.bolt_branch}",
+                             "--", rel)
+        if committed.returncode != 0:
+            tail = " ".join((committed.stderr or committed.stdout or "").split())
+            return (f"charter: {rel} gained {named} but the commit failed"
+                    + (f" — {tail[-300:]}" if tail else ""))
+        self.ledger.actual(f"charter:{self.params.slug}",
+                           f"# Unit: {named} committed to {rel}")
+        actions.append(f"charter gained unit section(s) {named} in {rel}")
+        return None
+
     def guard_flip_consume(self, snapshot, actions):
         """1 — the sub-issues a Ready unit releases.
 
@@ -1614,13 +1772,21 @@ class BoltLoop:
         return flipped
 
     def merge_criteria(self):
-        """The Merge criteria section of this bolt's bolt.md, from disk."""
+        """The Merge criteria section of this bolt's bolt.md, from disk.
+
+        The section ends at the next heading of EITHER level. `#` matters
+        as much as `##` now that `guard_charter` appends each unit's plan
+        document under a `# Unit: <slug>` heading: a lookahead for `##`
+        alone reads straight through that heading and hands the routing
+        session a unit's prose as this bolt's criteria.
+        """
         record = self.params.change_dir / "bolt.md"
         if not record.exists():
             return ""
         text = record.read_text()
-        match = re.search(r"^##\s+Merge criteria\s*$(?P<body>.*?)(?=^##\s|\Z)",
-                          text, re.MULTILINE | re.DOTALL)
+        match = re.search(
+            r"^##\s+Merge criteria\s*$(?P<body>.*?)(?=^#{1,2}\s|\Z)",
+            text, re.MULTILINE | re.DOTALL)
         return (match.group("body").strip() if match else "")
 
     def landing_mode(self):

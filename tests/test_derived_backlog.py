@@ -192,6 +192,20 @@ class PlannerTriggerTest(unittest.TestCase):
         self.assertEqual(len(charges), 1, "the second pass is held on backoff")
 
 
+SECOND_BODY = """System: flywheel
+
+The second unit, approved later.
+
+Sequence: 2 of 2 · builds on: observer-rework
+
+| # | change | delivers | chapters | after | why this bolt |
+|---|--------|----------|----------|-------|---------------|
+| 1 | third-change | the follow-on | books/flywheel/src/c.md | — | later |
+
+Derived from: book abc1234 · specs def5678
+"""
+
+
 def fixture(tmp, items):
     path = Path(tmp) / "tracker.json"
     path.write_text(json.dumps({"milestone": "bolt/observer-rework",
@@ -207,20 +221,46 @@ def card_item(**kw):
     return base
 
 
+def unit_item(number=11, slug="predecessor", **kw):
+    """An already-expanded unit card: `unit`, open, on this milestone."""
+    base = {"number": number, "title": f"Unit: {slug}", "body": PLAN_BODY,
+            "labels": ["unit"], "milestone": "bolt/observer-rework",
+            "state": "open", "blocked_by": []}
+    base.update(kw)
+    return base
+
+
+def work_item(number, parent=11, state="open", labels=("state:ready",), **kw):
+    base = {"number": number, "title": f"change-{number}", "body": "",
+            "labels": list(labels), "milestone": "bolt/observer-rework",
+            "state": state, "blocked_by": [], "parent_batch": parent}
+    base.update(kw)
+    return base
+
+
 class ExpansionTest(unittest.TestCase):
+    MILESTONE = "bolt/observer-rework"
+
     def loop(self, tracker):
         params = bolt.BoltParams(slug="observer-rework", repo_dir=".")
         return bolt.BoltLoop(params, tracker)
+
+    def snap(self, tracker):
+        """The snapshot `cycle()` hands the guards: scoped to the
+        milestone, so an issue off it is invisible and the guard's one
+        fallback read is what answers for it."""
+        return tracker.snapshot(self.MILESTONE)
 
     def test_expansion_full_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             tracker = bolt.FixtureTracker(fixture(tmp, [card_item()]))
             loop = self.loop(tracker)
             actions = []
-            failure = loop.guard_expand(tracker.snapshot(), actions)
+            failure = loop.guard_expand(self.snap(tracker), actions)
             self.assertIsNone(failure)
             kinds = [w[0] for w in tracker.writes]
-            self.assertIn("create_milestone", kinds)
+            self.assertNotIn("create_milestone", kinds,
+                             "the milestone is the planner's write")
             self.assertNotIn("set_milestone", kinds,
                              "the planner already milestoned the card")
             self.assertIn("clear_board_status", kinds)
@@ -244,46 +284,247 @@ class ExpansionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tracker = bolt.FixtureTracker(fixture(tmp, [card_item()]))
             loop = self.loop(tracker)
-            loop.guard_expand(tracker.snapshot(), [])
+            loop.guard_expand(self.snap(tracker), [])
             before = list(tracker.writes)
-            failure = loop.guard_expand(tracker.snapshot(), [])
+            failure = loop.guard_expand(self.snap(tracker), [])
             self.assertIsNone(failure)
             self.assertEqual(tracker.writes, before,
                              "the second pass writes nothing")
 
-    def test_no_team_refuses_with_needs_operator(self):
+    def test_a_second_approval_expands_beside_the_first_unit(self):
+        # A bolt sees expansion once per approval, not once in its life,
+        # and expanding one unit leaves every other one alone.
         with tempfile.TemporaryDirectory() as tmp:
-            tracker = bolt.FixtureTracker(fixture(tmp, [card_item(team=None)]))
-            loop = self.loop(tracker)
-            failure = loop.guard_expand(tracker.snapshot(), [])
-            self.assertIn("no Team", failure)
-            self.assertIn("needs-operator", tracker._item(12)["labels"])
-            self.assertNotIn("create_milestone",
-                             [w[0] for w in tracker.writes])
-
-    def test_blocked_by_unlanded_predecessor_defers(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            items = [card_item(blocked_by=[11]),
-                     {"number": 11, "title": "Bolt: predecessor",
-                      "labels": ["plan"], "milestone": None,
-                      "state": "open", "blocked_by": []}]
+            items = [unit_item(11, "observer-rework"), work_item(9, parent=11),
+                     card_item(number=12, title="Unit: second-unit",
+                               body=SECOND_BODY)]
             tracker = bolt.FixtureTracker(fixture(tmp, items))
             loop = self.loop(tracker)
-            failure = loop.guard_expand(tracker.snapshot(), [])
+            failure = loop.guard_expand(self.snap(tracker), [])
+            self.assertIsNone(failure)
+            self.assertIn("unit", tracker._item(12)["labels"])
+            first, its_item = tracker._item(11), tracker._item(9)
+            self.assertEqual(first["labels"], ["unit"])
+            self.assertEqual(its_item["labels"], ["state:ready"])
+            self.assertEqual(its_item["parent_batch"], 11)
+            self.assertNotIn(11, [w[1] for w in tracker.writes])
+            self.assertNotIn(9, [w[1] for w in tracker.writes])
+
+    def test_a_card_on_another_bolts_milestone_is_not_ours_to_expand(self):
+        for milestone in ("bolt/somewhere-else", None):
+            with self.subTest(milestone=milestone):
+                with tempfile.TemporaryDirectory() as tmp:
+                    tracker = bolt.FixtureTracker(fixture(
+                        tmp, [card_item(milestone=milestone)]))
+                    loop = self.loop(tracker)
+                    actions = []
+                    failure = loop.guard_expand(self.snap(tracker), actions)
+                    self.assertIsNone(failure)
+                    self.assertEqual(tracker.writes, [])
+                    self.assertEqual(actions, [])
+
+    def test_no_team_refuses_with_needs_operator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [unit_item(11, "sibling"), card_item(team=None)]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop = self.loop(tracker)
+            failure = loop.guard_expand(self.snap(tracker), [])
+            self.assertIn("no Team", failure)
+            card = tracker._item(12)
+            self.assertIn("needs-operator", card["labels"])
+            self.assertIn("plan", card["labels"], "nothing was expanded")
+            self.assertIn("so the unit is unroutable",
+                          " ".join(card["comments"][0]["body"].split()))
+            # the bolt's other units are untouched by the refusal
+            self.assertEqual(tracker._item(11)["labels"], ["unit"])
+            self.assertEqual([w[0] for w in tracker.writes],
+                             ["add_label", "comment"])
+
+    def test_an_unexpanded_predecessor_defers(self):
+        # Its work has not been born yet, so there is nothing that could
+        # be in. The wait is a deferral, never a refusal.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]),
+                     {"number": 11, "title": "Unit: predecessor",
+                      "labels": ["plan"], "milestone": "bolt/observer-rework",
+                      "status": "Backlog", "state": "open", "blocked_by": []}]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop = self.loop(tracker)
+            failure = loop.guard_expand(self.snap(tracker), [])
             self.assertIsNone(failure, "a defer is not a pause")
             self.assertEqual(tracker.writes, [], "a defer writes nothing")
 
-    def test_blocked_by_landed_predecessor_expands(self):
+    def test_a_half_built_predecessor_defers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]), unit_item(11),
+                     work_item(9, state="closed", labels=("closed:merged",)),
+                     work_item(10, state="open")]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop = self.loop(tracker)
+            failure = loop.guard_expand(self.snap(tracker), [])
+            self.assertIsNone(failure, "a defer is not a pause")
+            self.assertEqual(tracker.writes, [], "a defer writes nothing")
+
+    def test_a_predecessor_whose_work_all_merged_expands(self):
+        # The blocker itself is STILL OPEN — it closes only at the landing,
+        # and the landing waits on the cards. Closure as the predicate is
+        # what deadlocked; the merge is the fact this reads.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]), unit_item(11),
+                     work_item(9, state="closed", labels=("closed:merged",)),
+                     work_item(10, state="closed", labels=("closed:merged",))]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop = self.loop(tracker)
+            failure = loop.guard_expand(self.snap(tracker), [])
+            self.assertIsNone(failure)
+            self.assertEqual(tracker._item(11)["state"], "open")
+            self.assertIn("unit", tracker._item(12)["labels"])
+
+    def test_a_blocker_off_the_milestone_falls_back_to_one_tracker_read(self):
         with tempfile.TemporaryDirectory() as tmp:
             items = [card_item(blocked_by=[11]),
-                     {"number": 11, "title": "Bolt: predecessor",
-                      "labels": ["unit", "closed:done"], "milestone": "bolt/predecessor",
+                     {"number": 11, "title": "Something else",
+                      "labels": ["closed:superseded"], "milestone": None,
                       "state": "closed", "blocked_by": []}]
             tracker = bolt.FixtureTracker(fixture(tmp, items))
             loop = self.loop(tracker)
-            failure = loop.guard_expand(tracker.snapshot(), [])
+            failure = loop.guard_expand(self.snap(tracker), [])
             self.assertIsNone(failure)
-            self.assertIn("create_milestone", [w[0] for w in tracker.writes])
+            self.assertIn("unit", tracker._item(12)["labels"],
+                          "a closed blocker is closed, whatever the reason")
+
+
+class RecordingShell:
+    """git, answered green, with every argv kept."""
+
+    def __init__(self, returncode=0):
+        self.calls = []
+        self.returncode = returncode
+
+    def __call__(self, argv, cwd=None, env=None, timeout=None):
+        self.calls.append(tuple(argv))
+        return type("R", (), {"returncode": self.returncode, "stdout": "",
+                              "stderr": "no"})()
+
+    def commits(self):
+        return [c for c in self.calls if c[:2] == ("git", "commit")]
+
+
+class CharterTest(unittest.TestCase):
+    """`guard_charter` — every expanded unit's plan document, in git.
+
+    The scaffold session copies the first unit's document; a bolt of units
+    sees expansion once per approval, and this guard is what carries the
+    rest. Its test is the charter's CONTENT, so it is idempotent without
+    storing anything.
+    """
+
+    MILESTONE = "bolt/observer-rework"
+
+    def setup(self, tmp, items, charter="# Unit: observer-rework\n\n"
+                                        "the first unit's document\n"):
+        tree = Path(tmp) / "tree"
+        change = tree / "openspec" / "changes" / "observer-rework"
+        change.mkdir(parents=True)
+        if charter is not None:
+            (change / "bolt.md").write_text(charter)
+        tracker = bolt.FixtureTracker(fixture(tmp, items))
+        shell = RecordingShell()
+        params = bolt.BoltParams(slug="observer-rework", repo_dir=str(tree),
+                                 bolt_worktree=str(tree))
+        loop = bolt.BoltLoop(params, tracker, run=shell)
+        return loop, shell, change / "bolt.md", tracker
+
+    def test_a_missing_unit_section_is_appended_and_committed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [unit_item(11, "observer-rework"),
+                     unit_item(12, "second-unit", body=SECOND_BODY)]
+            loop, shell, record, tracker = self.setup(tmp, items)
+            actions = []
+            failure = loop.guard_charter(tracker.snapshot(self.MILESTONE),
+                                         actions)
+            self.assertIsNone(failure)
+            text = record.read_text()
+            self.assertIn("# Unit: second-unit", text)
+            self.assertIn("The second unit, approved later.", text)
+            self.assertLess(text.index("# Unit: observer-rework"),
+                            text.index("# Unit: second-unit"),
+                            "appended after what the charter already held")
+            self.assertIn("the first unit's document", text)
+            rel = "openspec/changes/observer-rework/bolt.md"
+            self.assertEqual(shell.calls[0], ("git", "add", "--", rel))
+            self.assertEqual(len(shell.commits()), 1, "one commit, one path")
+            self.assertEqual(shell.commits()[0][-2:], ("--", rel),
+                             "by pathspec — never -a, never add -A")
+            self.assertEqual(len(actions), 1)
+
+    def test_a_second_pass_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [unit_item(11, "observer-rework"),
+                     unit_item(12, "second-unit", body=SECOND_BODY)]
+            loop, shell, record, tracker = self.setup(tmp, items)
+            loop.guard_charter(tracker.snapshot(self.MILESTONE), [])
+            before, calls = record.read_text(), len(shell.calls)
+            actions = []
+            self.assertIsNone(
+                loop.guard_charter(tracker.snapshot(self.MILESTONE), actions))
+            self.assertEqual(record.read_text(), before)
+            self.assertEqual(len(shell.calls), calls, "no second commit")
+            self.assertEqual(actions, [], "a dry cycle records nothing")
+
+    def test_a_hand_edited_section_is_never_overwritten(self):
+        # Durable prose in git outranks mutable tracker state: the heading
+        # is the test, so an edited section is left exactly as it stands.
+        with tempfile.TemporaryDirectory() as tmp:
+            edited = "# Unit: observer-rework\n\nrewritten by hand\n"
+            loop, shell, record, tracker = self.setup(
+                tmp, [unit_item(11, "observer-rework")], charter=edited)
+            self.assertIsNone(
+                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertEqual(record.read_text(), edited)
+            self.assertEqual(shell.calls, [])
+
+    def test_a_bolt_with_no_unit_cards_leaves_the_charter_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plain = "## Scope\n\na quick bolt born at triage\n"
+            loop, shell, record, tracker = self.setup(
+                tmp, [work_item(9, parent=None)], charter=plain)
+            self.assertIsNone(
+                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertEqual(record.read_text(), plain)
+            self.assertEqual(shell.calls, [])
+
+    def test_no_charter_yet_is_the_scaffolds_to_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, shell, record, tracker = self.setup(
+                tmp, [unit_item(11, "observer-rework")], charter=None)
+            self.assertIsNone(
+                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertFalse(record.exists())
+            self.assertEqual(shell.calls, [])
+
+    def test_the_bolts_merge_criteria_survive_an_appended_unit(self):
+        # `merge_criteria()` reads the FIRST `## Merge criteria`, and a unit
+        # document's own subsections are `##`. Appending keeps the bolt's.
+        with tempfile.TemporaryDirectory() as tmp:
+            charter = ("## Scope\n\nthe bolt\n\n"
+                       "## Merge criteria\n\nthe bolt's own criteria\n")
+            loop, shell, record, tracker = self.setup(
+                tmp, [unit_item(11, "later", body="## Merge criteria\n\nthe "
+                                                  "unit's\n")], charter=charter)
+            self.assertIsNone(
+                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertIn("# Unit: later", record.read_text())
+            self.assertEqual(loop.merge_criteria(), "the bolt's own criteria")
+
+    def test_a_failed_commit_is_named_rather_than_left_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, shell, record, tracker = self.setup(
+                tmp, [unit_item(11, "observer-rework"),
+                      unit_item(12, "second-unit", body=SECOND_BODY)])
+            shell.returncode = 1
+            failure = loop.guard_charter(tracker.snapshot(self.MILESTONE), [])
+            self.assertIn("commit failed", failure)
 
 
 class PlannerRecordConsistencyTest(unittest.TestCase):

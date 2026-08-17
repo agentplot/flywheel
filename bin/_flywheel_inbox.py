@@ -1297,6 +1297,21 @@ class Tracker:
         return (raw.get("state") == "closed"
                 and any(l.get("name") == label for l in raw.get("labels", ())))
 
+    def closed(self, number):
+        """Is this item closed, whatever the reason? One read.
+
+        A distinct question from `closed_with`, which asks whether a
+        *particular* close already happened and is the right test for a
+        write that would otherwise be made twice. A caller asking "is this
+        blocker's work behind us" wants any close: a predecessor closed
+        `closed:superseded` or `closed:declined` is as finished as one
+        closed `closed:done`, and testing a single reason would hold its
+        dependent forever.
+        """
+        raw = self._gh(self.token, "api",
+                       f"/repos/{self.org}/{self.repo}/issues/{number}")
+        return raw.get("state") == "closed"
+
     def add_label(self, number, label):
         self._gh(self.token, "issue", "edit", str(number),
                  "--repo", f"{self.org}/{self.repo}", "--add-label", label)
