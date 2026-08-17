@@ -286,6 +286,84 @@ class ExpansionTest(unittest.TestCase):
             self.assertIn("create_milestone", [w[0] for w in tracker.writes])
 
 
+class PlannerRecordConsistencyTest(unittest.TestCase):
+    """The planner is prose-driven: its record IS the two files a run reads.
+
+    Nothing executes a planning run, so the only thing that can hold the
+    requirement "The planner session is hosted by its own profile" is a
+    read of the surfaces the run loads — the bolt-planning skill's
+    Delivery section and the planner profile's card conventions.
+
+    These pin the propositions, not the phrasing. A wording change should
+    keep them green; retiring the bolt-of-units shape should not.
+    """
+
+    ROOT = BIN.parent
+    SURFACES = (("skills", "bolt-planning", "SKILL.md"),
+                ("agents", "flywheel-bolt-planner.md"))
+
+    def flat(self, *parts):
+        """The file as one line — a proposition split across a line break
+        is the same proposition."""
+        return " ".join(self.ROOT.joinpath(*parts).read_text().split())
+
+    def test_every_surface_names_the_unit_card_title(self):
+        for parts in self.SURFACES:
+            self.assertIn("Unit: <slug>", self.flat(*parts), str(parts))
+
+    def test_every_surface_makes_the_milestone_a_planner_write(self):
+        for parts in self.SURFACES:
+            flat = self.flat(*parts)
+            self.assertIn("bolt/<slug>` milestone", flat, str(parts))
+            self.assertIn("bolt summary as its description", flat, str(parts))
+
+    def test_every_surface_files_the_cards_on_that_milestone(self):
+        for parts in self.SURFACES:
+            flat = self.flat(*parts)
+            self.assertRegex(flat,
+                             r"card per (proposed )?unit ON th(at|e) milestone",
+                             str(parts))
+
+    def test_every_surface_sets_the_team_at_filing(self):
+        for parts in self.SURFACES:
+            flat = self.flat(*parts)
+            self.assertIn("Status Backlog", flat, str(parts))
+            self.assertIn("work order's Team", flat, str(parts))
+
+    def test_every_surface_mirrors_builds_on_as_blocked_by(self):
+        for parts in self.SURFACES:
+            flat = self.flat(*parts)
+            self.assertIn("blocked-by", flat, str(parts))
+            self.assertIn("unit cards", flat, str(parts))
+
+    def test_every_surface_supersedes_the_unapproved_cards(self):
+        for parts in self.SURFACES:
+            self.assertIn("supersed", self.flat(*parts).lower(), str(parts))
+        # The skill states the contract in full, so it carries the label.
+        self.assertIn("closed:superseded",
+                      self.flat("skills", "bolt-planning", "SKILL.md"))
+
+    def test_the_skill_still_bounds_the_run_to_those_writes(self):
+        flat = self.flat("skills", "bolt-planning", "SKILL.md")
+        self.assertIn("no `state:*` label", flat)
+        self.assertIn("no work items", flat)
+
+    def test_no_surface_still_titles_a_filed_card_bolt(self):
+        # The retired proposition, pinned by the title form itself: a
+        # `Bolt:` heading in design/plans/ is a record of a run already
+        # made, but neither surface a run READS may still ask for one.
+        for parts in self.SURFACES:
+            self.assertNotIn("Bolt: ", self.flat(*parts), str(parts))
+
+    def test_no_surface_still_says_the_filed_card_is_milestone_less(self):
+        # Catches "no milestone", "unmilestoned", and "already milestoned"
+        # — the three ways the old shape stated it.
+        for parts in self.SURFACES:
+            flat = self.flat(*parts)
+            self.assertNotIn("no milestone", flat, str(parts))
+            self.assertNotIn("milestoned", flat, str(parts))
+
+
 if __name__ == "__main__":
     unittest.main()
 
