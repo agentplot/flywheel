@@ -1670,7 +1670,12 @@ class BoltLoop:
 
     #: A charter's per-unit heading. The scaffold session writes the first
     #: one and this guard writes the rest, so the form is pinned here.
-    UNIT_HEADING = re.compile(r"^#\s+Unit:\s*(\S+?)\s*$", re.MULTILINE)
+    #: Case-insensitive to match `PlanCard.slug`, which parses the card
+    #: title the same way: this heading is the guard's ONLY idempotency
+    #: test, so a section a session wrote `# unit: foo` would otherwise go
+    #: unrecognized and be appended again on every pass, forever.
+    UNIT_HEADING = re.compile(r"^#\s+Unit:\s*(\S+?)\s*$",
+                              re.MULTILINE | re.IGNORECASE)
 
     def guard_charter(self, snapshot, actions):
         """0.6 — every expanded unit's plan document, durable in git.
@@ -1691,15 +1696,25 @@ class BoltLoop:
         append lands where the bolt's record lives. It also keeps
         expansion's failure modes to one — the tracker's — rather than two.
 
-        **The test is the charter's content, not a stored flag.** The loop
-        is stateless by construction and re-derives what it can from the
-        tracker and the tree, as `guard_stages` does for `stage:*`. So this
-        compares the `# Unit: <slug>` headings already in `bolt.md` against
-        the `unit`-labeled issues on the milestone and appends only what is
-        missing: a killed process leaves nothing to repair, a hand-edited
-        section is never overwritten (durable prose in git outranks mutable
-        tracker state), and a pass with nothing newly expanded makes no
-        commit — the dry-cycle property every other guard has.
+        **The test is the charter's COMMITTED content, not a stored flag
+        and not the working tree.** The loop is stateless by construction
+        and re-derives what it can from the tracker and the tree, as
+        `guard_stages` does for `stage:*`. So this compares the
+        `# Unit: <slug>` headings `bolt.md` carries AT HEAD against the
+        `unit`-labeled issues on the milestone and appends only what is
+        missing. Reading the working tree instead would hide a torn write
+        forever — the section is on disk the moment `write_text` returns,
+        so a pass after a failed or interrupted commit would find it
+        "present", report a clean dry cycle, and never retry the commit the
+        requirement actually asks for. Against HEAD, a killed process
+        leaves nothing to repair: the next pass sees the section still
+        uncommitted, skips the append (the working tree already holds it)
+        and re-runs the half that did not happen.
+
+        A hand-edited section is still never overwritten (durable prose in
+        git outranks mutable tracker state), and a pass with nothing newly
+        expanded makes no commit — the dry-cycle property every other guard
+        has.
 
         **Appended after whatever the charter already holds**, in card-number
         order, which is expansion order. `merge_criteria()` reads the FIRST
@@ -1709,8 +1724,16 @@ class BoltLoop:
         record = self.params.change_dir / "bolt.md"
         if not record.exists():
             return None      # the scaffold owes the charter its first unit
+        rel = f"openspec/changes/{self.params.slug}/bolt.md"
         text = record.read_text()
-        present = set(self.UNIT_HEADING.findall(text))
+        # The requirement's clause is "SHALL be committed", so the test is
+        # what HEAD carries, never what the working tree does. Reading the
+        # working tree here hides a torn write permanently: the section is
+        # on disk, so the next pass finds it "present", reports a clean dry
+        # cycle, and the commit is never retried.
+        sealed = self._committed(rel)
+        present = {s.lower() for s in
+                   self.UNIT_HEADING.findall(text if sealed is None else sealed)}
         missing = []
         for item in sorted(snapshot.on(self.params.milestone),
                            key=lambda i: i.number):
@@ -1719,23 +1742,39 @@ class BoltLoop:
             # The unit IS the card that was expanded, so the card's own
             # title grammar is what names its slug.
             slug = inbox.PlanCard(number=item.number, title=item.title).slug
-            if not slug or slug in present or not (item.body or "").strip():
+            if not slug or slug.lower() in present:
                 continue
-            present.add(slug)
+            if not (item.body or "").strip():
+                self._log(f"charter: unit #{item.number} has an empty body; "
+                          f"nothing to copy into {rel}")
+                continue
+            present.add(slug.lower())
             missing.append((slug, item.body))
         if not missing:
             return None
-        rel = f"openspec/changes/{self.params.slug}/bolt.md"
         named = ", ".join(slug for slug, _ in missing)
         if self.dry_run:
             actions.append(f"would append unit section(s) {named} to {rel}")
             return None
+        if isinstance(self.tracker, FixtureTracker):
+            # `guard_topology` skips itself under a fixture too, so
+            # `bolt_worktree` is still `repo_dir` — the OPERATOR'S checkout,
+            # on whatever branch happens to be out. A fixture run exercises
+            # the tracker's filters; it never writes anyone's tree.
+            return None
         self.ledger.expect(f"charter:{self.params.slug}",
                            f"{rel} missing {named}",
                            f"one commit adding # Unit: {named}")
-        chunks = [text.rstrip("\n")]
-        chunks += [f"# Unit: {slug}\n\n{body.strip()}" for slug, body in missing]
-        record.write_text("\n\n".join(chunks) + "\n")
+        # Only what the working tree does not already hold. A pass retrying
+        # a torn commit finds its section already written and appends
+        # nothing — it re-runs the add and the commit, which is the half
+        # that did not happen.
+        in_tree = {s.lower() for s in self.UNIT_HEADING.findall(text)}
+        pending = [(s, b) for s, b in missing if s.lower() not in in_tree]
+        if pending:
+            chunks = [text.rstrip("\n")]
+            chunks += [f"# Unit: {s}\n\n{b.strip()}" for s, b in pending]
+            record.write_text("\n\n".join(chunks) + "\n")
         # By pathspec, on the branch the bolt's record lives on. Never `-a`
         # and never `add -A`: a session's uncommitted work may share this
         # worktree, and a tree-wide stage would sweep it into this commit.
@@ -1745,12 +1784,24 @@ class BoltLoop:
                              "--", rel)
         if committed.returncode != 0:
             tail = " ".join((committed.stderr or committed.stdout or "").split())
-            return (f"charter: {rel} gained {named} but the commit failed"
+            return (f"charter: {rel} gained {named} but the commit failed; "
+                    f"the next pass retries it"
                     + (f" — {tail[-300:]}" if tail else ""))
         self.ledger.actual(f"charter:{self.params.slug}",
                            f"# Unit: {named} committed to {rel}")
         actions.append(f"charter gained unit section(s) {named} in {rel}")
         return None
+
+    def _committed(self, rel):
+        """This path's content at HEAD, or None when HEAD does not carry it.
+
+        `None` is "no committed version to compare against" — a charter the
+        scaffold session wrote but did not commit, or a fresh repo — and the
+        caller falls back to the working tree for that one case, because
+        there is nothing else to read.
+        """
+        shown = self.git("show", f"HEAD:{rel}")
+        return shown.stdout if shown.returncode == 0 else None
 
     def guard_flip_consume(self, snapshot, actions):
         """1 — the sub-issues a Ready unit releases.

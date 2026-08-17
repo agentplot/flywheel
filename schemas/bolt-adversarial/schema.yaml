@@ -78,11 +78,21 @@ artifacts:
          implied and never weakened.
 
 
-      EXACTLY these four sections and nothing else. bolt.md carries no
-      narrative: no escalations, no session events, no findings, no
-      status. The items' comments are the narrative; a question for
-      the operator goes on an item with needs-operator, never into
-      this record.
+      EXACTLY these four sections, and nothing else, in the bolt's OWN
+      record: it carries no narrative. No escalations, no session events,
+      no findings, no status. The items' comments are the narrative; a
+      question for the operator goes on an item with needs-operator,
+      never into this record.
+
+      What follows those four sections is not narrative and is not
+      yours to compose: one `# Unit: <slug>` section per unit expanded
+      on this bolt's milestone, each carrying that unit's plan document
+      verbatim from the body of the card the operator approved. You copy
+      the lowest-numbered unit's document when you scaffold; the loop
+      appends every later one as each approval expands. Never fold a
+      unit's prose up into the four sections above, and never rewrite a
+      `# Unit:` section already on disk - it is durable prose in git and
+      outranks the tracker state it came from.
 
       Two rules bind every section here. State a constraint only as
       strongly as you verified it, naming the tree and the check behind

@@ -56,14 +56,24 @@ the charter inside `_expand_card` — was rejected for exactly that
 ordering, and because expansion would then have two failure modes
 (tracker and git) in one guard.
 
-**The guard's test is the charter's content, not a stored "expanded"
-flag.** The loop is stateless by construction and re-derives what it can
-from the tracker and the tree (`guard_stages` does the same for
-`stage:*`). So the guard compares the `# Unit: <slug>` headings present
-in `bolt.md` against the `unit`-labeled issues on the milestone, and
-writes only the missing ones. A killed process leaves nothing to repair,
-and a second pass writes nothing — the dry-cycle property every other
-guard has.
+**The guard's test is the charter's COMMITTED content, not a stored
+"expanded" flag and not the working tree.** The loop is stateless by
+construction and re-derives what it can from the tracker and the tree
+(`guard_stages` does the same for `stage:*`). So the guard compares the
+`# Unit: <slug>` headings `bolt.md` carries at HEAD — read with
+`git show HEAD:<path>`, falling back to the working tree only when HEAD
+does not carry the path at all — against the `unit`-labeled issues on the
+milestone, and writes only the missing ones. A second pass writes
+nothing: the dry-cycle property every other guard has.
+
+The requirement's clause is "SHALL be committed", and the working tree
+cannot answer it. The section is on disk the moment the write returns, so
+a guard testing the working tree would read a failed or interrupted
+commit back as done, report a clean dry cycle forever, and never retry —
+the one failure mode this content test was chosen to avoid. Against HEAD
+a killed process genuinely leaves nothing to repair: the next pass finds
+the section still uncommitted, skips the append because the working tree
+already holds it, and re-runs the half that did not happen.
 
 **Unit sections are appended after whatever the charter already holds.**
 `merge_criteria()` takes the *first* `^## Merge criteria` in the file, so
@@ -110,9 +120,14 @@ tracker and `guard_stages` already repair.
   wins over mutable tracker state, which is the direction the book
   states.
 - **Two cards approved before the loop's first pass** → both expand in
-  one pass, the scaffold session copies one document, the charter guard
-  appends the other. Order of sections follows expansion order, which is
-  card number order.
+  one pass and the scaffold session copies the lowest-numbered one's
+  document; the other's section lands on the NEXT pass. `guards()` hands
+  the same snapshot to `guard_expand` and `guard_charter`, so a card
+  expanded at −1 is still `plan`-labeled in the snapshot the charter
+  guard reads at 0.6 and is not yet a unit to it. That is a convergence,
+  not a gap: expansion records an action, an action means the cycle is
+  not the STOP condition, and the next cycle re-snapshots and appends.
+  Order of sections follows expansion order, which is card number order.
 
 ## Migration Plan
 

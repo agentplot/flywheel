@@ -19,7 +19,7 @@
   `set_milestone` is among the writes (the rest of its assertions hold),
   and a new case expands a second card on the same milestone and asserts
   the first unit and its items are untouched. Done when
-  `python3 -m unittest tests.test_derived_backlog -v` is green.
+  `sh scripts/test.sh -p test_derived_backlog.py` is green.
 - [x] 1.5 Add a case for a Ready `plan` card whose milestone is another
   bolt's (or absent): `guard_expand` returns `None` and writes nothing.
 
@@ -45,7 +45,8 @@
   spec names: unexpanded blocker → defer and no writes; expanded blocker
   with an open sub-issue → defer; expanded blocker with every sub-issue
   closed and the blocker itself still open → expands. Done when
-  `tests/test_derived_backlog.py` covers all three and is green.
+  `sh scripts/test.sh -p test_derived_backlog.py` covers all three and is
+  green.
 - [x] 2.5 Check the fixture tracker in `bin/_flywheel_bolt_loop.py`
   (`FixtureTracker`) exposes sub-issue state for a blocker; extend the
   fixture shape only as far as the three cases need.
@@ -75,6 +76,16 @@
 - [x] 3.5 Add tests: a charter missing a unit's section gains it; a
   second pass writes nothing; a hand-edited existing section is not
   overwritten; a bolt with no unit cards leaves the charter alone.
+- [x] 3.6 Amend the four bolt schemas — `schemas/bolt-default`,
+  `bolt-quick`, `bolt-direct`, `bolt-adversarial` — whose bolt.md output
+  clause reads "EXACTLY these four sections and nothing else". That
+  forbids the `# Unit: <slug>` sections this change requires, and the
+  scaffold session binds one of these schemas, so it is handed both
+  instructions at once. Scope the "nothing else / no narrative" rule to
+  the bolt's OWN record and state that the unit plan documents follow the
+  four sections, the session copying the lowest-numbered and the loop
+  appending the rest. Done when no schema in the repo contradicts the
+  requirement synced at archive.
 
 ## 4. The record and the gates
 

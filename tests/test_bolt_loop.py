@@ -1907,7 +1907,7 @@ class TrackerTest(unittest.TestCase):
         merge-close and would have been an AttributeError on the fixture
         path — green suite, broken `--fixture` run — so the surfaces are
         compared rather than trusted."""
-        reads = ("has_label", "closed_with", "comments", "snapshot")
+        reads = ("has_label", "closed_with", "closed", "comments", "snapshot")
         for surface in (loop.BoltTracker, loop.FixtureTracker):
             for name in reads:
                 self.assertTrue(hasattr(surface, name),

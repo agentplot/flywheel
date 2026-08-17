@@ -394,20 +394,62 @@ class ExpansionTest(unittest.TestCase):
                           "a closed blocker is closed, whatever the reason")
 
 
-class RecordingShell:
-    """git, answered green, with every argv kept."""
+def result(returncode=0, stdout="", stderr=""):
+    return type("R", (), {"returncode": returncode, "stdout": stdout,
+                          "stderr": stderr})()
 
-    def __init__(self, returncode=0):
+
+class FakeGit:
+    """A git small enough to answer "is this committed?" honestly.
+
+    `show HEAD:<path>` reads a committed snapshot, `add` stages, and a
+    SUCCESSFUL `commit` is the only thing that moves a staged file into
+    that snapshot. So a commit that fails leaves HEAD behind exactly as a
+    real one would — which is the whole of what `guard_charter`'s
+    committed-content test has to survive. A shell that answered every
+    call green is why the torn-commit hole went unseen.
+    """
+
+    def __init__(self, root, head=None, fail_commit=False):
+        self.root = Path(root)
+        self.head = dict(head or {})
+        self.fail_commit = fail_commit
+        self.staged = []
         self.calls = []
-        self.returncode = returncode
 
     def __call__(self, argv, cwd=None, env=None, timeout=None):
-        self.calls.append(tuple(argv))
-        return type("R", (), {"returncode": self.returncode, "stdout": "",
-                              "stderr": "no"})()
+        argv = tuple(argv)
+        self.calls.append((argv, cwd))
+        if argv[:2] == ("git", "show"):
+            rel = argv[2].split(":", 1)[1]
+            if rel not in self.head:
+                return result(128, stderr=f"path '{rel}' does not exist in HEAD")
+            return result(0, stdout=self.head[rel])
+        if argv[:2] == ("git", "add"):
+            self.staged += [a for a in argv[2:] if a != "--"]
+            return result(0)
+        if argv[:2] == ("git", "commit"):
+            if self.fail_commit:
+                return result(1, stderr="the pre-commit hook refused")
+            for rel in self.staged:
+                self.head[rel] = (self.root / rel).read_text()
+            self.staged = []
+            return result(0)
+        return result(0)
 
-    def commits(self):
-        return [c for c in self.calls if c[:2] == ("git", "commit")]
+    def of(self, verb):
+        return [(a, cwd) for a, cwd in self.calls if a[:2] == ("git", verb)]
+
+
+class NotTheFixtureTracker:
+    """Stands in for the live tracker.
+
+    `guard_charter` reads nothing off the tracker object — the snapshot
+    carries the units — but it refuses to touch git when the tracker IS a
+    `FixtureTracker`, because `guard_topology` skips itself there and
+    `bolt_worktree` would still be the operator's own checkout. So these
+    tests must not hand it one.
+    """
 
 
 class CharterTest(unittest.TestCase):
@@ -415,35 +457,48 @@ class CharterTest(unittest.TestCase):
 
     The scaffold session copies the first unit's document; a bolt of units
     sees expansion once per approval, and this guard is what carries the
-    rest. Its test is the charter's CONTENT, so it is idempotent without
-    storing anything.
+    rest. Its test is what the charter carries AT HEAD, so it is
+    idempotent without storing anything and a torn commit is retried.
     """
 
     MILESTONE = "bolt/observer-rework"
+    REL = "openspec/changes/observer-rework/bolt.md"
+    CHARTER = "# Unit: observer-rework\n\nthe first unit's document\n"
 
-    def setup(self, tmp, items, charter="# Unit: observer-rework\n\n"
-                                        "the first unit's document\n"):
+    def setup(self, tmp, items, charter=CHARTER, committed=True,
+              tracker=None, fail_commit=False):
+        # The bolt's worktree is NOT the main one — `repo_dir` is where a
+        # fresh process starts and `guard_topology` is what moves it. Two
+        # distinct paths, or "the commit ran in the bolt's worktree" is a
+        # claim no assertion here could fail.
+        main = Path(tmp) / "main"
+        main.mkdir()
         tree = Path(tmp) / "tree"
-        change = tree / "openspec" / "changes" / "observer-rework"
-        change.mkdir(parents=True)
+        (tree / "openspec" / "changes" / "observer-rework").mkdir(parents=True)
+        record = tree / self.REL
         if charter is not None:
-            (change / "bolt.md").write_text(charter)
-        tracker = bolt.FixtureTracker(fixture(tmp, items))
-        shell = RecordingShell()
-        params = bolt.BoltParams(slug="observer-rework", repo_dir=str(tree),
+            record.write_text(charter)
+        # HEAD carries the charter the scaffold session committed, unless a
+        # test wants the un-committed case.
+        head = {self.REL: charter} if (charter and committed) else {}
+        git = FakeGit(tree, head=head, fail_commit=fail_commit)
+        snapshot = bolt.FixtureTracker(fixture(tmp, items)).snapshot(
+            self.MILESTONE)
+        params = bolt.BoltParams(slug="observer-rework", repo_dir=str(main),
                                  bolt_worktree=str(tree))
-        loop = bolt.BoltLoop(params, tracker, run=shell)
-        return loop, shell, change / "bolt.md", tracker
+        loop = bolt.BoltLoop(params, tracker or NotTheFixtureTracker(),
+                             run=git)
+        return loop, git, record, snapshot
+
+    def two_units(self):
+        return [unit_item(11, "observer-rework"),
+                unit_item(12, "second-unit", body=SECOND_BODY)]
 
     def test_a_missing_unit_section_is_appended_and_committed(self):
         with tempfile.TemporaryDirectory() as tmp:
-            items = [unit_item(11, "observer-rework"),
-                     unit_item(12, "second-unit", body=SECOND_BODY)]
-            loop, shell, record, tracker = self.setup(tmp, items)
+            loop, git, record, snap = self.setup(tmp, self.two_units())
             actions = []
-            failure = loop.guard_charter(tracker.snapshot(self.MILESTONE),
-                                         actions)
-            self.assertIsNone(failure)
+            self.assertIsNone(loop.guard_charter(snap, actions))
             text = record.read_text()
             self.assertIn("# Unit: second-unit", text)
             self.assertIn("The second unit, approved later.", text)
@@ -451,25 +506,38 @@ class CharterTest(unittest.TestCase):
                             text.index("# Unit: second-unit"),
                             "appended after what the charter already held")
             self.assertIn("the first unit's document", text)
-            rel = "openspec/changes/observer-rework/bolt.md"
-            self.assertEqual(shell.calls[0], ("git", "add", "--", rel))
-            self.assertEqual(len(shell.commits()), 1, "one commit, one path")
-            self.assertEqual(shell.commits()[0][-2:], ("--", rel),
+            self.assertEqual([a for a, _ in git.of("add")],
+                             [("git", "add", "--", self.REL)])
+            commits = git.of("commit")
+            self.assertEqual(len(commits), 1, "one commit, one path")
+            self.assertEqual(commits[0][0][-2:], ("--", self.REL),
                              "by pathspec — never -a, never add -A")
+            self.assertEqual(git.head[self.REL], text, "and it reached HEAD")
             self.assertEqual(len(actions), 1)
+
+    def test_every_git_call_runs_in_the_bolts_worktree(self):
+        # "committed to the branch that carries the bolt's record" is a
+        # statement about WHERE, and nothing else here observes it.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap = self.setup(tmp, self.two_units())
+            loop.guard_charter(snap, [])
+            self.assertTrue(git.calls)
+            self.assertNotEqual(loop.params.bolt_worktree,
+                                loop.params.repo_dir,
+                                "or this assertion proves nothing")
+            for argv, cwd in git.calls:
+                self.assertEqual(cwd, loop.params.bolt_worktree, str(argv))
 
     def test_a_second_pass_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            items = [unit_item(11, "observer-rework"),
-                     unit_item(12, "second-unit", body=SECOND_BODY)]
-            loop, shell, record, tracker = self.setup(tmp, items)
-            loop.guard_charter(tracker.snapshot(self.MILESTONE), [])
-            before, calls = record.read_text(), len(shell.calls)
+            loop, git, record, snap = self.setup(tmp, self.two_units())
+            loop.guard_charter(snap, [])
+            before = record.read_text()
             actions = []
-            self.assertIsNone(
-                loop.guard_charter(tracker.snapshot(self.MILESTONE), actions))
+            self.assertIsNone(loop.guard_charter(snap, actions))
             self.assertEqual(record.read_text(), before)
-            self.assertEqual(len(shell.calls), calls, "no second commit")
+            self.assertEqual(len(git.of("commit")), 1, "no second commit")
+            self.assertEqual(len(git.of("add")), 1)
             self.assertEqual(actions, [], "a dry cycle records nothing")
 
     def test_a_hand_edited_section_is_never_overwritten(self):
@@ -477,31 +545,51 @@ class CharterTest(unittest.TestCase):
         # is the test, so an edited section is left exactly as it stands.
         with tempfile.TemporaryDirectory() as tmp:
             edited = "# Unit: observer-rework\n\nrewritten by hand\n"
-            loop, shell, record, tracker = self.setup(
+            loop, git, record, snap = self.setup(
                 tmp, [unit_item(11, "observer-rework")], charter=edited)
-            self.assertIsNone(
-                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertIsNone(loop.guard_charter(snap, []))
             self.assertEqual(record.read_text(), edited)
-            self.assertEqual(shell.calls, [])
+            self.assertEqual(git.of("commit"), [])
+
+    def test_a_heading_in_another_case_is_still_the_same_unit(self):
+        # The heading is the ONLY idempotency test the guard has, so a
+        # section a session wrote `# unit:` must not be appended again —
+        # once per pass, forever.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap = self.setup(
+                tmp, [unit_item(11, "observer-rework")],
+                charter="# unit: Observer-Rework\n\nlower-case heading\n")
+            self.assertIsNone(loop.guard_charter(snap, []))
+            self.assertEqual(record.read_text().count("nit:"), 1)
+            self.assertEqual(git.of("commit"), [])
 
     def test_a_bolt_with_no_unit_cards_leaves_the_charter_alone(self):
         with tempfile.TemporaryDirectory() as tmp:
             plain = "## Scope\n\na quick bolt born at triage\n"
-            loop, shell, record, tracker = self.setup(
+            loop, git, record, snap = self.setup(
                 tmp, [work_item(9, parent=None)], charter=plain)
-            self.assertIsNone(
-                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertIsNone(loop.guard_charter(snap, []))
             self.assertEqual(record.read_text(), plain)
-            self.assertEqual(shell.calls, [])
+            self.assertEqual(git.of("commit"), [])
 
     def test_no_charter_yet_is_the_scaffolds_to_write(self):
         with tempfile.TemporaryDirectory() as tmp:
-            loop, shell, record, tracker = self.setup(
+            loop, git, record, snap = self.setup(
                 tmp, [unit_item(11, "observer-rework")], charter=None)
-            self.assertIsNone(
-                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertIsNone(loop.guard_charter(snap, []))
             self.assertFalse(record.exists())
-            self.assertEqual(shell.calls, [])
+            self.assertEqual(git.calls, [])
+
+    def test_a_charter_not_yet_in_head_falls_back_to_the_working_tree(self):
+        # The scaffold session wrote bolt.md but its commit has not landed
+        # in HEAD yet: there is nothing else to compare against, and the
+        # first unit's section must not be duplicated on top of itself.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap = self.setup(
+                tmp, [unit_item(11, "observer-rework")], committed=False)
+            self.assertIsNone(loop.guard_charter(snap, []))
+            self.assertEqual(record.read_text(), self.CHARTER)
+            self.assertEqual(git.of("commit"), [])
 
     def test_the_bolts_merge_criteria_survive_an_appended_unit(self):
         # `merge_criteria()` reads the FIRST `## Merge criteria`, and a unit
@@ -509,22 +597,92 @@ class CharterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             charter = ("## Scope\n\nthe bolt\n\n"
                        "## Merge criteria\n\nthe bolt's own criteria\n")
-            loop, shell, record, tracker = self.setup(
+            loop, git, record, snap = self.setup(
                 tmp, [unit_item(11, "later", body="## Merge criteria\n\nthe "
                                                   "unit's\n")], charter=charter)
-            self.assertIsNone(
-                loop.guard_charter(tracker.snapshot(self.MILESTONE), []))
+            self.assertIsNone(loop.guard_charter(snap, []))
             self.assertIn("# Unit: later", record.read_text())
             self.assertEqual(loop.merge_criteria(), "the bolt's own criteria")
 
-    def test_a_failed_commit_is_named_rather_than_left_silent(self):
+    def test_a_torn_commit_is_named_and_retried_on_the_next_pass(self):
+        # THE failure mode the committed-content test exists for. The
+        # section is on disk the moment write_text returns; if the guard
+        # asked the working tree "is it there?" it would answer yes
+        # forever and the commit would never be retried.
         with tempfile.TemporaryDirectory() as tmp:
-            loop, shell, record, tracker = self.setup(
-                tmp, [unit_item(11, "observer-rework"),
-                      unit_item(12, "second-unit", body=SECOND_BODY)])
-            shell.returncode = 1
-            failure = loop.guard_charter(tracker.snapshot(self.MILESTONE), [])
+            loop, git, record, snap = self.setup(tmp, self.two_units(),
+                                                 fail_commit=True)
+            failure = loop.guard_charter(snap, [])
             self.assertIn("commit failed", failure)
+            self.assertIn("# Unit: second-unit", record.read_text(),
+                          "the working tree has it")
+            self.assertNotIn("second-unit", git.head[self.REL],
+                             "and HEAD does not")
+
+            # ...the operator clears whatever refused the commit.
+            git.fail_commit = False
+            torn = record.read_text()
+            actions = []
+            self.assertIsNone(loop.guard_charter(snap, actions))
+            self.assertEqual(record.read_text(), torn,
+                             "appended once, not twice")
+            self.assertIn("# Unit: second-unit", git.head[self.REL],
+                          "the retry is what committed it")
+            self.assertEqual(len(actions), 1)
+
+    def test_a_fixture_run_never_writes_the_operators_checkout(self):
+        # `guard_topology` skips itself under a fixture tracker, so
+        # `bolt_worktree` is still `repo_dir` — the operator's own tree, on
+        # whatever branch is out. Latent today only because no fixture
+        # carries a unit card.
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = bolt.FixtureTracker(fixture(tmp, self.two_units()))
+            loop, git, record, snap = self.setup(tmp, self.two_units(),
+                                                 tracker=tracker)
+            actions = []
+            self.assertIsNone(loop.guard_charter(snap, actions))
+            self.assertEqual(record.read_text(), self.CHARTER)
+            self.assertEqual(git.of("commit"), [])
+            self.assertEqual(git.of("add"), [])
+            self.assertEqual(actions, [])
+
+    def test_a_dry_run_says_what_it_would_append_and_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap = self.setup(tmp, self.two_units())
+            loop.dry_run = True
+            actions = []
+            self.assertIsNone(loop.guard_charter(snap, actions))
+            self.assertEqual(record.read_text(), self.CHARTER)
+            self.assertEqual(git.of("commit"), [])
+            self.assertEqual(len(actions), 1)
+            self.assertIn("would append", actions[0])
+            self.assertIn("second-unit", actions[0])
+
+    def test_the_charter_guard_runs_after_topology_names_the_worktree(self):
+        # design.md makes this a Decision, and every other test here calls
+        # guard_charter directly with `bolt_worktree` already set — so a
+        # reorder would commit into the MAIN worktree with the suite green.
+        with tempfile.TemporaryDirectory() as tmp:
+            tracker = bolt.FixtureTracker(fixture(tmp, [unit_item(11)]))
+            loop, git, record, snap = self.setup(tmp, [unit_item(11)],
+                                                 tracker=tracker)
+            seen = []
+
+            def watch(name):
+                original = getattr(loop, name)
+
+                def call(*a, **kw):
+                    seen.append(name)
+                    return original(*a, **kw)
+                setattr(loop, name, call)
+
+            for name in ("guard_expand", "guard_scaffold", "guard_topology",
+                         "guard_charter", "guard_flip_consume", "guard_route",
+                         "guard_stages"):
+                watch(name)
+            loop.guards(snap)
+            self.assertEqual(seen[:4], ["guard_expand", "guard_scaffold",
+                                        "guard_topology", "guard_charter"])
 
 
 class PlannerRecordConsistencyTest(unittest.TestCase):
