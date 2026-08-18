@@ -479,18 +479,22 @@ def batch_ready(snapshot, items):
 
 
 def session_name(batch, slug):
-    """`<type>-<topic>` — the name IS the classification, and herdr caps it at
-    32 characters.
+    """`<type>-<topic>-<first item>` — the name IS the classification plus
+    the batch, and herdr caps it at 32 characters.
 
     Deterministic, because a stateless loop process restarts freely and
-    `HerdrRunner.launch` reuses an agent already running under the name. A name
-    that moved between runs would launch a second session onto the same work.
+    `HerdrRunner.launch` reuses an agent already running under the name. A
+    name that moved between runs would launch a second session onto the
+    same work — and a name shared BETWEEN batches did the opposite: round
+    two reused round one's idle pane, the reuse path sent no new order,
+    and the loop marked work settled that no session ever saw (observed
+    live: the site intent's #301 and #302). The batch's first item number
+    makes the name per-batch: same batch, same pane; new batch, new pane
+    and a real prompt.
     """
     stem = f"{batch.type}-{slug}"
-    if TYPES[batch.type].alone:
-        suffix = f"-{batch.first}"
-        return stem[:MAX_NAME - len(suffix)] + suffix
-    return stem[:MAX_NAME]
+    suffix = f"-{batch.first}"
+    return stem[:MAX_NAME - len(suffix)] + suffix
 
 
 def session_order(batch, config):

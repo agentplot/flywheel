@@ -786,7 +786,10 @@ class CycleTest(unittest.TestCase):
                          "the loop births nothing — #202 sits uncomposed")
         self.assertEqual(kinds.count("command"), 2,
                          "flywheel-batch for #203, and one wt switch")
-        self.assertEqual(report.dispatched, ("planning-sandbox-design — #201",))
+        self.assertEqual(report.dispatched,
+                         ("planning-sandbox-design-201 — #201",),
+                         "the name is per-batch: a new round gets a fresh "
+                         "pane and a real prompt")
 
     def test_dispatch_puts_the_batchs_items_in_session(self):
         report = intent.run(config(
