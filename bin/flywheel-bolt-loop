@@ -49,10 +49,6 @@ def parse_args(argv=None):
                              "citations resolve (from the fleet binding)")
     parser.add_argument("--type", dest="type_name", default=None,
                         help="bolt type; default: the change's own binding")
-    parser.add_argument("--plan-mode", dest="plan_mode", action="store_true",
-                        default=None, help="force the plan-mode path")
-    parser.add_argument("--no-plan-mode", dest="plan_mode", action="store_false",
-                        help="refuse the plan-mode path whatever the bolt declares")
     parser.add_argument("--fixture", default=None,
                         help="a bolt-tracker.json to use AS the tracker")
     parser.add_argument("--dry-run", action="store_true",
@@ -96,9 +92,7 @@ def build_loop(args):
         bolt_worktree=worktree, bolt_branch=args.bolt_branch,
         main_branch=args.main_branch, type_name=type_name,
         book_dir=args.book,
-        # Tri-state: None lets each unit's own Mode line decide; the
-        # operator's flag outranks the cards in both directions.
-        plan_mode=args.plan_mode, config=config,
+        config=config,
         description=description)
 
     if args.dry_run:
@@ -114,7 +108,7 @@ def build_loop(args):
 def render(report, params):
     lines = [
         f"bolt loop · {report.milestone} · type {params.type_name}"
-        + (" · plan-mode path" if params.plan_mode else ""),
+        + (" · plan path" if params.config and params.config.plan else ""),
     ]
     for cycle in report.cycles:
         lines.append(f"  cycle {cycle.number}: "

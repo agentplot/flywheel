@@ -235,13 +235,12 @@ TREE = Path(_TREE.name)
     "Acceptance suites green on the bolt branch.\nLanding: merge\n")
 
 
-def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=None,
+def a_loop(tracker, runner=None, shell=None, clock=None, plan=False,
            strategy="ff", ledger=None, **overrides):
     fields = dict(slug="x", org="o", repo="r", repo_dir=str(TREE),
                   bolt_worktree=str(TREE), type_name="bolt-quick",
-                  plan_mode=plan_mode,
                   config=loop.LoopConfig(name="bolt-quick", strategy=strategy,
-                                         plan_mode="available"))
+                                         mode="plan" if plan else "spec"))
     fields.update(overrides)
     runner = runner or ScriptedRunner()
     return loop.BoltLoop(loop.BoltParams(**fields), tracker,
@@ -422,19 +421,13 @@ class TypeConfigTest(unittest.TestCase):
         self.assertIn("post-new", loop.load_type("bolt-default", ROOT).hooks)
         self.assertIn("post-artifact", loop.load_type("bolt-adversarial", ROOT).hooks)
 
-    def test_plan_mode_is_available_on_bolt_quick_and_on_no_other_type(self):
-        self.assertTrue(loop.load_type("bolt-quick", ROOT).plan_mode_available)
-        self.assertFalse(loop.load_type("bolt-default", ROOT).plan_mode_available)
-        self.assertFalse(loop.load_type("bolt-adversarial", ROOT).plan_mode_available)
-
-    def test_plan_mode_availability_is_the_types(self):
-        # Mode is a unit's choice, gated by the unit's type: the cycle
-        # pauses a plan unit whose type lacks the path. These flags are
-        # what that gate reads.
-        self.assertFalse(loop.load_type("bolt-default", ROOT).plan_mode_available)
-        self.assertFalse(loop.load_type("bolt-adversarial", ROOT).plan_mode_available)
-        self.assertTrue(loop.load_type("bolt-quick", ROOT).plan_mode_available)
-        self.assertTrue(loop.load_type("bolt-direct", ROOT).plan_mode_available)
+    def test_the_plan_path_belongs_to_bolt_plan_alone(self):
+        # There is no mode beside the type: bolt-plan declares mode: plan
+        # in its loop block and every other type is the spec path.
+        self.assertTrue(loop.load_type("bolt-plan", ROOT).plan)
+        for name in ("bolt-default", "bolt-adversarial", "bolt-quick",
+                     "bolt-direct"):
+            self.assertFalse(loop.load_type(name, ROOT).plan, name)
 
     def test_an_unknown_strategy_is_named_rather_than_guessed(self):
         with self.assertRaises(loop.LoopError):
@@ -581,8 +574,8 @@ class TypeConfigTest(unittest.TestCase):
                            if (d / "schema.yaml").is_file())
         self.assertIn("bolt-direct", published)
         self.assertEqual(published, ["bolt-adversarial", "bolt-default",
-                                     "bolt-direct", "bolt-quick",
-                                     "flywheel-intent"])
+                                     "bolt-direct", "bolt-plan",
+                                     "bolt-quick", "flywheel-intent"])
 
 
 # ---------------------------------------------------------------------------
@@ -971,7 +964,7 @@ class StageTest(unittest.TestCase):
         self.assertNotEqual(one.session_id, other.session_id)
 
     def test_verify_and_spec_are_skipped_on_the_plan_mode_path(self):
-        program = a_loop(FakeTracker(), plan_mode=True)
+        program = a_loop(FakeTracker(), plan=True)
         self.assertEqual(program.spec_stage(self.batch(1)).status, "skipped")
         self.assertEqual(
             program.verify_stage(self.batch(1), loop.StageOutcome("build", "done")).status,
@@ -982,7 +975,7 @@ class StageTest(unittest.TestCase):
         runner = ScriptedRunner(
             states=[WaitState.SETTLED_BLOCKED] * 12,
             reports=["a plan"] * 12)
-        program = a_loop(tracker, runner=runner, plan_mode=True)
+        program = a_loop(tracker, runner=runner, plan=True)
         program.judge_plan = lambda batch, handle, pane: ("returned", "claim #1 dropped")
         outcome = program.plan_mode_build(self.batch(1, change=None), "build-x")
         self.assertEqual(outcome.status, "paused")
@@ -993,7 +986,7 @@ class StageTest(unittest.TestCase):
         runner = ScriptedRunner(states=[WaitState.SETTLED_BLOCKED,
                                         WaitState.SETTLED_DONE],
                                 reports=["a plan", "built it"])
-        program = a_loop(tracker, runner=runner, plan_mode=True)
+        program = a_loop(tracker, runner=runner, plan=True)
         verdicts = iter([("approved", "fine"), ("unreadable", "finished")])
         program.judge_plan = lambda *a: next(verdicts)
         outcome = program.plan_mode_build(self.batch(1, change=None), "build-x")
@@ -1407,7 +1400,7 @@ class StageLabelTest(unittest.TestCase):
         runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
                                 reports=["a plan"] * 12)
         program = a_loop(tracker, runner=runner, shell=self.shell(),
-                         plan_mode=True)
+                         plan=True)
         # Approve once, then let the session read as finished — `approved`
         # re-enters the dialog loop, so a judge that only ever approves
         # never returns.
@@ -2745,10 +2738,9 @@ class BoltParamsDescriptionTest(unittest.TestCase):
         cli = self.cli()
         self.tracker_answering(cli, {"description": "Mode: plan"})
         params = self.built(cli)
-        self.assertIsNone(params.plan_mode,
-                          "the launch reads no mode from the milestone — "
-                          "each unit's own Mode line decides at drive time")
-        self.assertEqual(params.description, "Mode: plan")
+        self.assertEqual(params.description, "Mode: plan",
+                         "carried as prose only — the launch reads no mode "
+                         "from the milestone; the unit's type decides")
 
 
 class LandingCharterTest(unittest.TestCase):
@@ -3239,7 +3231,7 @@ class UnitTypeTest(unittest.TestCase):
                    item(9, inbox.UNIT, body=body)],
             batches=[Batch(number=9, kind=inbox.UNIT, sub_issues=(1,),
                            milestone="bolt/x")])
-        program = a_loop(FakeTracker(snapshot))
+        program = a_loop(FakeTracker(snapshot), repo_dir=str(ROOT))
         batch = types.SimpleNamespace(numbers=(1,))
         return program, batch, snapshot
 
@@ -3247,30 +3239,24 @@ class UnitTypeTest(unittest.TestCase):
         program, batch, snapshot = self.loop_with(
             "Sequence: 1 of 1 · builds on: none\n"
             "Type: `bolt-direct` · Price: 2 changes · ~1 day\n")
-        config, plan = program.unit_config(batch, snapshot)
+        config = program.unit_config(batch, snapshot)
         self.assertEqual(config.name, "bolt-direct")
         self.assertFalse(config.runs("verify"))
-        self.assertFalse(plan, "no Mode line means spec")
+        self.assertFalse(config.plan, "bolt-direct is spec-path")
 
     def test_a_unit_naming_no_type_runs_the_bolts_bound_type(self):
         program, batch, snapshot = self.loop_with("no structured line here")
-        config, plan = program.unit_config(batch, snapshot)
-        self.assertIs(config, program.params.config)
-        self.assertFalse(plan)
+        self.assertIs(program.unit_config(batch, snapshot),
+                      program.params.config)
 
-    def test_the_units_mode_line_declares_the_plan_path(self):
+    def test_the_plan_path_is_a_type(self):
+        # There is no mode beside the type: bolt-plan IS the plan path.
         program, batch, snapshot = self.loop_with(
-            "Type: `bolt-direct` · Mode: plan · Price: 2 changes · ~1 day")
-        config, plan = program.unit_config(batch, snapshot)
-        self.assertEqual(config.name, "bolt-direct")
-        self.assertTrue(plan, "the card's own Mode line is the declaration")
-
-    def test_the_operators_flag_outranks_the_card_both_ways(self):
-        program, batch, snapshot = self.loop_with(
-            "Type: `bolt-direct` · Mode: plan")
-        program.params.plan_mode = False
-        _, plan = program.unit_config(batch, snapshot)
-        self.assertFalse(plan)
+            "Type: `bolt-plan` · Price: 2 changes · ~1 day")
+        config = program.unit_config(batch, snapshot)
+        self.assertEqual(config.name, "bolt-plan")
+        self.assertTrue(config.plan)
+        self.assertFalse(config.runs("verify"))
 
     def test_an_unknown_type_is_refused_not_downgraded(self):
         program, batch, snapshot = self.loop_with("Type: `bolt-bogus`")

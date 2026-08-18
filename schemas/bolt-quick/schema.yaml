@@ -33,7 +33,6 @@ description: Flywheel construction tracking, the quick bolt type - one change pe
 loop:
   strategy: ff
   extensions: []
-  plan_mode: available
   hooks: [post-spec, post-apply, post-verify, pre-merge, pre-land]
 
 artifacts:

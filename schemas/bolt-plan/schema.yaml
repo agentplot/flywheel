@@ -1,10 +1,11 @@
-name: bolt-direct
+name: bolt-plan
 version: 1
-description: Flywheel construction tracking, the direct bolt type - one change per
-  bolt; the released assertions are its items on the org's tracker; per-repo
-  bolt branches; the loop schedules no review step AND no verify stage.
-  Picked for work whose correctness the spec and the repo's merge gate
-  already settle between them.
+description: Flywheel construction tracking, the plan bolt type - the plan the
+  operator approves in the build session's pane stands as the spec; no
+  spec artifact, no review step, no verify stage. Picked for work whose
+  correctness the approved plan and the repo's merge gate settle between
+  them - pages and prose, never machinery, since the work leaves no
+  implemented specs behind.
 
 # The type as a named loop config, and it is READ: bin/_flywheel_bolt_loop.py's
 # read_schema_config parses this block into a LoopConfig, and the loop runs the
@@ -44,7 +45,8 @@ loop:
   strategy: ff
   stages: [spec, build, merge, land]
   extensions: []
-  hooks: [post-spec, post-apply, pre-merge, pre-land]
+  mode: plan
+  hooks: [post-apply, pre-merge, pre-land]
 
 artifacts:
   - id: bolt

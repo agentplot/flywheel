@@ -113,21 +113,21 @@ between the round and the board. A draft in any other shape gets
 approved once and then transcribed, and the transcription is where
 plans drift.
 
-**`Type:` and `Mode:` are per unit, on one line.** The type is the
-review and verify steps the loop schedules for that unit's changes:
-`bolt-default` (reviews + verify), `bolt-quick` (verify, no reviews),
-`bolt-direct` (gate only), `bolt-adversarial` (adversarial review).
-The mode is the construction path: `spec` (the default, omit the
-field) runs every change as an ordinary spec-driven OpenSpec change;
-`plan` opens each build session in plan mode and the plan the
-operator approves in the pane stands as the spec — no spec artifact,
-so the work never reaches `openspec/specs/` and is invisible to
-future planning runs. The right trade for pages and prose, the wrong
-one for machinery. `plan` runs only on a type that carries it
-(`bolt-quick`, `bolt-direct`); the loop pauses a plan unit whose type
-does not. Nothing machine-read lives on the milestone: the summary is
-prose, and the loop reads type and mode from the unit card at drive
-time.
+**`Type:` is per unit, and it is the whole choice** — a type is a
+named loop configuration, and the construction path is part of it:
+
+- `bolt-default` — spec-driven changes, reviews + verify
+- `bolt-quick` — spec-driven changes, verify, no reviews
+- `bolt-direct` — spec-driven changes, the merge gate as the only check
+- `bolt-adversarial` — spec-driven changes, adversarial review
+- `bolt-plan` — no spec artifact: the loop opens each build session in
+  plan mode and the plan the operator approves in the pane stands as
+  the spec, with the merge gate as the check. Right for pages and
+  prose; wrong for machinery, because the work never reaches
+  `openspec/specs/` and is invisible to future planning runs.
+
+Nothing machine-read lives on the milestone: the summary is prose,
+and the loop reads the type from the unit card at drive time.
 
 ```markdown
 # Unit: <slug>
@@ -135,7 +135,7 @@ time.
 <Two or three sentences: what this unit delivers and why it is next.>
 
 Sequence: <n> of <total> · builds on: <prior unit or none>
-Type: `bolt-<type>` · Mode: <spec | plan> · Price: <n> changes · ~<days>
+Type: `bolt-<type>` · Price: <n> changes · ~<days>
 
 | # | change | delivers | sources | after | why this bolt |
 |---|--------|----------|---------|-------|---------------|
