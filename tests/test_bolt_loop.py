@@ -435,9 +435,12 @@ class TypeConfigTest(unittest.TestCase):
             loop.resolve_plan_mode(True, loop.load_type("bolt-quick", ROOT)))
 
     def test_the_bolt_declares_plan_mode_and_the_operators_flag_outranks_it(self):
-        self.assertTrue(loop.plan_mode_declared({}, "bolt-quick, PLAN-MODE PATH: ..."))
+        # The declaration is the plan template's structured Mode line.
+        self.assertTrue(loop.plan_mode_declared({}, "delivers X.\nMode: plan\n"))
+        self.assertTrue(loop.plan_mode_declared({}, "mode: PLAN"))
         self.assertTrue(loop.plan_mode_declared({"plan_mode": "true"}, ""))
         self.assertFalse(loop.plan_mode_declared({}, "an ordinary bolt"))
+        self.assertFalse(loop.plan_mode_declared({}, "Mode: spec"))
         self.assertFalse(loop.plan_mode_declared({"plan_mode": "true"}, "", flag=False))
 
     def test_skip_specs_is_not_a_plan_mode_declaration(self):
@@ -467,9 +470,9 @@ class TypeConfigTest(unittest.TestCase):
         self.assertFalse(config.runs("verify"))
         self.assertTrue(all(config.runs(s) for s in ("spec", "build", "merge")))
 
-    def test_plan_mode_is_not_reachable_on_bolt_direct_either(self):
-        with self.assertRaises(loop.LoopError):
-            loop.resolve_plan_mode(True, loop.load_type("bolt-direct", ROOT))
+    def test_plan_mode_is_reachable_on_bolt_direct(self):
+        self.assertTrue(
+            loop.resolve_plan_mode(True, loop.load_type("bolt-direct", ROOT)))
 
     def test_an_unknown_stage_name_is_named_rather_than_silently_skipped(self):
         # `strategy` has raised on an unknown value since this config
@@ -2760,17 +2763,17 @@ class BoltParamsDescriptionTest(unittest.TestCase):
         # The description's other reader is untouched: it is handed the
         # same value, and still resolves the plan-mode path from it.
         cli = self.cli()
-        self.tracker_answering(cli, {"description": "PLAN-MODE PATH: yes"})
+        self.tracker_answering(cli, {"description": "Mode: plan"})
         seen = []
         real = cli.loop.plan_mode_declared
         self.patch(cli.loop, "plan_mode_declared",
                    lambda binding, description, *rest:
                    seen.append(description) or real(binding, description, *rest))
         params = self.built(cli)
-        self.assertEqual(seen, ["PLAN-MODE PATH: yes"],
+        self.assertEqual(seen, ["Mode: plan"],
                          "the same value, still reaching the same reader")
         self.assertTrue(params.plan_mode)
-        self.assertEqual(params.description, "PLAN-MODE PATH: yes")
+        self.assertEqual(params.description, "Mode: plan")
 
 
 class LandingCharterTest(unittest.TestCase):

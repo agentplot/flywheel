@@ -81,33 +81,53 @@ Two levels, two different objects:
 
 ## The plan documents
 
-One short **bolt summary** (it becomes the milestone description):
-two or three sentences on what the bolt delivers, the unit sequence
-as one line each, and the bolt's total price. Then one **unit
-document** per unit (it becomes the unit card's body), written to be
-approved at a glance and annotated like a chapter. Plain language
-throughout — no coined terms; the book's glossary is the vocabulary.
+One **bolt summary** (it becomes the milestone description, verbatim):
+
+```markdown
+<Two or three sentences: what the bolt delivers.>
+
+1. `<unit-slug>` — <one line> · `bolt-<type>` · <n> changes · ~<days>
+2. ...
+
+Price: <n> changes · ~<days>.
+Mode: <spec | plan>
+
+Derived from: book <sha> · specs <sha> · in flight: <change ids or none>
+```
+
+Then one **unit document** per unit (it becomes the unit card's body,
+verbatim), written to be approved at a glance and annotated like a
+chapter. Plain language throughout — no coined terms; the book's
+glossary is the vocabulary.
+
+Every field above is chosen and shown in the FIRST draft the operator
+sees — the bolt type per unit, the mode, the price. A plan that makes
+the operator ask "which type is this?" or annotate a choice into
+existence has not done its job; the round is for correcting choices,
+not supplying them.
 
 **What the operator annotates IS what lands on the tracker.** A draft
 put in front of the operator — a planner's, or a design session
 cutting a direct bolt plan — is the milestone description plus the
-unit documents in the exact grammar below, nothing reformatted
+unit documents in the exact grammar here, nothing reformatted
 between the round and the board. A draft in any other shape gets
 approved once and then transcribed, and the transcription is where
 plans drift.
 
-**The plan-only path is declared in the bolt summary.** Work whose
-correctness the operator's plan approval and the repo's merge gate
-settle between them — no spec artifact wanted — runs the plan-mode
-path: the loop opens the build session in plan mode, and the plan the
-operator approves in the pane stands as the spec. Declare it with the
-sentence "This bolt runs the plan-mode path." in the bolt summary,
-and bind the units `bolt-quick` (the one type that carries
-`plan_mode: available`). Leave it undeclared and every change is an
-ordinary spec-driven change; `openspec/specs/` advances only on that
-ordinary path, so a plan-mode bolt is invisible to future planning
-runs — the right trade for pages and prose, the wrong one for
-machinery.
+**`Mode:` picks the construction path for the bolt.** `spec` (the
+default) runs every change as an ordinary spec-driven OpenSpec change.
+`plan` runs the plan-mode path: the loop opens each build session in
+plan mode, and the plan the operator approves in the pane stands as
+the spec — no spec artifact, so the work never reaches
+`openspec/specs/` and is invisible to future planning runs. The right
+trade for pages and prose, the wrong one for machinery. The mode must
+be one the units' bolt types carry (`plan_mode: available` in the
+type's schema).
+
+**`Type:` is per unit** — the review and verify steps the loop
+schedules for that unit's changes: `bolt-default` (reviews + verify),
+`bolt-quick` (verify, no reviews), `bolt-direct` (gate only),
+`bolt-adversarial` (adversarial review). Pick per unit, not per bolt.
 
 ```markdown
 # Unit: <slug>
@@ -115,10 +135,11 @@ machinery.
 <Two or three sentences: what this unit delivers and why it is next.>
 
 Sequence: <n> of <total> · builds on: <prior unit or none>
+Type: `bolt-<type>` · Price: <n> changes · ~<days>
 
-| # | change | delivers | chapters | after | why this bolt |
-|---|--------|----------|----------|-------|---------------|
-| 1 | <change-slug> | <one line> | <chapter path(s)> | — | <one line> |
+| # | change | delivers | sources | after | why this bolt |
+|---|--------|----------|---------|-------|---------------|
+| 1 | <change-slug> | <one line> | <chapter or artifact path(s)> | — | <one line> |
 
 The `after` column names the task a task builds on, or `—`. Unmarked
 tasks are independent and run concurrently; a marked task waits for

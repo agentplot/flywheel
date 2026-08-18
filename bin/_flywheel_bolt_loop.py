@@ -355,11 +355,12 @@ def read_binding(change_dir):
 def plan_mode_declared(binding=None, milestone_description=None, flag=None):
     """Whether this BOLT declares the plan-mode path.
 
-    Declared per bolt — "the milestone description, or the handoff plan" —
-    and never by a type, so the carriers are read in the order they bind:
-    the operator's flag wins outright in both directions, then an explicit
-    `plan_mode:` in the change's binding, then the phrase the release writes
-    into the milestone description.
+    Declared per bolt, never by a type, so the carriers are read in the
+    order they bind: the operator's flag wins outright in both
+    directions, then an explicit `plan_mode:` in the change's binding,
+    then the `Mode: plan` line the plan template puts in the milestone
+    description — a structured field the operator saw in the draft, not
+    a phrase anyone types.
 
     **`skip_specs` is not one of them**, though it reads like one. Measured
     on this repo, 2026-08-13: every bolt and intent change carries
@@ -373,7 +374,8 @@ def plan_mode_declared(binding=None, milestone_description=None, flag=None):
     binding = binding or {}
     if "plan_mode" in binding:
         return str(binding["plan_mode"]).lower() in ("true", "yes", "available")
-    return bool(re.search(r"plan[- ]mode path", milestone_description or "", re.I))
+    return bool(re.search(r"^Mode:\s*plan\b", milestone_description or "",
+                           re.I | re.M))
 
 
 #: The keys a bolt might try to vary its stage set with. Read only so they

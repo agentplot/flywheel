@@ -44,6 +44,7 @@ loop:
   strategy: ff
   stages: [spec, build, merge, land]
   extensions: []
+  plan_mode: available
   hooks: [post-spec, post-apply, pre-merge, pre-land]
 
 artifacts:
