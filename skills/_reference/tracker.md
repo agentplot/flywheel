@@ -48,8 +48,8 @@ queue a question — never invent tracker structure.**
    unmilestoned for dispatch to triage.
 2. **An item joins exactly one batch, ever** (GitHub enforces this —
    attaching a parented sub-issue is a 422). Which batch:
-   design-work items — questions, prototypes, writebacks, handoff
-   items — join an elaboration on their intent; an assertion item
+   design-work items — questions, prototypes, writebacks — join an
+   elaboration on their intent; an assertion item
    joins only the unit that releases it; work queued fresh on a live
    bolt joins a bolt-side unit. Sub-issue links are independent of
    milestones and survive the custody move.
@@ -97,14 +97,13 @@ queue a question — never invent tracker structure.**
    flight: its bolt has not landed, the loop's picture of its
    milestone carries it, and the server counts its milestone as a job
    until the landing.
-6. **The handoff birth condition is computable.** An assertion is
-   settled and unbolted when its item is open on `intent/<slug>`, has
-   no parent batch, and has no open blockers. Whenever such assertions
-   exist at the queue, the intent loop births one `type:handoff` item
-   naming exactly that set, or extends the open unstarted one — and
-   while that handoff's unit still sits at Backlog, newcomers join it:
-   the item's set amended, the assertions attached as sub-issues. The
-   flip seals the batch; the next settled wave births the next handoff.
+6. **A settled assertion waits for the planner.** An assertion is
+   settled when its item is open on `intent/<slug>`, has no parent
+   batch, and has no open blockers. It stays where it is: the loop
+   births nothing from it. Construction work is born one way —
+   the bolt planner cards it from the book (or the operator dictates
+   a card), the operator approves the card, and expansion births the
+   work items on the bolt milestone.
 7. **Blocked on the operator's word**: comment the one-line question
    on the item, add `needs-operator`, keep working what it does not
    gate. Whoever applies the answer removes the label. The label marks
@@ -148,9 +147,9 @@ through GitHub issues, and each consumer has an exact filter:
   labelled `state:ready`, plus that bolt's units at board Status Ready
   (their `state:queued` sub-issues are relabelled first).
 - **intent loop for `intent/<slug>`** — the same filter on its
-  milestone, plus the guard sweeps: settled unbatched assertions
-  (handoff birth, invariant 6) and orphan `state:queued` items
-  (compose).
+  milestone, plus the guard sweep: orphan `state:queued` design items
+  (compose). Settled assertions are skipped — construction's work is
+  born by the planner, never here.
 - **dispatch** — open issues with no milestone (triage), and open
   issues labelled `needs-operator` (relay). The relay half has no
   milestone condition: an escalation from a running bolt has one and
@@ -173,7 +172,7 @@ knowing when reading a loop's behaviour:
   wrote nothing — while a milestone the server never starts is work
   that never happens. So the server sweeps a little wider than the list
   above, and the loop does the exact test.
-- **A filter never writes.** Flip-consume, handoff birth and compose
+- **A filter never writes.** Flip-consume and compose
   are guards, and guards write; the filters name what the guard should
   write and the guard writes it. Applying a guard's plan empties it,
   which is what makes a second cycle against an unchanged tracker write
@@ -228,25 +227,14 @@ gates it:
     #103  [elaboration] Settle password-reset design   sub-issues: #101
 
 The elaboration batches the *deciding*; the assertion joins no
-elaboration. #101 closes → #102 is settled and unbolted (invariant 6)
-→ the intent loop births the handoff item and its unit:
-
-    #104  Plan the bolt for the forgot-password assertion  type:handoff · queued
-    #105  [unit] Handoff: forgot-password to construction  sub-issues: #104, #102
-
-The operator moves #105 to Ready — the checklist they flip is the list
-of assertions being released. The handoff session works #104: drafts
-`bolt-plan.md` on the standard template, runs one plannotator round,
-then makes the custody move:
-
-    #102  milestone intent/auth-hardening → bolt/forgot-password · state:ready
-
-The server starts the bolt loop; construction accrues on
-#102 as comments and as its one `stage:*` label. When its branch reaches
-the bolt branch the loop closes it `closed:merged` with the merge SHA —
-which is what checks it off on #105's bar — and the landing upgrades that
-to `closed:done` with the landing SHA. #105's
-checklist keeps tracking it across the move (invariant 2), and
+elaboration. #101 closes → #102 is settled (invariant 6) and sits.
+The design lands in the book through a writeback, the planner reads
+the book and cards the work as a plan card at Backlog, and the
+operator's approval expands it into a unit and its work items on
+`bolt/forgot-password`. Construction accrues on those items as
+comments and one `stage:*` label each; the merge closes each
+`closed:merged` with the merge SHA — which fills the unit's bar — and
+the landing upgrades that to `closed:done` with the landing SHA.
 `intent/auth-hardening` is free to close when design and writebacks
 are done.
 

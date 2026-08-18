@@ -10,4 +10,4 @@
   the exchange where the operator gave the word]
 
 ## Consequences
-- [Appended task: writeback / handoff / new question]
+- [Appended task: writeback / new question]

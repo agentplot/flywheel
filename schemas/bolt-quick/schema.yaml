@@ -29,7 +29,7 @@ description: Flywheel construction tracking, the quick bolt type - one change pe
 #              that is the type: bolt-quick schedules no review step.
 # plan_mode  - the plan-mode path is AVAILABLE on this type and no other.
 #              Whether a given bolt takes it is declared per bolt, in the
-#              handoff plan or the milestone description, never here.
+#              the milestone description, never here.
 loop:
   strategy: ff
   extensions: []

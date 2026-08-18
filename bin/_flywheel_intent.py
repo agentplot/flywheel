@@ -2,7 +2,7 @@
 
 `design/loop-programs.md`, "The intent loop":
 
-    query+guards (flip-consume, handoff birth, compose) ->
+    query+guards (flip-consume, ready-consume, compose) ->
     typed design sessions -> collect deliverables ->
     merge sess/* branches -> re-query ... STOP
 
@@ -89,8 +89,8 @@ class DesignType:
     `model` is the default column of
     `openspec/specs/flywheel-session-type-skills/spec.md`.
 
-    `operator_round` is the intent schema's LIMITS paragraph: planning,
-    interactive and handoff hold operator rounds by design, so they notify at
+    `operator_round` is the intent schema's LIMITS paragraph: planning and
+    interactive hold operator rounds by design, so they notify at
     90 minutes like everything else but never auto-stall.
 
     `worktree` is herdr.md's "a session that edits no files gets no worktree —
@@ -113,7 +113,6 @@ class DesignType:
 TYPES = {t.name: t for t in (
     DesignType("planning", "flywheel-design-session", "fable", True, True),
     DesignType("interactive", "flywheel-interactive-session", "fable", True, True),
-    DesignType("handoff", "flywheel-design-session", "opus", True, True),
     DesignType("research", "flywheel-design-session", "opus[1m]", False, False),
     DesignType("prototype", "flywheel-design-session", "opus", False, True, alone=True),
     DesignType("writeback", "flywheel-design-session", "opus", False, True),
@@ -324,113 +323,6 @@ def apply_flip_consume(writer, numbers):
         writer.relabel(number, remove=[QUEUED], add=[READY])
 
 
-# ---------------------------------------------------------------------------
-# Guard 2 — handoff birth and amend
-# ---------------------------------------------------------------------------
-
-HANDOFF_SET_OPEN = "<!-- flywheel:handoff-set -->"
-HANDOFF_SET_CLOSE = "<!-- /flywheel:handoff-set -->"
-
-_HANDOFF_SET = re.compile(
-    re.escape(HANDOFF_SET_OPEN) + r"(?P<body>.*?)" + re.escape(HANDOFF_SET_CLOSE),
-    re.DOTALL,
-)
-
-
-def format_handoff_set(numbers):
-    listing = " ".join(f"#{n}" for n in sorted(numbers))
-    return f"{HANDOFF_SET_OPEN}\n{listing}\n{HANDOFF_SET_CLOSE}"
-
-
-def parse_handoff_set(body):
-    """The assertion set an existing handoff item names, or None.
-
-    This is what makes an amend SILENT when nothing changed, and a silent
-    amend is the dry-cycle property: birth on cycle N is seen as amend on
-    cycle N+1 forever after, because the assertions stay open and unbatched on
-    the milestone until the handoff SESSION makes the custody move. An amend
-    that rewrote an unchanged body would make every cycle wet, and the loop
-    would never quiet.
-    """
-    found = _HANDOFF_SET.search(body or "")
-    if not found:
-        return None
-    return tuple(sorted(int(n) for n in re.findall(r"#(\d+)", found.group("body"))))
-
-
-def handoff_body(slug, numbers):
-    return "\n".join([
-        f"Settled, unbolted assertions on `{INTENT_PREFIX}{slug}` — assertions "
-        "open on this milestone with no parent batch and no open blocker.",
-        "",
-        format_handoff_set(numbers),
-        "",
-        "Born by the intent loop's handoff-birth guard, inside the unit that "
-        "carries this release. The handoff session that works this item plans "
-        "the bolt and makes the custody move; the loop creates the item and "
-        "its unit and never moves a milestone itself.",
-    ])
-
-
-def apply_handoff(writer, plan, snapshot, config):
-    """Ensure ONE open `type:handoff` item names exactly the settled set,
-    inside ONE `unit` parent whose sub-issues are that set.
-
-    Two branches, `_flywheel_inbox.handoff_plan`'s: BIRTH when no open handoff
-    sits unsealed, AMEND when one does.
-
-    **The handoff item and its unit are born together.** Every release to
-    construction creates exactly one unit parent — the handoff birth here and
-    the operator's born-ready release alike — because the unit is what
-    carries the approval on the board and what gives the bolt GitHub's native
-    sub-issue progress bar. The parent is born at **Backlog**: composing is
-    the loop's and approving is the operator's, and the flip to Ready seals
-    the batch and charges the handoff session.
-
-    The assertions become sub-issues here and STAY sub-issues when the
-    handoff session moves them to `bolt/<slug>` — sub-issue links are
-    independent of milestones (invariant 2), and that milestone move is the
-    bolting.
-    """
-    if plan is None:
-        return
-    slug = config.slug
-    numbers = tuple(sorted(i.number for i in plan.assertions))
-    if plan.action == "amend":
-        item = snapshot.item(plan.handoff_item)
-        current = parse_handoff_set(item.body if item else "") or ()
-        # The set EXTENDS. An assertion already attached to this handoff's
-        # unit is no longer "settled and unbolted" by invariant 6's test, so
-        # the plan names only the newcomers and the body names the union.
-        merged = tuple(sorted(set(current) | set(numbers)))
-        if merged == current:
-            return                      # unchanged — write nothing
-        writer.set_body(plan.handoff_item, handoff_body(slug, merged))
-        writer.comment(
-            plan.handoff_item,
-            "The settled, unbolted set moved: now "
-            + " ".join(f"#{n}" for n in merged)
-            + ". Amended by the intent loop's handoff-birth guard.",
-        )
-        if item is not None and item.parent_batch is not None:
-            compose_unit(writer, config,
-                         title=f"Handoff: the settled assertions on {slug} "
-                               f"to construction",
-                         numbers=[n for n in merged if n not in current],
-                         into=item.parent_batch)
-        return
-    handoff = writer.create_issue(
-        title=f"Plan the bolt for the settled assertions on {slug}",
-        body=handoff_body(slug, numbers),
-        labels=["type:handoff", QUEUED],
-        milestone=f"{INTENT_PREFIX}{slug}",
-    )
-    compose_unit(writer, config,
-                 title=f"Handoff: the settled assertions on {slug} to "
-                       f"construction",
-                 numbers=([handoff] if handoff else []) + list(numbers))
-
-
 def compose_batch(writer, config, kind, title, numbers, into=None):
     """One `flywheel-batch` call — THE definition of composing or joining.
 
@@ -474,7 +366,7 @@ def compose_unit(writer, config, title, numbers, into=None):
 
     It puts the parent at **Backlog** and never writes Ready — on this path
     the operator's flip is the approval, and a batch born at Ready would
-    make the loop the approver of its own handoff. The one release where
+    make the loop the approver of its own work. The one release where
     the parent IS born at Ready is the operator's born-ready release at
     triage, where their word is itself the approval; that move is made by
     the release path with `flywheel-board`, not from inside this loop.
@@ -497,7 +389,7 @@ def apply_compose(writer, items, config, snapshot=None):
     with no thread signal available on the tracker reduces to one batch: the
     loop never splits by guess.
     """
-    # AMEND, like handoff birth: while an open elaboration for this
+    # AMEND, not a second birth: while an open elaboration for this
     # milestone sits at Backlog, newcomers JOIN it — a new batch per
     # sweep fragments the queue into near-identical containers (observed
     # live: #131/#132, #109/#114/#129).
@@ -520,7 +412,7 @@ def wait_listed(tracker, numbers, milestone, tries=8, pause=5,
 
     GitHub's issue list can lag a fresh creation, and the next cycle's
     snapshot IS that list — a birth invisible to it births again
-    (observed live: handoffs #128/#130, elaborations #131/#132). A cycle
+    (observed live: #128/#130, #131/#132). A cycle
     that created something does not proceed until its creations are
     listed, so no successor ever reads a pre-write list.
     """
@@ -539,7 +431,6 @@ def run_guards(writer, inbox, snapshot, config):
     mark = writer.mark()
     apply_flip_consume(writer, inbox.queued_to_flip)
     apply_ready_consume(writer, getattr(inbox, "spent_ready", ()))
-    apply_handoff(writer, inbox.handoff, snapshot, config)
     apply_compose(writer, inbox.orphan_queued, config, snapshot)
     return writer.since(mark)
 
@@ -1032,15 +923,12 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
             batches, undispatchable = batch_ready(snapshot, inbox.ready)
             for item, kind in undispatchable:
                 if kind == "assertion":
-                    # NOT an escalation. A released assertion is guard 2's
-                    # and construction's, never a design session's — and
-                    # since the handoff unit carries the assertions as
-                    # sub-issues, the operator's flip to Ready relabels
-                    # every one of them `state:ready` on this milestone.
-                    # They are SUPPOSED to arrive here undispatched; the
-                    # handoff session's custody move is what takes them
-                    # off. Escalating each one turned the release that
-                    # charges a handoff into a `needs-operator` storm.
+                    # NOT an escalation. A settled assertion is
+                    # construction's, never a design session's: the
+                    # planner reads the book and cards the work, and the
+                    # operator's approval releases it. It sits here
+                    # undispatched by design; escalating each one turns
+                    # settling into a `needs-operator` storm.
                     continue
                 set_needs_operator(
                     writer, item.number,

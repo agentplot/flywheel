@@ -152,144 +152,14 @@ class FlipConsumeTest(unittest.TestCase):
         self.assertEqual(writer.writes, [])
 
 
-class HandoffGuardTest(unittest.TestCase):
-
-    def test_birth_creates_one_handoff_item_naming_exactly_that_set(self):
-        snap = Snapshot(items=[
-            item(1, "type:assertion", "state:queued"),
-            item(2, "type:assertion", "state:queued"),
-        ])
-        writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
-                             config())
-        self.assertEqual([w.kind for w in writer.writes], ["issue", "command"])
-        self.assertEqual(intent.parse_handoff_set(intent.handoff_body("x", (1, 2))),
-                         (1, 2))
-
-    def test_birth_composes_one_unit_over_the_handoff_and_its_assertions(self):
-        # Every release creates exactly one unit parent, handoff birth and
-        # born-ready alike; the unit is the board row and the progress bar.
-        run = FakeRun()
-        snap = Snapshot(items=[item(1, "type:assertion", "state:queued"),
-                               item(2, "type:assertion", "state:queued")])
-        writer = intent.Writer(apply=True, run=run,
-                               tracker=FakeTracker(), snapshot=snap)
-        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
-                             config(apply=True))
-        argv = run.calls[0]
-        self.assertEqual(argv[argv.index("--kind") + 1], "unit")
-        self.assertEqual(argv[-3:], ["999", "1", "2"],
-                         "the handoff item and the released assertions")
-        self.assertNotIn("Ready", argv,
-                         "composing is not releasing — the flip seals it")
-
-    def test_amend_is_silent_when_the_set_is_unchanged(self):
-        # THE dry-cycle crux. Birth-on-cycle-N is seen as amend-on-cycle-N+1
-        # for as long as an assertion stays unbatched, so an amend that
-        # rewrote an unchanged body would make every cycle wet.
-        snap = Snapshot(items=[
-            item(1, "type:assertion", "state:queued"),
-            item(9, "type:handoff", "state:queued",
-                 body=intent.handoff_body("x", (1,))),
-        ])
-        plan = inbox.handoff_plan(snap, "x")
-        self.assertEqual(plan.action, "amend")
-        writer = intent.Writer(apply=False)
-        intent.apply_handoff(writer, plan, snap, config())
-        self.assertEqual(writer.writes, [],
-                         "an unchanged set must write nothing at all")
-
-    def test_amend_extends_the_set_and_attaches_the_newcomer_to_the_unit(self):
-        # #1 is already a sub-issue of the handoff's unit, so it is no
-        # longer "settled and unbolted" and the plan names only #2. The
-        # body must name the UNION, or the amend would drop #1. The attach
-        # is `flywheel-batch --into` — the same joining move compose uses —
-        # so the newcomer gets the open-parent check and the newcomers
-        # comment, not a bare sub-issue POST.
-        run = FakeRun()
-        snap = Snapshot(
-            items=[item(1, "type:assertion", "state:queued", parent_batch=10),
-                   item(2, "type:assertion", "state:queued"),
-                   item(9, "type:handoff", "state:queued", parent_batch=10,
-                        body=intent.handoff_body("x", (1,)))],
-            batches=[Batch(number=10, kind="unit", status="Backlog",
-                           sub_issues=(9, 1), milestone="intent/x")])
-        writer = intent.Writer(apply=True, run=run, snapshot=snap)
-        intent.apply_handoff(writer, inbox.handoff_plan(snap, "x"), snap,
-                             config(apply=True))
-        self.assertEqual([w.kind for w in writer.writes],
-                         ["body", "comment", "command"])
-        body = next(w for w in writer.writes if w.kind == "body")
-        self.assertEqual(body.target, "#9")
-        argv = run.calls[-1]
-        self.assertIn("--into", argv)
-        self.assertEqual(argv[argv.index("--into") + 1], "10")
-        self.assertEqual(argv[-1], "2", "only the newcomer joins")
-
-    def test_a_handoff_body_round_trips_its_set(self):
-        self.assertEqual(
-            intent.parse_handoff_set(intent.handoff_body("x", (7, 3))), (3, 7))
-
-    def test_prose_with_no_marker_names_no_set(self):
-        self.assertIsNone(intent.parse_handoff_set("we should hand off #3 soon"))
-
-
-class ComposeGuardTest(unittest.TestCase):
-
-    def test_compose_calls_flywheel_batch_at_backlog_and_never_writes_ready(self):
-        run = FakeRun()
-        writer = intent.Writer(apply=True, run=run)
-        intent.apply_compose(writer, [item(5, "state:queued")],
-                             config(apply=True))
-        self.assertEqual(len(run.calls), 1)
-        argv = run.calls[0]
-        self.assertIn("--kind", argv)
-        self.assertEqual(argv[argv.index("--kind") + 1], "elaboration")
-        self.assertNotIn("Ready", argv,
-                         "composing is not releasing — the flip is the operator's")
-
-    def test_a_batch_parent_is_not_itself_composable_work(self):
-        # Live on intent/relay-delivery, 2026-08-13: #46 is an elaboration
-        # parent at Backlog and an open state:queued issue with no parent of
-        # its own. Composing it would create another queued orphan, which the
-        # next cycle composes in turn — the loop never quiets.
-        snap = Snapshot(items=[item(46, "elaboration", "state:queued"),
-                               item(51, "type:planning", "state:queued")])
-        self.assertEqual([i.number for i in inbox.compose_plan(snap, "x")], [51])
-
-    def test_compose_appends_to_the_open_backlog_elaboration(self):
-        # The amend branch, like handoff birth's: newcomers JOIN the open
-        # Backlog batch instead of fragmenting into near-identical
-        # containers (observed live: #131/#132, #109/#114/#129).
-        run = FakeRun()
-        writer = intent.Writer(apply=True, run=run)
-        snap = Snapshot(
-            items=[item(46, "elaboration", "state:queued")],
-            batches=[Batch(46, kind=inbox.ELABORATION,
-                           status=inbox.STATUS_BACKLOG,
-                           milestone="intent/x")])
-        intent.apply_compose(writer, [item(5, "state:queued")],
-                             config(apply=True), snap)
-        argv = run.calls[0]
-        self.assertIn("--into", argv)
-        self.assertEqual(argv[argv.index("--into") + 1], "46")
-
-    def test_no_orphans_runs_no_command(self):
-        run = FakeRun()
-        writer = intent.Writer(apply=True, run=run)
-        intent.apply_compose(writer, [], config(apply=True))
-        self.assertEqual(run.calls, [])
-
-
 class DryCycleTest(unittest.TestCase):
     """The bolt's own merge criterion, stated in a form a test can hold.
 
     Stated precisely, because the loose statement is false and the difference
     matters: the guards CONVERGE. A cycle whose writes changed the tracker is
-    followed by a cycle that sees the change — birth makes a handoff item, and
-    that newborn item is itself an orphan the next cycle composes. What must be
-    true is that the writes stop: once the tracker holds what the guards want,
-    every later cycle against it writes NOTHING.
+    followed by a cycle that sees the change. What must be true is that the
+    writes stop: once the tracker holds what the guards want, every later
+    cycle against it writes NOTHING.
     """
 
     def _guards(self, snapshot):
@@ -306,20 +176,15 @@ class DryCycleTest(unittest.TestCase):
         )
         self.assertEqual(
             [w.kind for w in self._guards(cycle1)],
-            ["label", "label", "issue", "command"],
-            "the flip releases #1; handoff birth claims #2 and composes "
-            "the unit that carries the release")
+            ["label", "label"],
+            "the flip releases #1; the settled assertion #2 sits uncomposed "
+            "— construction's work is born by the planner, never here")
 
-        # #1 flipped; #9 born inside unit #10 with #2 as its other
-        # sub-issue. Nothing is an orphan, and nothing is settled-unbolted.
+        # #1 flipped. The assertion stays where it is, claimed by nothing.
         cycle2 = Snapshot(
             items=[item(1, "state:ready", parent_batch=4),
-                   item(2, "type:assertion", "state:queued", parent_batch=10),
-                   item(9, "type:handoff", "state:queued", parent_batch=10,
-                        body=intent.handoff_body("x", (2,)))],
-            batches=list(cycle1.batches) + [
-                Batch(number=10, kind="unit", status="Backlog",
-                      sub_issues=(9, 2), milestone="intent/x")],
+                   item(2, "type:assertion", "state:queued")],
+            batches=list(cycle1.batches),
         )
         # The one write left is the spent approval leaving the board:
         # batch #4's Ready released everything it covered, so the consume
@@ -332,9 +197,7 @@ class DryCycleTest(unittest.TestCase):
         cycle3 = Snapshot(
             items=list(cycle2.items),
             batches=[Batch(number=4, kind="unit", status=None,
-                           sub_issues=(1,), milestone="intent/x")] + [
-                Batch(number=10, kind="unit", status="Backlog",
-                      sub_issues=(9, 2), milestone="intent/x")],
+                           sub_issues=(1,), milestone="intent/x")],
         )
         self.assertEqual(self._guards(cycle3), (),
                          "a settled tracker must produce no write at all")
@@ -665,32 +528,29 @@ class PauseMarksTheBatchTest(unittest.TestCase):
         self.assertEqual(inbox.collect_plan(paused, "x"), ())
 
 
-class HandoffReleaseTest(unittest.TestCase):
-    """The flip that charges a handoff must not escalate its own batch.
+class ReleasedAssertionsTest(unittest.TestCase):
+    """A released assertion never escalates.
 
-    `apply_handoff` attaches the assertions to the unit, so the operator's
-    flip to Ready relabels every one of them `state:ready` via
-    `flip_consume_plan`. `batch_ready` then reports them undispatchable —
-    correctly, they are not a design type — and the loop used to write
-    `needs-operator` on each. The old code avoided this only by attaching
-    no sub-issues at all.
+    Assertions are construction's, never a design session's: the planner
+    cards their work from the book. `batch_ready` reports them
+    undispatchable — correctly, they are not a design type — and the loop
+    must not write `needs-operator` on each.
     """
 
     def released(self):
         return Snapshot(
-            items=[item(1, "type:handoff", inbox.READY, parent_batch=10),
-                   item(2, "type:assertion", inbox.READY, parent_batch=10),
+            items=[item(2, "type:assertion", inbox.READY, parent_batch=10),
                    item(3, "type:assertion", inbox.READY, parent_batch=10)],
             batches=[Batch(number=10, kind="unit", status=inbox.STATUS_READY,
-                           sub_issues=(1, 2, 3), milestone="intent/x")])
+                           sub_issues=(2, 3), milestone="intent/x")])
 
     def test_the_assertions_arrive_undispatchable_by_design(self):
         snap = self.released()
         batches, undispatchable = intent.batch_ready(snap, snap.items)
-        self.assertEqual([b.type for b in batches], ["handoff"])
+        self.assertEqual(list(batches), [])
         self.assertEqual(sorted(k for _, k in undispatchable), ["assertion"] * 2)
 
-    def test_the_release_that_charges_a_handoff_escalates_nothing(self):
+    def test_released_assertions_escalate_nothing(self):
         snap = self.released()
         tracker = FakeTracker(snapshot=snap)
         intent.run(config(slug="x", apply=True), tracker=tracker,
@@ -698,7 +558,7 @@ class HandoffReleaseTest(unittest.TestCase):
         self.assertEqual(
             [c for c in tracker.calls
              if c[0] == "add_label" and c[2] == inbox.NEEDS_OPERATOR], [],
-            "the assertions are guard 2's and construction's, not a fault")
+            "the assertions are construction's, not a fault")
 
     def test_a_genuinely_untyped_item_is_still_escalated(self):
         # The exclusion is for assertions only; an item the loop cannot
@@ -807,11 +667,11 @@ class SessionSpecTest(unittest.TestCase):
             "one rule: does this session build a lavish surface?")
         self.assertEqual(
             {n: t.model for n, t in intent.TYPES.items()},
-            {"planning": "fable", "interactive": "fable", "handoff": "opus",
+            {"planning": "fable", "interactive": "fable",
              "research": "opus[1m]", "prototype": "opus", "writeback": "opus"})
         self.assertEqual(
             sorted(n for n, t in intent.TYPES.items() if t.operator_round),
-            ["handoff", "interactive", "planning"])
+            ["interactive", "planning"])
 
     def test_research_gets_no_worktree_and_so_skips_the_merge(self):
         self.assertFalse(intent.TYPES["research"].worktree)
@@ -922,10 +782,10 @@ class CycleTest(unittest.TestCase):
             fixture=str(FIXTURES / "intent-tracker.json")))
         self.assertEqual(report.status, "ok")
         kinds = [w.split()[0] for w in report.writes]
-        self.assertEqual(kinds.count("issue"), 1, "handoff birth for #202")
-        self.assertEqual(kinds.count("command"), 3,
-                         "the unit over #202's handoff, flywheel-batch for "
-                         "#203, and one wt switch")
+        self.assertEqual(kinds.count("issue"), 0,
+                         "the loop births nothing — #202 sits uncomposed")
+        self.assertEqual(kinds.count("command"), 2,
+                         "flywheel-batch for #203, and one wt switch")
         self.assertEqual(report.dispatched, ("planning-sandbox-design — #201",))
 
     def test_dispatch_puts_the_batchs_items_in_session(self):

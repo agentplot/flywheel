@@ -16,8 +16,8 @@ no filter touches the network. That is not tidiness — it is what lets the
 loops be unit-tested at all, and it is the difference between a coordination
 model implemented in code and one implemented in an agent's judgment.
 
-**A filter never writes.** The bolt loop's flip-consume, the intent loop's
-handoff birth and compose are guards, and guards write. They appear here as
+**A filter never writes.** The bolt loop's flip-consume and the intent
+loop's compose are guards, and guards write. They appear here as
 PLANS — pure functions returning what the loop should write — so that the
 writes stay in the loop's guard stage and the plan stays testable. The
 dry-cycle property the bolt's merge criteria demand ("two consecutive cycles
@@ -47,7 +47,6 @@ ELABORATION = "elaboration"
 PLAN = "plan"
 STALE = "stale"
 TYPE_ASSERTION = "type:assertion"
-TYPE_HANDOFF = "type:handoff"
 
 #: The stage names. A `stage:*` label is ADDITIONAL to the item's `state:*`
 #: label and never a substitute for it — every one of the four inbox filters
@@ -246,8 +245,8 @@ def backfill_parentage(items, batches):
     the live tracker, 2026-08-13: `gh api /repos/agentplot/flywheel/issues/73`
     returns `sub_issues_summary` and no parent of any kind, so
     `Item.from_api`'s `raw.get("parent_batch")` is always `None` there. Both
-    intent guards test `parent_batch is None` — handoff birth for settled
-    assertions, compose for orphan queued items — so without this every
+    intent compose guard tests `parent_batch is None` for orphan queued
+    items — so without this every
     already-batched item on a live milestone reads as an orphan: a second batch
     per cycle, a 422 on the re-attach GitHub refuses (an item joins exactly one
     batch, ever), and a cycle that is never dry.
@@ -480,13 +479,11 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         plus closed milestones whose change still sits in openspec/changes/.
 
     **`sweep` covers a hole in that filter, and the hole is real.** Compose
-    and handoff birth appear only in the INTENT loop's filter — so an intent
-    whose last question just closed, leaving settled unbatched assertions
-    but no ready item and no Ready batch, is a milestone with no job by the
-    literal filter, and the loop that would birth its handoff is never
-    started. The same goes for orphan `state:queued` items. Today's fleet
-    driver covers this with its `compose_ms` proxy; a literal reading loses
-    it. Queued as a question against the record rather than resolved here.
+    appears only in the INTENT loop's filter — so orphan `state:queued`
+    items on a milestone with no ready item and no Ready batch name no job
+    by the literal filter. Today's fleet driver covers this with its
+    `compose_ms` proxy; a literal reading loses it. Queued as a question
+    against the record rather than resolved here.
 
     The asymmetry that makes the sweep safe is worth stating, because the
     whole design leans on it: **a server filter may over-approximate; a loop
@@ -574,16 +571,12 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         if item.ready or item.in_progress:
             add(item.milestone, "run", f"#{item.number} {item.state or ''}".strip())
         elif (sweep and item.queued and item.parent_batch is None
-              and not item.is_container):
+              and not item.is_container and not item.is_assertion):
             # over-approximation: compose may have work here. Batch parents
-            # are containers, never composable work — counting them keeps a
-            # job open forever (compose_plan skips them for the same reason).
+            # are containers and assertions are construction's — counting
+            # either keeps a job open forever (compose_plan skips both for
+            # the same reason).
             add(item.milestone, "run", f"#{item.number} queued and unbatched")
-        elif (sweep and item.is_assertion and item.parent_batch is None
-              and item.milestone.startswith(INTENT_PREFIX)):
-            # over-approximation: handoff birth may have work here. The
-            # blocker check is the loop's, not the server's.
-            add(item.milestone, "run", f"#{item.number} unbatched assertion")
 
     for milestone in ready_batch_milestones:
         if milestone_slug(milestone) is not None:
@@ -722,8 +715,7 @@ def bolt_inbox(snapshot, slug):
     units at board Status Ready.
 
     The record's filter is **silent on blockers** — it says `state:ready`,
-    full stop, and `tracker.md` invariant 6 uses "no open blockers" only for
-    handoff birth. This returns exactly what the record says; `unblocked`
+    full stop. This returns exactly what the record says; `unblocked`
     below is offered beside it so a caller that wants the stricter set does
     not have to re-derive it. The silence is noted on #76 rather than
     resolved by inference.
@@ -785,13 +777,6 @@ def unblocked(snapshot, items):
 # 3 · intent loop
 # ---------------------------------------------------------------------------
 
-@dataclass(frozen=True)
-class HandoffPlan:
-    action: str              # birth | amend
-    assertions: tuple
-    handoff_item: int = None
-
-
 @dataclass
 class IntentInbox:
     milestone: str
@@ -799,64 +784,19 @@ class IntentInbox:
     ready_units: tuple = ()
     queued_to_flip: tuple = ()
     spent_ready: tuple = ()
-    handoff: HandoffPlan = None
     orphan_queued: tuple = ()
     to_collect: tuple = ()
 
     @property
     def empty(self):
-        return not (self.ready or self.queued_to_flip or self.handoff
+        return not (self.ready or self.queued_to_flip
                     or self.orphan_queued or self.to_collect)
 
 
-def handoff_plan(snapshot, slug):
-    """`tracker.md` invariant 6, which is computable and so is computed.
-
-        An assertion is settled and unbolted when its item is open on
-        intent/<slug>, has no parent batch, and has no open blockers.
-        Whenever such assertions exist at the queue, the loop births one
-        type:handoff item naming exactly that set, or extends the open
-        unstarted one — and while that handoff's unit still sits at Backlog,
-        newcomers join it.
-
-    Two branches, not one: BIRTH when there is no open handoff whose unit is
-    still at Backlog, AMEND when there is. A filter that only ever births
-    produces a second handoff for every newcomer and breaks invariant 2 —
-    an item joins exactly one batch, ever.
-    """
-    milestone = f"{INTENT_PREFIX}{slug}"
-    settled = tuple(
-        i for i in snapshot.on(milestone)
-        if i.is_open and i.is_assertion and i.parent_batch is None
-        and not snapshot.open_blockers(i)
-    )
-    if not settled:
-        return None
-
-    for item in snapshot.on(milestone):
-        if not (item.is_open and TYPE_HANDOFF in item.labels):
-            continue
-        batch = snapshot.batch(item.parent_batch) if item.parent_batch else None
-        # "while that handoff's unit still sits at Backlog, newcomers join
-        # it. The flip seals the batch." A handoff with no unit yet is
-        # equally unsealed.
-        if batch is None or batch.status == STATUS_BACKLOG:
-            return HandoffPlan("amend", settled, item.number)
-    return HandoffPlan("birth", settled)
-
-
-def compose_plan(snapshot, slug, handoff=None):
+def compose_plan(snapshot, slug):
     """Orphan `state:queued` items — queued work with no batch to release
     it. The loop composes them into a unit at Backlog; naming them is this
     module's job, composing them is the guard's.
-
-    **The two sweeps are disjoint, and that is load-bearing.** An assertion
-    handoff birth is already claiming is not also composed into a unit:
-    invariant 2 says an item joins exactly one batch ever, and GitHub 422s
-    the second attempt. Two guards writing to one item is also churn, which
-    breaks the dry-cycle property the bolt's merge criteria test for. The
-    fixture asserts the same split — `intent-tracker.json` annotates #202 as
-    handoff birth's and #203 as compose's, one guard each.
 
     **A batch is not composable work, and the live tracker is what proves it.**
     Measured on `intent/relay-delivery`, 2026-08-13: #46 is an `elaboration`
@@ -869,12 +809,14 @@ def compose_plan(snapshot, slug, handoff=None):
     sweep skips.
     """
     milestone = f"{INTENT_PREFIX}{slug}"
-    claimed = {i.number for i in (handoff.assertions if handoff else ())}
+    # Assertions are construction's, never a design session's: the planner
+    # cards their work from the book, so composing one into an elaboration
+    # would charge a design session for an item no design type can work.
+    # They sit on the milestone uncomposed.
     return tuple(
         i for i in snapshot.on(milestone)
         if i.is_open and i.queued and i.parent_batch is None
-        and i.number not in claimed
-        and not i.is_container
+        and not i.is_container and not i.is_assertion
     )
 
 
@@ -914,23 +856,21 @@ def collect_plan(snapshot, slug):
 
 
 def intent_inbox(snapshot, slug):
-    """The bolt filter's shape on an intent milestone, plus the two guard
-    sweeps the record names: handoff birth and compose."""
+    """The bolt filter's shape on an intent milestone, plus the compose
+    sweep for orphan queued items."""
     milestone = f"{INTENT_PREFIX}{slug}"
     on_milestone = [i for i in snapshot.on(milestone) if i.is_open]
     units = tuple(
         b for b in snapshot.batches
         if b.at_ready and b.milestone in (None, milestone)
     )
-    handoff = handoff_plan(snapshot, slug)
     return IntentInbox(
         milestone=milestone,
         ready=tuple(i for i in on_milestone if i.ready),
         ready_units=units,
         queued_to_flip=flip_consume_plan(snapshot, milestone),
         spent_ready=ready_consume_plan(snapshot, milestone),
-        handoff=handoff,
-        orphan_queued=compose_plan(snapshot, slug, handoff),
+        orphan_queued=compose_plan(snapshot, slug),
         to_collect=collect_plan(snapshot, slug),
     )
 
@@ -1342,9 +1282,9 @@ class Tracker:
         for raw in raws:
             item = Item.from_api(raw)
             labels = item.labels
-            # Blockers are only ever consulted for OPEN items (`unblocked`,
-            # `handoff_plan` both filter on is_open), so a merge-closed
-            # item's edges are a GET nobody reads.
+            # Blockers are only ever consulted for OPEN items (`unblocked`
+            # filters on is_open), so a merge-closed item's edges are a GET
+            # nobody reads.
             if with_edges and item.is_open:
                 item = Item(
                     **{**item.__dict__,
@@ -1496,7 +1436,7 @@ class Tracker:
                  "--repo", f"{self.org}/{self.repo}", "--body", body)
 
     def create_issue(self, title, body, labels=(), milestone=None):
-        """The one item the intent loop ever creates is the handoff item.
+        """Create one tracker item and return its number.
 
         `gh issue create` prints the URL rather than JSON, so the number comes
         off the end of it; a URL we cannot parse is not fatal — the guard's

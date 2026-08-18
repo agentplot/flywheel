@@ -4,7 +4,7 @@
 [What this bolt builds, one paragraph.]
 
 ## Sources
-- [intent slug] — handoff task: [task text]
+- [intent slug or plan card] — [task text]
 
 ## Repos
 - [repo] · bolt branch `bolt/[slug]` · worktree `~/.herdr/worktrees/[repo]/bolt-[slug]`

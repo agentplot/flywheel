@@ -11,7 +11,7 @@ Seventeen directories:
   (the bolt loop);
 - the thirteen session-type skills, one per type across both loops —
   design: `interactive`, `planning`, `research`, `prototype`,
-  `writeback`, `handoff`; construction: `proposal-writing`,
+  `writeback`; construction: `proposal-writing`,
   `proposal-review`, `spec-writing`, `build`, `test`, `code-review`,
   `human-code-review`;
 - `fleet` — wraps `bin/flywheel`, the per-org fleet command;
@@ -22,5 +22,5 @@ Each skill that has an `evals/` directory brought it along. The suites
 are in a legacy `evals.json` format that `claude plugin eval` does not
 yet read — converting them to the runner's `case.yaml`/`prompt.md`
 format is open work, as are suites for the nine skills that have none:
-the seven construction types, `handoff`, and `fleet`. Both are tracked
+the seven construction types, and `fleet`. Both are tracked
 in the source intent.

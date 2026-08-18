@@ -69,7 +69,7 @@ reports no hooks.
 dispatch is `dispatch`, and every session starts with its session type
 — the FULL type name, exactly as the `type:*` label spells it: `research-<topic>`,
 `planning-<topic>`, `interactive-<topic>`, `prototype-<topic>`,
-`writeback-<topic>`, `handoff-<topic>`, `proposal-writing-<topic>`,
+`writeback-<topic>`, `proposal-writing-<topic>`,
 `proposal-review-<topic>`, `spec-writing-<topic>`, `build-<topic>`,
 `test-<topic>`, `code-review-<topic>`, `human-code-review-<topic>`.
 Never a shorthand: `review-<topic>` cannot say which review type it is,
@@ -98,7 +98,7 @@ carries the default — the one enumeration is the type table in the
 plugin's `openspec/specs/flywheel-session-type-skills/spec.md`: fable
 for planning, interactive and proposal-review; `opus[1m]` for research,
 spec-writing, build, test, code-review and human-code-review; opus for
-prototype, writeback, handoff and proposal-writing — and a work order or
+prototype, writeback and proposal-writing — and a work order or
 invocation may override it; pass whichever applies as `--model <name>`.
 Dispatch, the one standing agent, runs `opus[1m]`, set on its fleet
 row; a loop's sessions take the model its stage names.
@@ -381,14 +381,6 @@ applies the answer removes the label):
 GH_TOKEN=$tok gh issue comment <n> --repo <org>/<tracker> \
   --body "<question — options if any — evidence pointer>"
 GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label needs-operator
-```
-
-A handoff session's custody move — the assertion item leaves the intent's
-milestone for the bolt's, and that move IS the bolting:
-
-```bash
-GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> \
-  --milestone "bolt/<slug>" --remove-label state:queued --add-label state:ready
 ```
 
 Composing a proposed batch is one call — parent issue, sub-issues,

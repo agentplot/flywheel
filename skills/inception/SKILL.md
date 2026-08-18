@@ -114,11 +114,11 @@ model are launch mechanics the loop sets, not work order content.
   what it asks the operator to decide. A report that is genuinely a
   document is a file in the session directory the comment points at. It
   goes on the item and into the pane; there is nobody to prompt.
-- The six design types and their skills: `flywheel:planning`,
+- The five design types and their skills: `flywheel:planning`,
   `flywheel:interactive`, `flywheel:prototype`, `flywheel:research`,
-  `flywheel:writeback`, `flywheel:handoff`. An item's `type:*` label
+  `flywheel:writeback`. An item's `type:*` label
   picks the type and the loop batches by it. Interactive runs under
-  `flywheel-interactive-session`; the other five under
+  `flywheel-interactive-session`; the other four under
   `flywheel-design-session`.
 
 ## Which channel carries which question
@@ -222,21 +222,14 @@ belongs to a session or to the operator.
   every item the session carries has reached `stage:collected`, because
   a branch merged mid-session merges a half-finished tree and a pane
   closed under a running session destroys the work in it.
-- **At the queue**, two guards, then wait. First, birth the handoff when
-  it is due: an assertion is **settled and unbolted** when its item is
-  open on `intent/<slug>` (bolting IS the milestone move to
-  `bolt/<slug>`), has no parent batch, and has no open blockers — when
-  any exist, one `type:handoff` item names exactly that set, born or
-  amended to match, inside one `unit` parent at Status **Backlog** whose
-  sub-issues are the handoff item and that set. Second, compose the
-  orphan queued items into a
-  proposed batch (`flywheel-batch`) at Status **Backlog** — composing is
-  not releasing — and report one line per batch and unbatched item.
-  Moving a batch to Ready is the approval; the handoff session inside a
-  released unit plans the bolt and moves its assertions to
-  `bolt/<slug>`; the server then starts that milestone's bolt loop,
-  which scaffolds its own change — an intent loop never writes a bolt
-  change's artifacts.
+- **At the queue**, one guard, then wait. Compose the orphan queued
+  design items into a proposed batch (`flywheel-batch`) at Status
+  **Backlog** — composing is not releasing — and report one line per
+  batch and unbatched item. A settled assertion is never composed and
+  never handed anywhere: construction work is born by the bolt
+  planner's cards and the operator's approval, and the loop never
+  writes a bolt change's artifacts. Moving a batch to Ready is the
+  approval that charges its design session.
 - **Stop honestly**: nothing ready and the guards wrote nothing → the
   run stops with its report, and a second cycle against an unchanged
   tracker writes nothing. The operator closes the milestone on GitHub —

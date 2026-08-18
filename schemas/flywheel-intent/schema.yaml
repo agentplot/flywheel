@@ -234,21 +234,19 @@ apply:
        (/opsx:new <slug>, bind flywheel-intent), commit, continue.
     1. A batch at Ready with state:queued sub-issues: relabel them
        state:ready. The flip is spent; the labels carry the release.
-    2. HANDOFF BIRTH: any assertion item open on this milestone with
-       no parent batch and no open blocker -> ensure ONE open
-       type:handoff item names exactly that set (create it, or extend
-       the open unstarted one).
-    3. COMPOSE: any state:queued item with no parent batch -> group
-       the orphans into proposed batches (flywheel-batch) at Backlog,
-       by thread. Composing is not releasing; batches wait for the
-       operator.
+    2. COMPOSE: any state:queued design item with no parent batch ->
+       group the orphans into proposed batches (flywheel-batch) at
+       Backlog, by thread. Composing is not releasing; batches wait
+       for the operator. A settled assertion is never composed and
+       never handed anywhere: construction work is born by the bolt
+       planner's cards and the operator's approval.
 
     MODELS - explicit in every call the compiled script makes;
     nothing inherits silently. The workflow's own agents - query+
     guards and every driver - run model sonnet, effort low. Sessions
     take their type's model at agent start (--model): planning and
-    interactive fable; research opus[1m]; prototype, writeback and
-    handoff opus; the merge stage sonnet.
+    interactive fable; research opus[1m]; prototype and writeback
+    opus; the merge stage sonnet.
 
     LIMITS, by session type, in 10-minute wait chunks: research,
     prototype and writeback sessions - after 90 minutes of real
@@ -256,7 +254,7 @@ apply:
     minutes) the driver comments the wait on the batch's first item and adds
     needs-operator (a live wait; dispatch relays), then KEEPS
     waiting; after 4 hours it returns stalled and leaves the pane
-    open. Planning, interactive and handoff sessions hold operator
+    open. Planning and interactive sessions hold operator
     rounds by design: the driver notifies at 90 minutes the same way
     but never returns them stalled.
 
@@ -281,9 +279,8 @@ apply:
       does.
       The session wrote its own records (decisions, assertions, its
       session directory) and queued its own discoveries - whoever
-      finds queues; you create only handoff items and batches. You
-      merge, and you close finished items closed:done on the
-      evidence.
+      finds queues; you create only batches. You merge, and you
+      close finished items closed:done on the evidence.
 
       then re-run the guards and re-query.
 

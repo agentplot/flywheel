@@ -48,18 +48,16 @@ class FixtureContractTest(unittest.TestCase):
     def test_the_intent_fixture_fires_exactly_the_guards_it_annotates(self):
         snap = Snapshot.from_fixture(FIXTURES / "intent-tracker.json")
         box = inbox.intent_inbox(snap, "sandbox-design")
-        self.assertEqual(box.handoff.action, "birth")
-        self.assertEqual([i.number for i in box.handoff.assertions], [202])
-        self.assertEqual([i.number for i in box.orphan_queued], [203])
+        self.assertEqual([i.number for i in box.orphan_queued], [203],
+                         "#202 is an assertion and sits uncomposed — "
+                         "construction's work is born by the planner")
 
-    def test_the_two_sweeps_are_disjoint(self):
-        # invariant 2: an item joins exactly one batch, ever — GitHub 422s
-        # the second attempt, and two guards writing one item is churn.
+    def test_an_assertion_is_never_composed(self):
+        # Assertions are construction's: composing one into an elaboration
+        # would charge a design session for an item no design type works.
         snap = Snapshot.from_fixture(FIXTURES / "intent-tracker.json")
         box = inbox.intent_inbox(snap, "sandbox-design")
-        birth = {i.number for i in box.handoff.assertions}
-        compose = {i.number for i in box.orphan_queued}
-        self.assertEqual(birth & compose, set())
+        self.assertNotIn(202, {i.number for i in box.orphan_queued})
 
 
 # ---------------------------------------------------------------------------
@@ -276,18 +274,17 @@ class ServerInboxTest(unittest.TestCase):
         self.assertEqual([(j.milestone, j.kind) for j in jobs],
                          [("bolt/landed", "archive")])
 
-    def test_the_sweep_covers_the_hole_the_literal_filter_leaves(self):
+    def test_a_settled_assertion_alone_names_no_job(self):
         # An intent whose last question just closed: a settled unbatched
-        # assertion, no ready item, no Ready batch. By the record's words
-        # this milestone has no job, and the loop that would birth its
-        # handoff is never started.
+        # assertion, no ready item, no Ready batch. Nothing to run — the
+        # loop births nothing from an assertion; construction's work is
+        # born by the planner, and starting a loop here would dry-cycle.
         snap = Snapshot(items=[
             item(1, inbox.TYPE_ASSERTION, inbox.QUEUED, milestone="intent/a"),
         ])
-        self.assertEqual(inbox.server_inbox(snap, sweep=False), [],
-                         "the record verbatim: no job, which is the hole")
-        self.assertEqual([j.milestone for j in inbox.server_inbox(snap)],
-                         ["intent/a"])
+        self.assertEqual(inbox.server_inbox(snap, sweep=False), [])
+        self.assertEqual(inbox.server_inbox(snap), [],
+                         "the sweep no longer wakes a loop for it either")
 
     def test_a_server_job_covers_every_milestone_a_loop_would_find_work_on(self):
         # The containment property. A server filter may over-approximate; a
@@ -384,65 +381,6 @@ class BoltInboxTest(unittest.TestCase):
 
 # ---------------------------------------------------------------------------
 # 3 · intent loop — invariant 6, all four rows
-# ---------------------------------------------------------------------------
-
-class HandoffBirthTest(unittest.TestCase):
-
-    def plan(self, items, batches=()):
-        return inbox.handoff_plan(Snapshot(items=items, batches=batches), "a")
-
-    def assertion(self, number, **kw):
-        kw.setdefault("milestone", "intent/a")
-        return Item(number=number, labels=frozenset({inbox.TYPE_ASSERTION}), **kw)
-
-    def test_unparented_with_no_blockers_births(self):
-        got = self.plan([self.assertion(1)])
-        self.assertEqual(got.action, "birth")
-        self.assertEqual([i.number for i in got.assertions], [1])
-
-    def test_an_open_blocker_means_not_settled(self):
-        got = self.plan([self.assertion(1, blocked_by=(2,)),
-                         self.assertion(2)])
-        self.assertEqual([i.number for i in got.assertions], [2])
-
-    def test_a_closed_blocker_means_settled(self):
-        got = self.plan([self.assertion(1, blocked_by=(2,)),
-                         self.assertion(2, state="closed")])
-        self.assertIn(1, [i.number for i in got.assertions])
-
-    def test_an_unseen_blocker_is_treated_as_open(self):
-        got = self.plan([self.assertion(1, blocked_by=(99,))])
-        self.assertIsNone(got)
-
-    def test_a_parented_assertion_is_already_released(self):
-        self.assertIsNone(self.plan([self.assertion(1, parent_batch=7)]))
-
-    def test_an_open_handoff_at_backlog_is_amended_not_duplicated(self):
-        # "while that handoff's unit still sits at Backlog, newcomers join
-        # it" — a filter that only ever births breaks invariant 2.
-        handoff = Item(number=5, labels=frozenset({inbox.TYPE_HANDOFF}),
-                       milestone="intent/a", parent_batch=9)
-        got = self.plan([self.assertion(1), handoff],
-                        batches=[Batch(9, kind=inbox.UNIT,
-                                       status=inbox.STATUS_BACKLOG,
-                                       milestone="intent/a")])
-        self.assertEqual(got.action, "amend")
-        self.assertEqual(got.handoff_item, 5)
-
-    def test_a_sealed_handoff_at_ready_births_the_next_wave(self):
-        # "The flip seals the batch; the next settled wave births the next
-        # handoff."
-        handoff = Item(number=5, labels=frozenset({inbox.TYPE_HANDOFF}),
-                       milestone="intent/a", parent_batch=9)
-        got = self.plan([self.assertion(1), handoff],
-                        batches=[Batch(9, kind=inbox.UNIT,
-                                       status=inbox.STATUS_READY,
-                                       milestone="intent/a")])
-        self.assertEqual(got.action, "birth")
-
-
-# ---------------------------------------------------------------------------
-# 4 · dispatch
 # ---------------------------------------------------------------------------
 
 class DispatchInboxTest(unittest.TestCase):
@@ -667,7 +605,7 @@ class RecordConsistencyTest(unittest.TestCase):
         # Task 4.6: the pane half of the flip, in the skills a design
         # session loads as well as in the profiles that host them.
         for skill in ("planning", "research", "writeback", "interactive",
-                      "prototype", "handoff"):
+                      "prototype"):
             self.assertIn("stage:done",
                           self.read("skills", skill, "SKILL.md"), skill)
         for profile in ("flywheel-design-session", "flywheel-interactive-session"):
@@ -690,7 +628,7 @@ class RecordConsistencyTest(unittest.TestCase):
         # session reads points at the call, and none of them hands it a
         # label edit to copy.
         for skill in ("planning", "research", "writeback", "interactive",
-                      "prototype", "handoff"):
+                      "prototype"):
             flat = " ".join(self.read("skills", skill, "SKILL.md").split())
             self.assertIn("flywheel-stage", flat, skill)
             self.assertNotIn("--remove-label stage:", flat, skill)

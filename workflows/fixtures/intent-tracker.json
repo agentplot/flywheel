@@ -1,19 +1,25 @@
 {
-  "_": "Mock of the QUERY result an intent loop reads each cycle. Field names are the contract; the guards and batching in the apply instruction are computable from these fields alone.",
+  "_": "Exercises the intent guards: #201 ready (dispatch), #202 settled assertion (sits uncomposed \u2014 construction's work is born by the planner), #203 orphan queued (compose).",
   "milestone": "intent/sandbox-design",
   "items": [
     {
       "number": 201,
       "title": "Decide the fixture question",
-      "labels": ["type:planning", "state:ready"],
+      "labels": [
+        "type:planning",
+        "state:ready"
+      ],
       "blocked_by": [],
       "parent_batch": 204,
       "record": "openspec/changes/sandbox-design/questions/fixture-question.md"
     },
     {
       "number": 202,
-      "title": "A settled assertion with no batch and no open blocker (handoff-birth guard should fire)",
-      "labels": ["type:assertion", "state:queued"],
+      "title": "A settled assertion with no batch and no blocker (sits uncomposed)",
+      "labels": [
+        "type:assertion",
+        "state:queued"
+      ],
       "blocked_by": [],
       "parent_batch": null,
       "record": "openspec/changes/sandbox-design/assertions/settled-claim.md"
@@ -21,8 +27,13 @@
     {
       "number": 203,
       "title": "An orphan queued item (compose guard should fire)",
-      "labels": ["type:research", "state:queued"],
-      "blocked_by": [201],
+      "labels": [
+        "type:research",
+        "state:queued"
+      ],
+      "blocked_by": [
+        201
+      ],
       "parent_batch": null,
       "record": null
     }
@@ -32,7 +43,9 @@
       "number": 204,
       "kind": "elaboration",
       "status": "Ready",
-      "sub_issues": [201]
+      "sub_issues": [
+        201
+      ]
     }
   ]
 }
