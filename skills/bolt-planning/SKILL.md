@@ -88,6 +88,27 @@ document** per unit (it becomes the unit card's body), written to be
 approved at a glance and annotated like a chapter. Plain language
 throughout — no coined terms; the book's glossary is the vocabulary.
 
+**What the operator annotates IS what lands on the tracker.** A draft
+put in front of the operator — a planner's, or a design session
+cutting a direct bolt plan — is the milestone description plus the
+unit documents in the exact grammar below, nothing reformatted
+between the round and the board. A draft in any other shape gets
+approved once and then transcribed, and the transcription is where
+plans drift.
+
+**The plan-only path is declared in the bolt summary.** Work whose
+correctness the operator's plan approval and the repo's merge gate
+settle between them — no spec artifact wanted — runs the plan-mode
+path: the loop opens the build session in plan mode, and the plan the
+operator approves in the pane stands as the spec. Declare it with the
+sentence "This bolt runs the plan-mode path." in the bolt summary,
+and bind the units `bolt-quick` (the one type that carries
+`plan_mode: available`). Leave it undeclared and every change is an
+ordinary spec-driven change; `openspec/specs/` advances only on that
+ordinary path, so a plan-mode bolt is invisible to future planning
+runs — the right trade for pages and prose, the wrong one for
+machinery.
+
 ```markdown
 # Unit: <slug>
 
