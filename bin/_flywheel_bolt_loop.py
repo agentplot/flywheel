@@ -2407,8 +2407,13 @@ class BoltLoop:
         # #96–#99 got closed over an unanswered andon (#164). And a bolt
         # branch that never advanced past its cut point has nothing to
         # land: its ancestry into main is vacuously true.
+        for parent in items:
+            # The close-ready wait lives on the unit parent, and the close
+            # that started this landing IS its answer.
+            if parent.is_container and inbox.NEEDS_OPERATOR in parent.labels:
+                self.tracker.remove_label(parent.number, inbox.NEEDS_OPERATOR)
         waiting = [i.number for i in items
-                   if inbox.NEEDS_OPERATOR in i.labels]
+                   if inbox.NEEDS_OPERATOR in i.labels and not i.is_container]
         if waiting:
             return StageOutcome("land", "paused",
                                 "a live wait stands on "
@@ -2767,7 +2772,32 @@ class BoltLoop:
                               f"card(s) {cards}")
             self._finish_observation()
             return report
+        work = [i for i in unlanded if not i.is_container]
+        close_ready = (not box.ready and work
+                       and all(i.merge_closed for i in work)
+                       and any(i.milestone_state == "open" for i in work))
+        if close_ready and not self.dry_run:
+            # The one wait only the operator can end: everything is merged
+            # and every card ruled, and the milestone close releases the
+            # landing. The unit parent carries the wait so Waiting On Me
+            # shows it; the close is the answer, and the landing removes
+            # the label as it begins.
+            for parent in (i for i in open_items if i.is_container
+                           and inbox.NEEDS_OPERATOR not in i.labels):
+                self.tracker.comment(parent.number, (
+                    f"Ready to land: every item is merged to "
+                    f"{self.params.bolt_branch} and every card is ruled. "
+                    f"Closing the {self.params.milestone} milestone releases "
+                    f"the landing to {self.params.main_branch}; the archive "
+                    f"follows it."))
+                self.tracker.add_label(parent.number, inbox.NEEDS_OPERATOR)
+                self.ledger.note(f"close-ready — the wait is on "
+                                 f"#{parent.number} for the operator's close")
+                self._log(f"close-ready: waiting on the operator's milestone "
+                          f"close (marked #{parent.number})")
         if not self.landing_wanted(land, box, unlanded):
+            if close_ready:
+                report.landing = "awaiting the operator's milestone close"
             self._finish_observation()
             return report
         landing_plan = [{

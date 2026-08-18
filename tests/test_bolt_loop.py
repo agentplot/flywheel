@@ -2504,3 +2504,61 @@ class BuildWitnessTest(unittest.TestCase):
             outcome = program.build_stage(batch)
             self.assertEqual(outcome.status, "done")
             self.assertEqual(runner.launched, [])
+
+
+class CloseReadyTest(unittest.TestCase):
+    """When everything is merged and every card ruled, the wait moves to
+    the operator — needs-operator on the unit parent, visible in Waiting
+    On Me — and the close that starts the landing answers it."""
+
+    def merged_open_milestone(self):
+        return Snapshot(items=[
+            item(9, inbox.UNIT, title="Unit: x"),
+            Item(number=1, milestone="bolt/x", title="one", state="closed",
+                 labels=frozenset({inbox.CLOSED_MERGED})),
+        ], milestone="bolt/x")
+
+    def test_all_merged_on_an_open_milestone_marks_the_parent(self):
+        snap = self.merged_open_milestone()
+        tracker = FakeTracker(snap)
+        program = a_loop(tracker)
+        program.run(max_cycles=1)
+        self.assertIn(("add_label", 9, inbox.NEEDS_OPERATOR), tracker.writes)
+        comments = [w for w in tracker.writes
+                    if w[0] == "comment" and w[1] == 9]
+        self.assertTrue(any("Closing the bolt/x milestone" in w[2]
+                            for w in comments))
+
+    def test_the_mark_is_written_once(self):
+        snap = Snapshot(items=[
+            item(9, inbox.UNIT, inbox.NEEDS_OPERATOR, title="Unit: x"),
+            Item(number=1, milestone="bolt/x", title="one", state="closed",
+                 labels=frozenset({inbox.CLOSED_MERGED})),
+        ], milestone="bolt/x")
+        tracker = FakeTracker(snap)
+        a_loop(tracker).run(max_cycles=1)
+        self.assertNotIn(("add_label", 9, inbox.NEEDS_OPERATOR),
+                         tracker.writes, "an existing mark is not re-written")
+
+    def test_the_close_answers_the_parents_wait(self):
+        # A container's needs-operator never refuses the landing; the close
+        # that started it is the answer, and the label comes off.
+        snap = Snapshot(items=[
+            item(9, inbox.UNIT, inbox.NEEDS_OPERATOR, title="Unit: x",
+                 milestone_state="closed"),
+            Item(number=1, milestone="bolt/x", milestone_state="closed",
+                 title="one", state="closed",
+                 labels=frozenset({inbox.CLOSED_MERGED})),
+        ], milestone="bolt/x")
+        tracker = FakeTracker(snap)
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                           ("git", "merge-base"): Result(0),
+                           ("git", "rev-parse"): Result(0, "abc\n")})
+        program = a_loop(tracker, shell=shell,
+                         runner=ScriptedRunner(
+                             states=[WaitState.SETTLED_DONE] * 4))
+        outcome = program.land_stage(snap)
+        self.assertIn(("remove_label", 9, inbox.NEEDS_OPERATOR),
+                      tracker.writes)
+        self.assertNotEqual(outcome.status, "paused",
+                            "a container's wait never pauses the landing")
