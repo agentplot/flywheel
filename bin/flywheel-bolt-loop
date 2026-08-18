@@ -89,17 +89,16 @@ def build_loop(args):
     type_name = loop.refuse_type_disagreement(binding, args.type_name)
     config = loop.refuse_stage_declaration(
         binding, loop.load_type(type_name, repo_dir).validate())
-    declared = loop.plan_mode_declared(binding, description, args.plan_mode)
+
 
     params = loop.BoltParams(
         slug=args.slug, org=args.org, repo=args.repo, repo_dir=repo_dir,
         bolt_worktree=worktree, bolt_branch=args.bolt_branch,
         main_branch=args.main_branch, type_name=type_name,
         book_dir=args.book,
-        # Declared, not resolved: the unit's own type gates it per batch —
-        # a bolt mixes types, and the refusal (declared but unavailable)
-        # pauses the batch on the tracker instead of failing the launch.
-        plan_mode=declared, config=config,
+        # Tri-state: None lets each unit's own Mode line decide; the
+        # operator's flag outranks the cards in both directions.
+        plan_mode=args.plan_mode, config=config,
         description=description)
 
     if args.dry_run:

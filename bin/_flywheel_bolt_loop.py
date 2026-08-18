@@ -352,32 +352,6 @@ def read_binding(change_dir):
     return _parse_mapping(path.read_text().splitlines())
 
 
-def plan_mode_declared(binding=None, milestone_description=None, flag=None):
-    """Whether this BOLT declares the plan-mode path.
-
-    Declared per bolt, never by a type, so the carriers are read in the
-    order they bind: the operator's flag wins outright in both
-    directions, then an explicit `plan_mode:` in the change's binding,
-    then the `Mode: plan` line the plan template puts in the milestone
-    description — a structured field the operator saw in the draft, not
-    a phrase anyone types.
-
-    **`skip_specs` is not one of them**, though it reads like one. Measured
-    on this repo, 2026-08-13: every bolt and intent change carries
-    `skip_specs: true`, including `bolt-default` ones — it says the record
-    itself has no spec deltas, not that its items go unspecced. Reading it
-    as the declaration turned a bolt-default bolt into a plan-mode run on
-    the first live invocation.
-    """
-    if flag is not None:
-        return bool(flag)
-    binding = binding or {}
-    if "plan_mode" in binding:
-        return str(binding["plan_mode"]).lower() in ("true", "yes", "available")
-    return bool(re.search(r"^Mode:\s*plan\b", milestone_description or "",
-                           re.I | re.M))
-
-
 #: The keys a bolt might try to vary its stage set with. Read only so they
 #: can be REFUSED — the stage set is the bound type's, never the bolt's.
 STAGE_DECLARATION_KEYS = ("stages", "verify", "skip_verify")
@@ -386,11 +360,10 @@ STAGE_DECLARATION_KEYS = ("stages", "verify", "skip_verify")
 def refuse_stage_declaration(binding, config):
     """A per-bolt stage declaration is refused, not honoured quietly.
 
-    Symmetric with `resolve_plan_mode`, and for the same reason: **the bolt
-    type is the scrutiny the release approved, and no program downgrades
-    it.** Skipping verify is `bolt-direct`'s property alone, exactly as the
-    plan-mode path is `bolt-quick`'s, so a `stages:` or `verify:` key in a
-    change's binding raises here rather than being ignored.
+    The bolt type is the scrutiny the release approved, and no program
+    downgrades it: skipping verify belongs to the types that declare it,
+    so a `stages:` or `verify:` key in a change's binding raises here
+    rather than being ignored.
 
     Ignoring it would satisfy the letter of "not reachable" and lose the
     point: a bolt that wrote `verify: false` into its binding and watched
@@ -449,27 +422,14 @@ def refuse_type_disagreement(binding, type_name):
     return type_name or bound or "bolt-quick"
 
 
-def resolve_plan_mode(declared, config):
-    """Permitted only where the bound type says `plan_mode: available`.
-
-    The bolt type is the scrutiny the release approved, and no program
-    downgrades it. So a declaration against bolt-default
-    or bolt-adversarial is refused here rather than honoured quietly.
-    """
-    if not declared:
-        return False
-    if not config.plan_mode_available:
-        raise LoopError(
-            f"the plan-mode path is declared but type {config.name!r} does not "
-            f"offer it (plan_mode: {config.plan_mode!r}) — plan-mode is "
-            f"bolt-quick-only, and the type is the scrutiny the release approved")
-    return True
-
-
 #: The unit card's Type line, the plan template's structured field. The
 #: card body is frozen by the approval, so what this reads is what the
 #: operator approved.
 UNIT_TYPE = re.compile(r"^Type:\s*`?(bolt-[a-z-]+)`?", re.M)
+
+#: The unit card's Mode, on the same structured line: `plan` runs the
+#: unit's builds in plan mode with no spec artifact; absent means spec.
+UNIT_MODE = re.compile(r"^(?:Type:.*?·\s*)?Mode:\s*(spec|plan)\b", re.M | re.I)
 
 
 # ---------------------------------------------------------------------------
@@ -965,7 +925,7 @@ class BoltParams:
     bolt_branch: str = None
     main_branch: str = "main"
     type_name: str = "bolt-quick"
-    plan_mode: bool = False
+    plan_mode: bool = None      # tri-state: None = each unit's Mode decides
     config: LoopConfig = None
     runner_config: dict = None
     #: The bolt milestone's description — the planner's summary, which the
@@ -1013,7 +973,7 @@ class BoltLoop:
         self._unit_configs = {}
         #: The plan-mode in force for the batch being driven — the bolt's
         #: declaration gated by the driven unit's own type.
-        self.active_plan_mode = params.plan_mode
+        self.active_plan_mode = bool(params.plan_mode)
         self.tracker = tracker
         self.dry_run = dry_run
         self.ledger = ledger or obs.NullLedger()
@@ -2866,30 +2826,37 @@ class BoltLoop:
     # -- the cycle ---------------------------------------------------------
 
     def unit_config(self, batch, snapshot):
-        """The type the batch runs under: its unit's, else the bolt's.
+        """(type config, plan-mode) for the batch: its unit's, else the bolt's.
 
-        The unit card's `Type:` line is the plan template's structured
-        field, chosen by the planner and frozen by the operator's
-        approval — so the stage set, strategy and plan-mode availability
-        are the UNIT's, and a bolt mixes types the way its plan said it
-        would. A batch with no unit, or a unit naming no type, runs the
-        bolt's bound type. A type that names no known schema is refused
-        loudly (LoopError), never downgraded to the fallback: the type is
-        the scrutiny the approval bought.
+        The unit card's `Type:` and `Mode:` are the plan template's
+        structured fields, chosen in the draft the operator saw and
+        frozen by the approval — so the stage set, strategy and
+        construction path are the UNIT's, and a bolt mixes them the way
+        its plan said it would. A batch with no unit, or a unit naming
+        no type, runs the bolt's bound type in spec mode. A type that
+        names no known schema is refused loudly (LoopError), never
+        downgraded to the fallback: the type is the scrutiny the
+        approval bought. The operator's `--plan-mode` flag outranks the
+        card in both directions.
         """
         parent = next((snapshot.item(n).parent_batch for n in batch.numbers
                        if snapshot.item(n) is not None
                        and snapshot.item(n).parent_batch), None)
         if parent is None:
-            return self.params.config
-        if parent in self._unit_configs:
-            return self._unit_configs[parent]
-        card = snapshot.item(parent)
-        match = UNIT_TYPE.search((card.body or "") if card else "")
-        config = (load_type(match.group(1), self.params.repo_dir)
-                  if match else self.params.config)
-        self._unit_configs[parent] = config
-        return config
+            return self.params.config, bool(self.params.plan_mode)
+        if parent not in self._unit_configs:
+            card = snapshot.item(parent)
+            body = (card.body or "") if card else ""
+            match = UNIT_TYPE.search(body)
+            config = (load_type(match.group(1), self.params.repo_dir)
+                      if match else self.params.config)
+            mode = UNIT_MODE.search(body)
+            plan = mode is not None and mode.group(1).lower() == "plan"
+            self._unit_configs[parent] = (config, plan)
+        config, plan = self._unit_configs[parent]
+        if self.params.plan_mode is not None:
+            plan = bool(self.params.plan_mode)
+        return config, plan
 
     def _batch_plan(self, batch):
         """One batch's drive expectations, keyed by stage — the rows the
@@ -3009,13 +2976,13 @@ class BoltLoop:
                 continue
             self.flip_in_progress(batch.numbers)
             try:
-                config = self.unit_config(batch, snapshot)
+                config, plan = self.unit_config(batch, snapshot)
             except LoopError as error:
                 self.pause(batch.numbers, f"The unit names a type the loop "
                                           f"cannot load: {error}")
                 outcomes.append(StageOutcome("batch", "paused", str(error)))
                 continue
-            if self.params.plan_mode and not config.plan_mode_available:
+            if plan and not config.plan_mode_available:
                 reason = (f"Mode: plan is declared but the unit's type "
                           f"{config.name!r} does not offer it — the type is "
                           f"the scrutiny the approval bought, and no program "
@@ -3023,8 +2990,7 @@ class BoltLoop:
                 self.pause(batch.numbers, reason)
                 outcomes.append(StageOutcome("batch", "paused", reason))
                 continue
-            self.active_plan_mode = (self.params.plan_mode
-                                     and config.plan_mode_available)
+            self.active_plan_mode = plan
             if config.runs("spec"):
                 spec = self._drive(batch, "spec",
                                    lambda: self.spec_stage(batch))

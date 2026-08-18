@@ -235,7 +235,7 @@ TREE = Path(_TREE.name)
     "Acceptance suites green on the bolt branch.\nLanding: merge\n")
 
 
-def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
+def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=None,
            strategy="ff", ledger=None, **overrides):
     fields = dict(slug="x", org="o", repo="r", repo_dir=str(TREE),
                   bolt_worktree=str(TREE), type_name="bolt-quick",
@@ -427,31 +427,14 @@ class TypeConfigTest(unittest.TestCase):
         self.assertFalse(loop.load_type("bolt-default", ROOT).plan_mode_available)
         self.assertFalse(loop.load_type("bolt-adversarial", ROOT).plan_mode_available)
 
-    def test_a_plan_mode_declaration_against_a_type_that_forbids_it_is_refused(self):
-        # The bolt type is the scrutiny the release approved; a program that
-        # honoured this quietly would be downgrading it.
-        with self.assertRaises(loop.LoopError):
-            loop.resolve_plan_mode(True, loop.load_type("bolt-default", ROOT))
-        self.assertTrue(
-            loop.resolve_plan_mode(True, loop.load_type("bolt-quick", ROOT)))
-
-    def test_the_bolt_declares_plan_mode_and_the_operators_flag_outranks_it(self):
-        # The declaration is the plan template's structured Mode line.
-        self.assertTrue(loop.plan_mode_declared({}, "delivers X.\nMode: plan\n"))
-        self.assertTrue(loop.plan_mode_declared({}, "mode: PLAN"))
-        self.assertTrue(loop.plan_mode_declared({"plan_mode": "true"}, ""))
-        self.assertFalse(loop.plan_mode_declared({}, "an ordinary bolt"))
-        self.assertFalse(loop.plan_mode_declared({}, "Mode: spec"))
-        self.assertFalse(loop.plan_mode_declared({"plan_mode": "true"}, "", flag=False))
-
-    def test_skip_specs_is_not_a_plan_mode_declaration(self):
-        # Every bolt and intent change in this repo carries skip_specs: true,
-        # bolt-default ones included — it says the RECORD has no spec deltas.
-        # Reading it as the declaration ran a bolt-default bolt in plan mode.
-        for path in sorted((ROOT / "openspec" / "changes").glob("*/.openspec.yaml")):
-            binding = loop.read_binding(path.parent)
-            if binding.get("schema") == "bolt-default":
-                self.assertFalse(loop.plan_mode_declared(binding, ""), str(path))
+    def test_plan_mode_availability_is_the_types(self):
+        # Mode is a unit's choice, gated by the unit's type: the cycle
+        # pauses a plan unit whose type lacks the path. These flags are
+        # what that gate reads.
+        self.assertFalse(loop.load_type("bolt-default", ROOT).plan_mode_available)
+        self.assertFalse(loop.load_type("bolt-adversarial", ROOT).plan_mode_available)
+        self.assertTrue(loop.load_type("bolt-quick", ROOT).plan_mode_available)
+        self.assertTrue(loop.load_type("bolt-direct", ROOT).plan_mode_available)
 
     def test_an_unknown_strategy_is_named_rather_than_guessed(self):
         with self.assertRaises(loop.LoopError):
@@ -470,10 +453,6 @@ class TypeConfigTest(unittest.TestCase):
         self.assertEqual(config.stages, ("spec", "build", "merge", "land"))
         self.assertFalse(config.runs("verify"))
         self.assertTrue(all(config.runs(s) for s in ("spec", "build", "merge")))
-
-    def test_plan_mode_is_reachable_on_bolt_direct(self):
-        self.assertTrue(
-            loop.resolve_plan_mode(True, loop.load_type("bolt-direct", ROOT)))
 
     def test_an_unknown_stage_name_is_named_rather_than_silently_skipped(self):
         # `strategy` has raised on an unknown value since this config
@@ -2760,20 +2739,15 @@ class BoltParamsDescriptionTest(unittest.TestCase):
             params = self.built(cli, ["--fixture", str(fixture), "--dry-run"])
         self.assertEqual(params.description, "")
 
-    def test_plan_mode_still_reads_what_it_read_before(self):
-        # The description's other reader is untouched: it is handed the
-        # same value, and still resolves the plan-mode path from it.
+    def test_the_milestone_description_carries_no_mode(self):
+        # Mode moved to the unit card; the description is human prose the
+        # charter is written from, and nothing machine-read lives on it.
         cli = self.cli()
         self.tracker_answering(cli, {"description": "Mode: plan"})
-        seen = []
-        real = cli.loop.plan_mode_declared
-        self.patch(cli.loop, "plan_mode_declared",
-                   lambda binding, description, *rest:
-                   seen.append(description) or real(binding, description, *rest))
         params = self.built(cli)
-        self.assertEqual(seen, ["Mode: plan"],
-                         "the same value, still reaching the same reader")
-        self.assertTrue(params.plan_mode)
+        self.assertIsNone(params.plan_mode,
+                          "the launch reads no mode from the milestone — "
+                          "each unit's own Mode line decides at drive time")
         self.assertEqual(params.description, "Mode: plan")
 
 
@@ -3273,16 +3247,30 @@ class UnitTypeTest(unittest.TestCase):
         program, batch, snapshot = self.loop_with(
             "Sequence: 1 of 1 · builds on: none\n"
             "Type: `bolt-direct` · Price: 2 changes · ~1 day\n")
-        config = program.unit_config(batch, snapshot)
+        config, plan = program.unit_config(batch, snapshot)
         self.assertEqual(config.name, "bolt-direct")
         self.assertFalse(config.runs("verify"))
-        self.assertTrue(config.plan_mode_available,
-                        "the gate-only type carries the plan path")
+        self.assertFalse(plan, "no Mode line means spec")
 
     def test_a_unit_naming_no_type_runs_the_bolts_bound_type(self):
         program, batch, snapshot = self.loop_with("no structured line here")
-        self.assertIs(program.unit_config(batch, snapshot),
-                      program.params.config)
+        config, plan = program.unit_config(batch, snapshot)
+        self.assertIs(config, program.params.config)
+        self.assertFalse(plan)
+
+    def test_the_units_mode_line_declares_the_plan_path(self):
+        program, batch, snapshot = self.loop_with(
+            "Type: `bolt-direct` · Mode: plan · Price: 2 changes · ~1 day")
+        config, plan = program.unit_config(batch, snapshot)
+        self.assertEqual(config.name, "bolt-direct")
+        self.assertTrue(plan, "the card's own Mode line is the declaration")
+
+    def test_the_operators_flag_outranks_the_card_both_ways(self):
+        program, batch, snapshot = self.loop_with(
+            "Type: `bolt-direct` · Mode: plan")
+        program.params.plan_mode = False
+        _, plan = program.unit_config(batch, snapshot)
+        self.assertFalse(plan)
 
     def test_an_unknown_type_is_refused_not_downgraded(self):
         program, batch, snapshot = self.loop_with("Type: `bolt-bogus`")
