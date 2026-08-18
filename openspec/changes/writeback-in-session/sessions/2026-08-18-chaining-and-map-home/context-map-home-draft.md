@@ -10,6 +10,9 @@ one org's blueprint repo is now a misplacement. The operator proposed
 moving the code into flywheel or a new agentplot project, with the map
 JSON living in the blueprint repo it describes.
 
+Annotated by the operator 2026-08-18: **option (a) approved**.
+Closure recorded in `../../decisions/context-map-code-lives-in-the-plugin.md`.
+
 **One split is settled by the dictation itself and every option below
 honors it: data lives with the repo it describes, code lives with the
 machinery that checks it.** The question is only where the code goes.
