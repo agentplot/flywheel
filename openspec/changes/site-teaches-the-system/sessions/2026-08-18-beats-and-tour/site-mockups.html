@@ -382,7 +382,10 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
       <div class="row"><button type="submit">Queue this answer</button><span class="done">queued ✓</span></div>
     </form>
 
-    <h3>The whole page — today's order beside the five beats</h3>
+    <h3>Where today's content lands</h3>
+    <p>The fold is only beat 1 — this maps the rest. Left: today's page, every section badged
+      with its fate. Right: the five-beat page it becomes, plus the one Overview link that
+      absorbs the operator reference. Read it as the move plan for the restructure.</p>
     <div class="strips">
       <div class="strip">
         <h4>Today — hero + five tabs</h4>
@@ -397,8 +400,8 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
         <h4>Restructured — the five beats</h4>
         <div class="sblock hot"><div class="t"><b>1 · What it is</b><span class="badge new">fold</span></div><div class="d">plain AI-DLC-harness sentence + plate + deck; five-beat nav in view</div></div>
         <div class="sblock hot"><div class="t"><b>2 · The problem</b><span class="badge stay">shrunk</span></div><div class="d">why one conversation fails — two speeds, two masters; the three cards survive, the prose halves</div></div>
-        <div class="sblock hot"><div class="t"><b>3 · One idea, walked</b><span class="badge new">new form</span></div><div class="d">compact 7-station walk of one raw sentence, the artifact each step leaves; ratio cells fold in here; links into the tour pages (decision 2)</div></div>
-        <div class="sblock hot"><div class="t"><b>4 · Your word</b><span class="badge new">new</span></div><div class="d">the gate as *your* place: annotate or approve in a browser, one word releases a batch, past the gate it runs without you</div></div>
+        <div class="sblock hot"><div class="t"><b>3 · One idea, walked</b><span class="badge new">new form</span></div><div class="d">compact 7-step walk of one raw sentence, the artifact each step leaves; ratio cells fold in here; links into the tour pages (decision 2)</div></div>
+        <div class="sblock hot"><div class="t"><b>4 · Your word</b><span class="badge new">new</span></div><div class="d">the approval as *your* place: annotate or approve in a browser, one word covers a whole batch, past it the work runs without you</div></div>
         <div class="sblock hot"><div class="t"><b>5 · Install</b><span class="badge stay">trimmed</span></div><div class="d">two commands, doc links; nothing else</div></div>
         <div class="sblock dim"><div class="t"><b>Overview</b><span class="badge leave">one link</span></div><div class="d">actors + write scopes · bolt state machine · plugin-dev — everything the operator needs and the stranger doesn't</div></div>
       </div>
@@ -426,7 +429,7 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
     <form class="q" data-lavish-question="ratio-cells">
       <div class="qt">Q3 — And the ratio cells?</div>
       <p class="qs">The decision marks them beat-3 material, "may move down or into the walk".</p>
-      <label><input type="radio" name="rc" value="fold the four ratio cells into beat 3's compact walk as a closing row (recommended in the mock)"><span><b>Into the walk</b> — a closing row after station 7: "the rings turn at 1 : 2 : 6 : 24, and every turn leaves spec behind." Speed lands right after the journey shows it.</span></label>
+      <label><input type="radio" name="rc" value="fold the four ratio cells into beat 3's compact walk as a closing row (recommended in the mock)"><span><b>Into the walk</b> — a closing row after step 7: "the rings turn at 1 : 2 : 6 : 24, and every turn leaves spec behind." Speed lands right after the journey shows it.</span></label>
       <label><input type="radio" name="rc" value="keep the ratio cells on the fold under the plate, compressed to one line"><span><b>Stay on the fold, one line</b> — compressed to a single strip under the plate. Cost: the fold gets tighter and the numbers arrive before they mean anything.</span></label>
       <label><input type="radio" name="rc" value="cut the ratio cells from the home page; Overview keeps them"><span><b>Cut from home</b> — Overview keeps them. Cost: the page loses its one quantitative hook.</span></label>
       <div class="row"><button type="submit">Queue this answer</button><span class="done">queued ✓</span></div>
@@ -441,8 +444,8 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
     <p class="sub">Beat 3 at full depth. The subject is one idea's journey, never the architecture. Walk it below — the mock is live.</p>
 
     <p>Three candidate concepts, each a raw sentence a stranger might actually say. Switch concepts,
-      then step the seven stations; every station shows <em>what happens</em> and <em>the artifact it
-      leaves behind</em>. The stations never change — that constancy is the lesson. Only the idea does.</p>
+      then walk the seven steps; every step shows <em>what happens</em> and <em>the artifact it
+      leaves behind</em>. The steps never change — that constancy is the lesson. Only the idea does.</p>
 
     <div class="tour" id="tour">
       <div class="concepts" id="concepts" role="tablist"></div>
@@ -453,7 +456,7 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
       </div>
       <div class="tnav">
         <button type="button" id="prev">← Back</button>
-        <button type="button" id="next">Next station →</button>
+        <button type="button" id="next">Next step →</button>
         <span class="pos" id="pos"></span>
       </div>
     </div>
@@ -461,9 +464,9 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
     <form class="q" data-lavish-question="tour-concepts">
       <div class="qt">Q4 — Which concepts ship as tour pages?</div>
       <p class="qs">Each checked concept becomes one walkable page linked from beat 3. Check any; one is enough to ship.</p>
-      <label><input type="checkbox" name="c" value="export-backoff (the rate-limit retry — code-flavoured, shows a real diff)"><span><b>"Exports fail when the API rate-limits us."</b> Code-flavoured; the bolt station shows a real diff. Reads best to engineers.</span></label>
+      <label><input type="checkbox" name="c" value="export-backoff (the rate-limit retry — code-flavoured, shows a real diff)"><span><b>"Exports fail when the API rate-limits us."</b> Code-flavoured; the bolt step shows a real diff. Reads best to engineers.</span></label>
       <label><input type="checkbox" name="c" value="onboarding-email-order (the bug — shows design catching a root cause before build)"><span><b>"Onboarding emails arrive out of order."</b> A bug whose fix is a design decision, not a patch — the strongest argument for the design loop.</span></label>
-      <label><input type="checkbox" name="c" value="dashboard-dark-theme (the UI feature — most universally legible, least code)"><span><b>"Give the dashboard a dark theme."</b> Most universally legible; every station's artifact stays readable to a non-engineer.</span></label>
+      <label><input type="checkbox" name="c" value="dashboard-dark-theme (the UI feature — most universally legible, least code)"><span><b>"Give the dashboard a dark theme."</b> Most universally legible; every step's artifact stays readable to a non-engineer.</span></label>
       <div class="row"><button type="submit">Queue this answer</button><span class="done">queued ✓</span></div>
     </form>
 
@@ -472,14 +475,14 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
       <div class="opt">
         <div class="thumb"><div class="th-step"><i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i><span class="pane"></span></div></div>
         <h4>Stepper <span style="color:var(--ink3);font-weight:400;font-size:11px">(the mock above)</span></h4>
-        <p>One station at a time, prev/next, rail shows where you are. The operator <em>walks</em>; nothing competes for attention.</p>
-        <p class="gain">+ enforces the journey's order; deep-linkable per station</p>
+        <p>One step at a time, prev/next, rail shows where you are. The operator <em>walks</em>; nothing competes for attention.</p>
+        <p class="gain">+ enforces the journey's order; deep-linkable per step</p>
         <p class="cost">− requires seven clicks to see it all</p>
       </div>
       <div class="opt">
         <div class="thumb"><div class="th-scroll"><i></i><i class="on"></i><i></i><i></i></div></div>
         <h4>Scrollytelling</h4>
-        <p>All seven stations as one tall page; the rail pins and lights up as you scroll past each artifact.</p>
+        <p>All seven steps as one tall page; the rail pins and lights up as you scroll past each artifact.</p>
         <p class="gain">+ scroll is the native gesture; no controls to learn</p>
         <p class="cost">− heavier to build well; skimming breaks the beat</p>
       </div>
@@ -495,13 +498,13 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
     <form class="q" data-lavish-question="tour-form">
       <div class="qt">Q5 — Which form do the tour pages take?</div>
       <label><input type="radio" name="tf" value="stepper, as mocked above"><span><b>Stepper</b> — as the mock above behaves.</span></label>
-      <label><input type="radio" name="tf" value="scrollytelling — all stations on one tall page, rail pins and advances on scroll"><span><b>Scrollytelling</b> — one tall page, the rail advances as you scroll.</span></label>
+      <label><input type="radio" name="tf" value="scrollytelling — all steps on one tall page, rail pins and advances on scroll"><span><b>Scrollytelling</b> — one tall page, the rail advances as you scroll.</span></label>
       <label><input type="radio" name="tf" value="all-visible rail — seven columns in one screen"><span><b>All-visible rail</b> — the whole journey in one screen.</span></label>
       <div class="row"><button type="submit">Queue this answer</button><span class="done">queued ✓</span></div>
     </form>
 
     <h3>And the compact walk on the home page (beat 3) — how they meet</h3>
-    <p>The home page carries this strip; the tour pages are its "go deeper". Same stations, one line each:</p>
+    <p>The home page carries this strip; the tour pages are its "go deeper". Same steps, one line each:</p>
     <div class="cwalk">
       <p class="quote">"<i>Exports fail when the API rate-limits us.</i>" — one sentence, walked:</p>
       <div class="cwrow">
@@ -509,9 +512,9 @@ footer .wrap{display:flex;gap:22px;flex-wrap:wrap}
         <div class="cw"><div class="s">intent</div><div class="a">frames it → <b>questions to settle</b></div></div>
         <div class="cw"><div class="s">session</div><div class="a">works it → <b>options, evidence</b></div></div>
         <div class="cw"><div class="s">decision</div><div class="a">you annotate → <b>a decision record</b></div></div>
-        <div class="cw"><div class="s">gate</div><div class="a">one word → <b>a released batch</b></div></div>
+        <div class="cw"><div class="s">approval</div><div class="a">one word → <b>an approved batch</b></div></div>
         <div class="cw"><div class="s">bolt</div><div class="a">spec · build · test → <b>commits</b></div></div>
-        <div class="cw"><div class="s">merged</div><div class="a">release gate → <b>main, task checked</b></div></div>
+        <div class="cw"><div class="s">merged</div><div class="a">acceptance passes → <b>main, task checked</b></div></div>
       </div>
       <p class="deeper">ratios ride here: the rings turn at 1 : 2 : 6 : 24 · <a href="#tour">walk the whole journey →</a></p>
     </div>
@@ -541,7 +544,7 @@ addEventListener("resize", fitVps); fitVps();
 const STATIONS = [
   {key:"dispatch", lbl:"dispatch"}, {key:"intent", lbl:"intent"},
   {key:"session", lbl:"session"}, {key:"decision", lbl:"decision"},
-  {key:"gate", lbl:"gate", gate:true}, {key:"bolt", lbl:"bolt"}, {key:"merged", lbl:"merged"}
+  {key:"gate", lbl:"approval", gate:true}, {key:"bolt", lbl:"bolt"}, {key:"merged", lbl:"merged"}
 ];
 
 const esc = s => s; // all strings below are authored here, not user input
@@ -591,7 +594,7 @@ const CONCEPTS = [
     who:"actor: <i>intent loop</i> · your cost: nothing yet",
     art: treeCard("openspec/changes/export-backoff/",[
       "export-backoff/",
-      "├── <span class='file'>proposal.md</span>      <span class='cm'>the sentence, framed</span>",
+      "├── <span class='file'>intent.md</span>        <span class='cm'>the sentence, framed</span>",
       "├── questions",
       "│   ├── <span class='cm'>#312 retry, queue, or shed load?</span>",
       "│   └── <span class='cm'>#313 what does the API's Retry-After promise?</span>",
@@ -614,12 +617,12 @@ const CONCEPTS = [
       "<span style='color:var(--brass)'>Honour Retry-After</span> when the API sends it.",
       "A send queue is out: it hides latency instead of",
       "surfacing it. <span class='cm'>Closed by the operator, 2026-08-12.</span>"])},
-  gate:{h:"One word releases the whole batch.",
-    p:"The settled work sits on the board as one row. You flip it to Ready — that flip is the gate. Not a meeting, not one question per item: one approval covering the batch.",
+  gate:{h:"One yes covers the whole batch.",
+    p:"The settled work sits in front of you as one row on a board. You approve it once — one word covering the batch. Not a meeting, and not one question per item.",
     who:"actor: <i>you</i> · your cost: one word",
-    art: boardCard("unit · export-backoff","3 assertions released")},
-  bolt:{h:"Past the gate, construction runs without you.",
-    p:"The bolt gives each released assertion its own spec, an independent review, then a build agent in a nested worktree. The decision record is the spec's source of truth — not a memory of a conversation.",
+    art: boardCard("unit · export-backoff","3 changes approved")},
+  bolt:{h:"Past your approval, construction runs without you.",
+    p:"The bolt gives each approved change its own spec, an independent review, then a build agent in a nested worktree. The design book the decision landed in is the spec's source of truth — not a memory of a conversation.",
     who:"actors: <i>bolt loop + construction sessions</i> · your cost: none",
     art: diffCard("lib/export/client.ts","@@ send() — on 429 @@",
       ["throw new ExportError(res.status);"],
@@ -627,7 +630,7 @@ const CONCEPTS = [
        "if (attempt < 5) return this.retry(req, attempt + 1, wait);",
        "throw new ExportError(res.status);"])},
   merged:{h:"Evidence climbs back out.",
-    p:"Acceptance runs on the bolt branch, the release gate passes, the work lands on main — and the landing is reported back so the intent checks its task off. The journey leaves a spec trail the whole way down.",
+    p:"Acceptance runs on the bolt branch, the final checks pass, the work lands on main — and the landing is reported back so the intent checks its task off. The journey leaves a spec trail the whole way down.",
     who:"actor: <i>bolt loop</i> · your cost: none — you already spoke",
     art: mergeCard("9f21c04","feat(export): retry with capped backoff, honour Retry-After",
       ["intent/export-backoff · handoff landed","#312 retry, queue, or shed load? — closed: decided"])}
@@ -645,7 +648,7 @@ const CONCEPTS = [
     who:"actor: <i>intent loop</i> · your cost: nothing yet",
     art: treeCard("openspec/changes/onboarding-email-order/",[
       "onboarding-email-order/",
-      "├── <span class='file'>proposal.md</span>",
+      "├── <span class='file'>intent.md</span>",
       "├── questions",
       "│   ├── <span class='cm'>#298 where is order lost — scheduler or sender?</span>",
       "│   └── <span class='cm'>#299 is 'in order' a promise we ever made?</span>",
@@ -659,28 +662,28 @@ const CONCEPTS = [
       "│                <span class='cm'>order was never enforced, only likely</span>",
       "└── <span class='file'>options.md</span>    <span class='cm'>per-user queue vs delays vs idempotent copy</span>"])},
   decision:{h:"You choose the fix's shape, not its code.",
-    p:"Bigger delays would paper over the race. You pick the real fix: a per-user sequence where each email releases the next. The record says why the cheap option lost.",
+    p:"Bigger delays would paper over the race. You pick the real fix: a per-user sequence where each email unlocks the next. The record says why the cheap option lost.",
     who:"actor: <i>you</i> · your cost: minutes",
     art: mdCard("decisions/sequence-not-schedule.md",[
       "# Decision — order is a sequence, not a schedule",
       "",
       "Onboarding becomes a <span style='color:var(--brass)'>per-user queue</span>: each send",
-      "releases the next. Padding the delays is out —",
+      "unlocks the next. Padding the delays is out —",
       "it shrinks the race without closing it.",
       "<span class='cm'>Closed by the operator, 2026-08-12.</span>"])},
-  gate:{h:"One flip releases the rework.",
-    p:"The batch — the queue, its migration, its tests — is one row on the board. Your word covers all of it at once.",
+  gate:{h:"One yes covers the rework.",
+    p:"The batch — the queue, its migration, its tests — is one row on the board. Your single approval covers all of it at once.",
     who:"actor: <i>you</i> · your cost: one word",
-    art: boardCard("unit · onboarding-email-order","4 assertions released")},
-  bolt:{h:"The bolt rebuilds it against the record.",
-    p:"Spec agents cite the decision record; the build replaces five schedules with one sequence. A reviewer who wasn't in any conversation can still check the code against the record.",
+    art: boardCard("unit · onboarding-email-order","4 changes approved")},
+  bolt:{h:"The bolt rebuilds it against the book.",
+    p:"Spec agents cite the design book; the build replaces five schedules with one sequence. A reviewer who wasn't in any conversation can still check the code against the book.",
     who:"actors: <i>construction sessions</i> · your cost: none",
     art: diffCard("jobs/onboarding.ts","@@ enqueue on signup @@",
       ["for (const step of STEPS) schedule(step, user, step.delay);"],
       ["// decisions/sequence-not-schedule.md — order is a sequence",
        "sequences.start(\"onboarding\", user, STEPS);"])},
   merged:{h:"The bug closes with its why on file.",
-    p:"Merged through the release gate; the intent's task is checked. Six months from now, the record still says why the delays weren't just padded.",
+    p:"Acceptance passes and the work merges to main; the intent's task is checked. Six months from now, the book still says why the delays weren't just padded.",
     who:"actor: <i>bolt loop</i> · your cost: none",
     art: mergeCard("4b8e77a","fix(onboarding): per-user send sequence replaces raced schedules",
       ["intent/onboarding-email-order · handoff landed","#299 is 'in order' a promise? — closed: it is now"])}
@@ -698,7 +701,7 @@ const CONCEPTS = [
     who:"actor: <i>intent loop</i> · your cost: nothing yet",
     art: treeCard("openspec/changes/dashboard-dark-theme/",[
       "dashboard-dark-theme/",
-      "├── <span class='file'>proposal.md</span>",
+      "├── <span class='file'>intent.md</span>",
       "├── questions",
       "│   ├── <span class='cm'>#305 tokens or literals — what's the real count?</span>",
       "│   └── <span class='cm'>#306 does chart colour survive inversion?</span>",
@@ -721,10 +724,10 @@ const CONCEPTS = [
       "Dark ships as one alternate token set. A parallel",
       "dark stylesheet is out — two files, one drift.",
       "<span class='cm'>Closed by the operator, 2026-08-12.</span>"])},
-  gate:{h:"One word, two-stage batch released.",
-    p:"Tokenise, then theme — sequenced inside one released unit. You approve the shape once; the ordering is construction's job.",
+  gate:{h:"One yes, two-stage batch approved.",
+    p:"Tokenise, then theme — sequenced inside one approved batch. You approve the shape once; the ordering is construction's job.",
     who:"actor: <i>you</i> · your cost: one word",
-    art: boardCard("unit · dashboard-dark-theme","2 assertions, sequenced")},
+    art: boardCard("unit · dashboard-dark-theme","2 changes, sequenced")},
   bolt:{h:"Construction does the boring part perfectly.",
     p:"The tokenise pass is exactly the work agents are good at: 61 mechanical edits, each checkable against the record. Then the theme is genuinely one file.",
     who:"actors: <i>construction sessions</i> · your cost: none",
@@ -753,16 +756,16 @@ function renderConcepts(){
 }
 function renderRail(){
   $("rail").innerHTML = STATIONS.map((s,i)=>
-    `<button type="button" class="st ${s.gate?'gate':''} ${i===si?'on':''} ${i<si||i<=maxSeen?'seen':''}" data-i="${i}" aria-label="station ${i+1}: ${s.lbl}">
+    `<button type="button" class="st ${s.gate?'gate':''} ${i===si?'on':''} ${i<si||i<=maxSeen?'seen':''}" data-i="${i}" aria-label="step ${i+1}: ${s.lbl}">
       <span class="dot"></span><span class="lbl">${s.lbl}</span></button>`).join("");
 }
 function renderStage(){
   const c = CONCEPTS[ci], s = STATIONS[si], d = c.st[s.key];
   $("happens").innerHTML =
-    `<div class="k">station ${si+1} of 7 · ${s.lbl}</div><h4>${d.h}</h4><p>${d.p}</p><div class="who">${d.who}</div>`;
+    `<div class="k">step ${si+1} of 7 · ${s.lbl}</div><h4>${d.h}</h4><p>${d.p}</p><div class="who">${d.who}</div>`;
   $("artifact").innerHTML = d.art;
   $("prev").disabled = si===0;
-  $("next").textContent = si===6 ? "Journey complete ✓" : "Next station →";
+  $("next").textContent = si===6 ? "Journey complete ✓" : "Next step →";
   $("next").disabled = si===6;
   $("pos").textContent = `"${c.quote}" · ${si+1} / 7`;
 }
