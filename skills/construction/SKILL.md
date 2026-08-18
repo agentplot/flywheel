@@ -75,10 +75,9 @@ staged work is never swept into a commit that did not mean it.
 
 ## The item flow
 
-A released assertion carries `type:assertion`, and it is the one
-tracked object for its whole construction: the stages below create no
-items of their own — the dynamic workflow decides those moves, and the
-item's comments record them. Each item's progress is its comment
+A work item is the one tracked object for its whole construction: the
+stages below create no items of their own — the bolt loop decides
+those moves, and the item's comments record them. Each item's progress is its comment
 history — spec landed, review verdict, build done, merge SHA — plus the
 one `stage:*` label naming its leading edge. Its
 label stays `state:in-progress` from first spec work until the

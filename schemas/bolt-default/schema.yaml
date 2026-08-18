@@ -108,131 +108,17 @@ apply:
   requires:
     - bolt
   instruction: |
-    Loop for the bolt <slug>. State lives on the tracker; you hold
-    none. Compile this instruction into the change's own
-    openspec/changes/<slug>/workflow.js and launch it as ONE run
-    (Workflow {scriptPath}); after answering a pane or folding a
-    correction, resume the same run ({scriptPath, resumeFromRunId}).
-    Editing this instruction is how the loop changes; recompile when
-    it does (instruction hash in the script header).
+    This change is a bolt's record, and nothing here is applied by
+    hand. Construction is driven by the flywheel server's bolt loop —
+    `flywheel-bolt-loop`, a program the server starts for the
+    `bolt/<slug>` milestone. The operator approves unit cards on the
+    board; the loop expands each approved card into work items, charges
+    spec, build, verify and review sessions per item, merges each
+    item's branch through the repo's gate, and the operator's milestone
+    close releases the landing to main. The record grows as the loop
+    works: `bolt.md` is the charter, and each approved unit's document
+    arrives as `units/<slug>.md` at expansion.
 
-    INPUT, each cycle, read fresh from the tracker (fields as in
-    <plugin-root>/workflows/fixtures/bolt-tracker.json): the
-    milestone bolt/<slug>'s open items - number, title, labels,
-    blocked_by issue numbers (GitHub's dependency edges, read from
-    the API, never inferred), parent batch, record path - and this
-    bolt's units with their board Status. When launched with a
-    fixture snapshot instead of the live tracker (an isolated run):
-    the snapshot file IS the tracker - read state from it and write
-    every tracker update (labels, moves, closes, comments) back to it
-    instead of GitHub; never touch the real tracker; never land; and
-    collect every write and pane event into a trace array in the run
-    report.
-
-    Two hard rules on the run itself: parse the script's args
-    defensively - an args object that arrives as a JSON string is
-    parsed, never trusted as-is (#29) - and a cycle that cannot read
-    the tracker, mint its token, or resolve its parameters STOPS THE
-    RUN with the failure in the report; a failing cycle never loops.
-
-    THE SCRIPT OWNS ALL WAITING. A session is driven by small agents
-    that each return exactly once, with the loop's own arithmetic as
-    the clock: LAUNCH (idempotent - an agent already running under
-    the name is reused, never duplicated; create pane, start, rename
-    and confirm, deliver the one-prompt order, verify it went
-    working, return without waiting); WAIT, as a script loop - each
-    wait agent runs one bounded herdr agent wait (a single
-    invocation, at most ~10 minutes) and reports settled, blocked,
-    or still working; the SCRIPT counts the chunks and applies the
-    limits; then READ AND CLOSE (pane report out - ghost text is not
-    input - tab closed, outcome returned). No agent parks a monitor,
-    returns a placeholder, or counts time. A blocking operator round
-    - plannotator, a lavish page - takes the same shape: launched
-    once with a result file, waited on by the loop.
-
-    GUARDS - checked EVERY cycle, in this order; each is idempotent.
-    A guard records only the WRITES it makes - a check that changed
-    nothing records nothing, or the loop never quiets:
-
-    0. No change dir at openspec/changes/<slug>: scaffold it
-       (/opsx:new <slug>, bind this schema), commit, continue.
-    1. A unit at Ready with state:queued sub-issues: relabel them
-       state:ready. The flip is spent; the labels carry the release.
-    2. A state:queued item with no parent batch: it rides this bolt
-       only if the bolt cannot land without it - otherwise move it to
-       the intent that owns its subject, or leave it unmilestoned for
-       dispatch. Compose what remains into a unit at Backlog.
-
-    MODELS - explicit in every call the compiled script makes;
-    nothing inherits a default silently. The workflow's own agents -
-    query+guards and every driver - run model sonnet, effort low.
-    The sessions drivers start take their model at agent start
-    (--model): spec-writing, build, merge, and landing sessions run
-    sonnet while the mechanics are pinned (this overrides the type
-    table's opus[1m] for construction; reviews will re-raise it).
-
-    LIMITS, by session type, compiled into each driver: for
-    construction sessions (spec, build, merge, land), after 90
-    minutes of real waiting (a chunk counts only when its wait ran the
-    full 10 minutes) the driver comments the wait on the item and
-    adds needs-operator - a live wait, dispatch relays - and KEEPS
-    waiting; after 4 hours it returns stalled and leaves the pane
-    open. Other types take these defaults until their own limits are
-    stated here.
-
-    WORK - while any item is state:ready. Stripped while the loop
-    mechanics are pinned: no review steps; the merge gate is the only
-    reviewer; reviews return to this instruction once the mechanics
-    settle.
-
-      for each ready item, pipelined (item B specs while item A
-      builds):
-        SPEC: one spec-driven change per assertion, derived from the
-          assertion record and the decisions it cites. A session in a
-          herdr pane; work order ONE prompt, /opsx:ff <change> as its
-          first line. Flip the item state:in-progress; openspec
-          validate --strict green before it counts.
-        BUILD: /opsx:apply <change> as the first line, on the same
-          item's worktree (nested off the bolt branch); re-read every
-          neighbour the spec claims something about from disk.
-      MERGE, one item at a time - the bolt branch has one writer:
-        session branch to the bolt branch through the gate (never
-        --yes); archive the change on green; the session's pane
-        closes here. A merge driver runs in the bolt branch's
-        EXISTING worktree - a work session gets a fresh worktree; a
-        merge or landing stage never does.
-      then re-run the guards and re-query.
-
-    LAND when every item is merged and bolt.md's merge criteria hold
-    - verified by the landing session, a driven stage like any other,
-    which refuses to land otherwise. The landing mode is bolt.md's to
-    declare in its Merge criteria: "Landing: merge" (the default)
-    lands the bolt branch on each repo's main through the gate, one
-    writer at a time, comments the landing SHA on each item and
-    upgrades its reason from closed:merged to closed:done; "Landing:
-    pr" opens a pull request from the bolt branch instead and reports
-    its URL, the items staying at closed:merged until the PR merges. The landing session runs in the repo's main
-    checkout. A failing criterion births ONE fix item, born
-    state:ready on this bolt - the release that approved the merge
-    criteria covers meeting them; an open fix item for that criterion
-    blocks a duplicate, and a criterion that fails again after its
-    fix landed is the andon cord, not another item. New scope still
-    queues.
-
-    A session that edits files or may need the operator always gets a
-    herdr pane; pure read-and-report may run in-process. Tracker
-    writes run as the app (GH_TOKEN via
-    <plugin-root>/bin/flywheel-token; if the token cannot mint, stop
-    - never ambient credentials). Invocations:
-    skills/_reference/herdr.md.
-
-    STOP when no item is state:ready and the guards changed nothing:
-    report the queue one line each and the run ID. When every item is
-    closed, propose closure - the operator's milestone close is the
-    archive signal.
-
-    THE ANDON CORD - a session that finds the work has gone wrong in
-    a way no further round will fix - the spec contradicts the
-    decision it cites, the tree contradicts the spec - stops, holds,
-    and asks the operator. Stopping on a defect is expected
-    behaviour.
+    If you are a session reading this, your work order — not this
+    instruction — names your task. A session with no work order has no
+    business applying a bolt record; report and settle.
