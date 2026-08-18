@@ -492,7 +492,7 @@ def apply_compose(writer, items, config, snapshot=None):
                 into = b.number
                 break
     compose_batch(writer, config, "elaboration",
-                  f"Work the queued design items on {config.slug}",
+                  f"Elaboration: {config.slug}",
                   [i.number for i in sorted(items, key=lambda i: i.number)],
                   into=into)
 
