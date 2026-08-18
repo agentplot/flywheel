@@ -213,11 +213,19 @@ class FakeShell:
         return self.default
 
 
-#: A worktree whose change directory exists, so guard 0 (scaffold-if-missing)
-#: is a no-op everywhere except where a test wants it to fire.
+#: A worktree whose change record is CHARTERED, so guard 0
+#: (charter-if-missing) is a no-op everywhere except where a test wants it
+#: to fire. A directory alone no longer buys that: the guard's test is
+#: `bolt.md`, so a bare directory here would drive a scaffold session into
+#: every cycle test in the file. The charter is the minimum the guard's own
+#: reader — `merge_criteria()`, which the landing reads through — accepts.
 _TREE = tempfile.TemporaryDirectory()
 TREE = Path(_TREE.name)
 (TREE / "openspec" / "changes" / "x").mkdir(parents=True, exist_ok=True)
+(TREE / "openspec" / "changes" / "x" / "bolt.md").write_text(
+    "# Bolt: x\n\n## Scope\nWhat this bolt builds.\n\n## Sources\n- a source\n"
+    "\n## Repos\n- flywheel \u00b7 bolt branch `bolt/x`\n\n## Merge criteria\n"
+    "Acceptance suites green on the bolt branch.\nLanding: merge\n")
 
 
 def a_loop(tracker, runner=None, shell=None, clock=None, plan_mode=False,
@@ -2487,21 +2495,160 @@ class ScaffoldCharterTest(unittest.TestCase):
             program.guard_scaffold([])
             self.assertEqual(len(seen), 1, "merge_criteria() is what was asked")
 
-    # -- the dry-cycle property (3.3) -------------------------------------
+    # -- the charter is the test, not the directory (5.3) -----------------
 
-    def test_a_present_change_directory_returns_before_the_check(self):
-        # The check runs only where a session was just driven. A charter
-        # that lost its sections later is the landing's refusal to make,
-        # not a guard's — a guard would have to rewrite committed prose.
+    def test_the_charter_is_the_test_not_the_directory(self):
+        # The distinction that used to collapse, asserted as the pair it
+        # is: a change directory carrying no `bolt.md` is a charterless
+        # record and gets a session; the same directory carrying one is
+        # done and gets none.
         with tempfile.TemporaryDirectory() as tmp:
             self.change_dir(tmp).mkdir(parents=True)
+            runner = SettlingScaffold(self.change_dir(tmp))
+            program = self.loop_over(tmp, runner=runner)
+            self.assertIsNone(program.guard_scaffold([]))
+            self.assertEqual(len(runner.launched), 1,
+                             "a directory without a charter is owed one")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.change_dir(tmp).mkdir(parents=True)
+            (self.change_dir(tmp) / "bolt.md").write_text(CHARTER)
             runner = ScriptedRunner()
             program = self.loop_over(tmp, runner=runner)
             actions = []
-            self.assertIsNone(program.guard_scaffold(actions),
-                              "no bolt.md here, and the guard still passes")
-            self.assertEqual(actions, [])
+            self.assertIsNone(program.guard_scaffold(actions))
             self.assertEqual(runner.launched, [])
+            self.assertEqual(actions, [])
+
+    def test_a_charterless_change_directory_is_continued_not_created(self):
+        # `/opsx:new` cannot be obeyed on a change that exists — its own
+        # guardrail says to continue instead — and a session that cannot
+        # obey its order writes nothing while reading as settled.
+        with tempfile.TemporaryDirectory() as tmp:
+            self.change_dir(tmp).mkdir(parents=True)
+            runner = SettlingScaffold(self.change_dir(tmp))
+            program = self.loop_over(
+                tmp, runner=runner,
+                description="Carve the loop's boundaries. Three units, ~9 items.")
+            actions = []
+            self.assertIsNone(program.guard_scaffold(actions))
+            order = runner.launched[0].order
+            self.assertTrue(order.startswith("/opsx:continue x"),
+                            "the invocation adds the missing artifact")
+            self.assertNotIn("/opsx:new x", order)
+            self.assertNotIn("/opsx:ff", order)
+            for heading in loop.BoltLoop.CHARTER_SECTIONS:
+                self.assertIn(heading, order, heading)
+            self.assertIn("Landing: merge", order)
+            self.assertIn("openspec instructions bolt --change x", order)
+            self.assertIn("Carve the loop's boundaries. Three units, ~9 items.",
+                          order, "the description is the charter's stated source")
+            self.assertIn("No unit's plan document goes into bolt.md", order)
+            self.assertIn("Commit by pathspec", order)
+            self.assertIn("Deliver by settling", order)
+            self.assertIn(program.params.type_name, order,
+                          "the order names the schema the change is bound to")
+            self.assertIn("confirm the binding", order)
+            self.assertEqual(actions,
+                             ["wrote the charter into openspec/changes/x"])
+
+    def test_both_paths_drive_the_same_session_name(self):
+        # The session id derives from the name and cwd, so a charterless
+        # record found on a later pass resumes the warm scaffold
+        # conversation rather than opening a cold second one.
+        names = []
+        for pre_made in (False, True):
+            with tempfile.TemporaryDirectory() as tmp:
+                if pre_made:
+                    self.change_dir(tmp).mkdir(parents=True)
+                runner = SettlingScaffold(self.change_dir(tmp))
+                self.loop_over(tmp, runner=runner).guard_scaffold([])
+                names.append(runner.launched[0].name)
+        self.assertEqual(names[0], names[1])
+
+    def test_the_two_orders_carry_the_same_charter_text(self):
+        # One expression in the program, so the charter a record gets does
+        # not depend on which path wrote it. Only the framing and the
+        # invocation above it differ.
+        marker = "bolt.md is the BOLT'S CHARTER"
+        charters, orders = [], []
+        for pre_made in (False, True):
+            with tempfile.TemporaryDirectory() as tmp:
+                if pre_made:
+                    self.change_dir(tmp).mkdir(parents=True)
+                runner = SettlingScaffold(self.change_dir(tmp))
+                self.loop_over(tmp, runner=runner,
+                               description="Three units, ~9 items.").guard_scaffold([])
+                order = runner.launched[0].order
+                self.assertIn(marker, order)
+                orders.append(order)
+                charters.append(order[order.index(marker):])
+        self.assertEqual(charters[0], charters[1],
+                         "one charter text, two invocations")
+        self.assertNotEqual(orders[0], orders[1], "the framing does differ")
+        for order in orders:
+            for heading in loop.BoltLoop.CHARTER_SECTIONS:
+                self.assertIn(heading, order, heading)
+            self.assertIn("Three units, ~9 items.", order)
+
+    def test_the_post_settle_reason_is_one_string_whichever_path_drove_it(self):
+        # A charter written into an existing change is held to exactly
+        # what a charter written with its directory is held to.
+        def failure_from(pre_made, charter):
+            with tempfile.TemporaryDirectory() as tmp:
+                if pre_made:
+                    self.change_dir(tmp).mkdir(parents=True)
+                runner = SettlingScaffold(self.change_dir(tmp), charter=charter)
+                program = self.loop_over(tmp, runner=runner)
+                actions = []
+                failure = program.guard_scaffold(actions)
+                self.assertEqual(actions, [],
+                                 "a charter that fails records no action")
+                return failure
+
+        creating = failure_from(False, None)
+        continuing = failure_from(True, None)
+        self.assertIsNotNone(continuing, "the check runs on both paths")
+        self.assertEqual(creating, continuing)
+        self.assertIn("openspec/changes/x/bolt.md", continuing)
+        self.assertIn("## Merge criteria", continuing)
+        self.assertIn("## Scope", continuing)
+        bodyless = failure_from(
+            True, "# Bolt: x\n\n## Scope\ns\n\n## Merge criteria\n\n")
+        self.assertEqual(bodyless, continuing)
+
+    # -- the dry-cycle property (3.3) -------------------------------------
+
+    def test_a_present_charter_with_no_readable_criteria_is_left_alone(self):
+        # A charter that has lost its sections, or never carried them, is
+        # the landing's refusal to make. A guard that repaired it would be
+        # a second writer over committed prose.
+        with tempfile.TemporaryDirectory() as tmp:
+            self.change_dir(tmp).mkdir(parents=True)
+            (self.change_dir(tmp) / "bolt.md").write_text(UNIT_ONLY)
+            runner = ScriptedRunner()
+            program = self.loop_over(tmp, runner=runner)
+            actions = []
+            self.assertIsNone(program.guard_scaffold(actions))
+            self.assertEqual(runner.launched, [])
+            self.assertEqual(actions, [])
+            self.assertEqual(program.merge_criteria(), "",
+                             "and it still reads back nothing")
+            self.assertEqual((self.change_dir(tmp) / "bolt.md").read_text(),
+                             UNIT_ONLY, "left exactly as it stands")
+
+    def test_dry_run_over_a_charterless_change_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.change_dir(tmp).mkdir(parents=True)
+            runner = ScriptedRunner()
+            program = self.loop_over(tmp, runner=runner, dry_run=True)
+            actions = []
+            self.assertIsNone(program.guard_scaffold(actions))
+            self.assertEqual(runner.launched, [])
+            self.assertEqual(len(actions), 1)
+            self.assertIn("charter", actions[0])
+            self.assertIn("openspec/changes/x", actions[0])
+            self.assertFalse((self.change_dir(tmp) / "bolt.md").exists(),
+                             "and the tree is untouched")
 
     def test_dry_run_still_only_reports_what_it_would_scaffold(self):
         with tempfile.TemporaryDirectory() as tmp:

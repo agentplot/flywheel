@@ -1618,12 +1618,44 @@ class BoltLoop:
                         "## Merge criteria")
 
     def guard_scaffold(self, actions):
-        """0 — scaffold-if-missing.
+        """0 — charter-if-missing.
 
         There is no non-interactive `openspec change new`, so the scaffold
         is a session like every other act of judgment-free work the loop
-        cannot do with a subprocess. Idempotent: the directory existing is
-        the whole test.
+        cannot do with a subprocess.
+
+        **The test is the CHARTER, not the directory that holds it.** It
+        used to be the directory — "the directory existing is the whole
+        test" — and that reads a directory as a charter. They are not the
+        same thing, and the post-settle check below is the proof: a settle
+        is not a charter. `openspec new change` returns the moment the
+        directory is there, so a scaffold session that created it and
+        settled without writing `bolt.md` failed the check on the pass that
+        drove it and then passed every pass after it — `change_dir.exists()`
+        was true and the guard returned above the check. The record walked
+        charterless through expansion, the stages and every merge, and the
+        first reader to say so was `land_stage`'s refusal, after the
+        operator's milestone close had already released the landing. So
+        `bolt.md` is the whole test now: a change directory carrying none is
+        this guard's case on every pass, and is driven to a charter on the
+        pass that finds it.
+
+        **A change that already exists is CONTINUED, not created.** The
+        creating path's `/opsx:new <slug>` cannot be obeyed on a directory
+        that is already there — that command's own guardrail is to suggest
+        `/opsx:continue` instead — and a session that cannot obey its order
+        writes nothing while reading as settled. `/opsx:continue` creates
+        the first `ready` artifact, and on a bolt-bound change missing
+        `bolt.md` that is `bolt`: in every `bolt-*` schema `bolt` is the
+        first declared artifact with `requires: []`. `/opsx:ff` would drive
+        every artifact including the `units/<slug>.md` files the loop writes
+        itself. What the two orders ASK FOR is one text built once below, so
+        the charter a record gets does not depend on which path wrote it;
+        only the framing and the invocation differ. The session name is
+        `scaffold-<slug>` on both paths, so the charterless record found on
+        a later pass resumes the warm scaffold conversation — usually the
+        very session that settled without writing the charter — rather than
+        opening a cold second one.
 
         **What it asks for is a CHARTER.** `bolt.md` is the bolt's charter
         — the delivery statement, the sources, the repos, and the merge
@@ -1664,24 +1696,40 @@ class BoltLoop:
         the whole post-condition. It is now the settle plus the reader:
         `merge_criteria()`, the SAME function the landing reads through, so
         "the guard passed" and "the landing can read it" cannot disagree.
-        The check runs only on the path where a session was just driven, so
-        the dry-cycle property is untouched — a pass that finds the
-        directory already present returns above it, and a charter that lost
-        its sections later is caught by the landing's refusal rather than
-        by a guard that would have to rewrite committed prose.
+        The check runs on BOTH driving paths and gives one reason string, so
+        a charter written into an existing change is held to exactly what a
+        charter written with its directory is held to.
+
+        **A `bolt.md` that is present is never this guard's business.** It
+        returns above everything, whether or not that charter reads back
+        criteria: a charter that has lost its sections is the landing's
+        refusal to make, and a guard that repaired it would be a second
+        writer over committed prose, which outranks the state it came from.
+        That return is also the dry-cycle property — a pass over a
+        chartered record drives nothing, writes nothing and records nothing.
         """
-        if self.params.change_dir.exists():
+        if (self.params.change_dir / "bolt.md").exists():
             return None
+        # The directory without the charter: the change is there and the
+        # artifact is owed. Read once, above the dry-run branch, because it
+        # picks the invocation AND what a dry run says it would do.
+        continuing = self.params.change_dir.exists()
         if self.dry_run:
-            actions.append(f"would scaffold openspec/changes/{self.params.slug} "
-                           f"({self.params.type_name})")
+            actions.append(
+                (f"would write the charter into openspec/changes/"
+                 f"{self.params.slug}, which exists carrying no bolt.md"
+                 if continuing else
+                 f"would scaffold openspec/changes/{self.params.slug}")
+                + f" ({self.params.type_name})")
             return None
         name = session_name("scaffold", self.params.slug)
         described = (self.params.description or "").strip()
         sections = ", ".join(f"`{s}`" for s in self.CHARTER_SECTIONS)
-        order = sessions.work_order(f"/opsx:new {self.params.slug}", (
-            f"Scaffold the bolt record for bolt/{self.params.slug} and bind the "
-            f"{self.params.type_name} schema.\n\n"
+        # ONE statement of what a charter is, used by both invocations.
+        # Two copies would drift the first time either was edited, and the
+        # failure that would produce — a charter whose content depends on
+        # which path wrote it — is the one this guard exists to close.
+        charter = (
             f"bolt.md is the BOLT'S CHARTER, and it is {sections} and nothing "
             f"else. Its merge criteria section states the landing mode on a "
             f"`Landing: merge` or `Landing: pr` line. State that line even if "
@@ -1704,7 +1752,22 @@ class BoltLoop:
             f"Commit by pathspec, in THIS worktree on the "
             f"branch already checked out — never create a branch or worktree; "
             f"the loop cuts the bolt branch after you settle. Do not start any other work, "
-            f"and do not touch the items. Deliver by settling."))
+            f"and do not touch the items. Deliver by settling.")
+        invocation, framing = (
+            (f"/opsx:continue {self.params.slug}",
+             f"The bolt record for bolt/{self.params.slug} already exists at "
+             f"openspec/changes/{self.params.slug}, and its charter is what is "
+             f"owed: there is no bolt.md in it. Add that one artifact to the "
+             f"change that is there — do not create a change and do not "
+             f"scaffold a second one. That change should be bound to the "
+             f"{self.params.type_name} schema; confirm the binding before you "
+             f"write, and bind it if it is not, because a change bound to some "
+             f"other schema has no bolt artifact to continue to.\n\n")
+            if continuing else
+            (f"/opsx:new {self.params.slug}",
+             f"Scaffold the bolt record for bolt/{self.params.slug} and bind "
+             f"the {self.params.type_name} schema.\n\n"))
+        order = sessions.work_order(invocation, framing + charter)
         outcome = self.drive("scaffold", self.spec_for(
             "scaffold", name, self.params.bolt_worktree, order))
         if not outcome.ok:
@@ -1723,7 +1786,10 @@ class BoltLoop:
                     f"bolt-level `## Merge criteria` section with a body — a "
                     f"charter opens with {sections}, and the landing reads the "
                     f"merge criteria to know what to verify")
-        actions.append(f"scaffolded openspec/changes/{self.params.slug}")
+        actions.append(
+            f"wrote the charter into openspec/changes/{self.params.slug}"
+            if continuing else
+            f"scaffolded openspec/changes/{self.params.slug}")
         return None
 
     def guard_topology(self, actions):
