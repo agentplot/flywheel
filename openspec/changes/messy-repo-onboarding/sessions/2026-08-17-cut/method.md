@@ -38,17 +38,21 @@ planning-document import and are laned but not read line by line.
 | lane | means | becomes |
 | --- | --- | --- |
 | `discard` | superseded and restated elsewhere, duplicated, ephemeral, or dead with the repo | nothing; the row is the record that it was seen |
+| `withhold` | live infrastructure identifiers, credentials-adjacent material | a row naming the class and quoting nothing (`findings.md` F11) |
 | `settled-history` | a decision made and closed, or a finding proved | a session-under-intent record + decision record, carrying a books-verdict |
 | `live-work` | forward work, open questions, unbuilt design | a queued tracker item with a provenance pointer, at Backlog |
 
-Two columns qualify the lane and neither was in the promise:
+Two columns qualify the lane, and neither was in the promise:
 
-- **coverage** — for `settled-history` only: is it already in the
-  destination books (`covered`), partly (`partial`), or not
-  (`absent`)? A `covered` row converts to a pointer, not to a chapter.
-- **currency** — is the material still true, or true-when-written? The
-  corpus's own findings log warns that its early blocks describe a
-  since-replaced design (`findings.md` F8).
+- **coverage** — for `settled-history` only: `covered` (the
+  destination books already state it — convert to a pointer, not a
+  chapter), `absent` (they do not), or **`sole-holder`** (nothing
+  anywhere else holds it — it has to survive the corpus before
+  teardown, which is a different act from conversion).
+- **currency** — is the material still true, or true-when-written?
+  The corpus's own findings log warns that its early blocks describe a
+  since-replaced design (`findings.md` F8). `stale` marks a row whose
+  own status line is contradicted by the source of truth.
 
 ## Evidence rule
 
@@ -62,33 +66,54 @@ silently chosen lane — clause 3.
 
 Five parallel readers were dispatched over disjoint clusters
 (`SPIKE.md`; `reports/`; `docs/` + `.claude/spike/`; `archive/` +
-READMEs + fixtures; and a corpus-versus-books overlap audit). **None
-returned before the session settled**, so every row here is the
-session's own reading. That is worth stating rather than smoothing
-over, because it bounds the rows two ways:
+READMEs + fixtures; and a corpus-versus-books overlap audit). **Three
+returned, well after the session had produced and committed a complete
+cut of its own; two (`SPIKE.md`, the overlap audit) never delivered.**
 
-- **Read in full by the session:** all of `SPIKE.md` except the bodies
+So the cut has two layers, and the rows say which they rest on:
+
+- **The session's own reading** — all of `SPIKE.md` except the bodies
   of §12's finding blocks; `docs/book-boundaries.md`,
   `book-supervisor.md`, `book-supervisor-log.md`,
   `book-supervisor-state.json`, `archive/README.md`,
-  `reports/spike-roadmap.html` and `reports/index.html`; the opening
-  status block of every other `docs/` and `.claude/spike/` file; and
-  the relevant chapters of `books/geo-iq` and `books/atlas-kit`.
-- **Laned on the corpus's own evidence rather than a full read:** the
-  four `archive/SPIKE-0*.md` bodies (3,903 lines) and nine of the
-  eleven report bodies. Those rows cite the corpus's own summaries —
-  `archive/README.md`'s per-spike verdicts, `reports/index.html`'s
-  descriptions, `SPIKE.md`'s own citations of each report — which is
-  real evidence and is named as such in the row, but it is weaker
-  than a read, and a later session may sharpen those rows.
+  `reports/spike-roadmap.html` and `index.html`; the opening status
+  block of every other `docs/` and `.claude/spike/` file; and the
+  relevant chapters of `books/geo-iq` and `books/atlas-kit`. This is
+  the only layer covering `SPIKE.md`, since that reader never
+  returned.
+- **Full reads by the returning readers**, folded after verification —
+  all 11 reports, all 13 `docs/` + `.claude/spike/` files, and all 20
+  archive/README/fixture files including section-level rows for the
+  four `archive/SPIKE-0*.md` bodies.
 
-No row was accepted that the session could not check. Where the check
-was a pointer rather than a reading, the row says so.
+**Every folded claim was re-checked against the corpus before it
+changed a row.** One did not survive: a reader reported that
+`spike-02-report.html`'s cited source file "does not exist in this
+repo". The report cites the bare filename
+`SPIKE-02-managed-graph-influence.md`; the file is present at
+`archive/SPIKE-02-managed-graph-influence.md`. The citation does not
+resolve from where it is written, which is a real defect and a much
+smaller one than a missing file. That row was not changed.
 
-That the fan-out produced nothing usable is itself worth carrying into
-#266: **an import session's reading is not obviously parallelisable.**
-Most of what made this cut work — the marker harvest, the
-corpus-versus-books coverage call, the stale-roadmap contradiction,
-the ledger that named the delta — came from holding several artifacts
-in view at once, which is exactly what splitting the corpus across
-readers prevents.
+## What the fan-out was worth
+
+Both things are true and neither is the obvious one.
+
+**The split cost the session its best material for a while.** Every
+call that carried the cut — the marker harvest, the coverage call
+against the destination books, the stale roadmap contradicting the
+findings log, the ledger that named the delta — came from holding
+several artifacts in view at once, which is exactly what handing one
+cluster to each reader prevents. None of it came from a reader.
+
+**And the readers caught what a single pass could not afford.** The
+regions they read in full are the regions the session had laned on
+summaries — and three of those rows were wrong, in both directions:
+`archive/SPIKE-03` promoted when it settles nothing (2,142 lines),
+`scripts/README.md` and the 14-provider survey discarded when they are
+sole holders.
+
+The reading that produced judgement did not parallelise; the reading
+that produced coverage did. That is the trade #266 is choosing
+between, and it is not a trade between speed and quality — it is a
+trade between two different kinds of correctness.

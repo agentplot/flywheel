@@ -122,7 +122,7 @@ error as section D, caught the same way (`findings.md` F12).
 | `reports/vintage-resolution.html` | 406 | settled-history · current | Renders the Phase 6b vintage-resolution design. | Restates `SPIKE.md` L1120–L1348. |
 | `reports/stations-workbench.html` | 695 | **live-work · sole-holder** | A SQLRooms capability inventory, a two-plane architecture, two named boundaries, and a PoC plan for a UI surface never built. `SPIKE.md` covers none of it. | Newest report (2026-07-24, commit `f6ee2d37`); `grep -ic sqlrooms SPIKE.md` → 0, likewise PMTiles and Zuplo. Headings include "httpfs straight to S3 — one endpoint is the whole contract" and "Two boundaries to name". |
 | `reports/web-lane-design.html` | 279 | settled-history · current | Renders the web-lane design that §12 records LIVE. | Restates `docs/web-discovery-dedup-design.md`; proven at §12 L1024. **Orphaned** — not linked from `index.html`. |
-| `reports/search-api-aup-survey.html` | 199 | settled-history · **part sole-holder** | A provider survey whose eight-gap list `SPIKE.md` L464–L465 does restate by name; the survey evidence behind the list it does not. | Cited at `SPIKE.md` L454 and by `docs/web-discovery-dedup-design.md` L5; gaps enumerated at L464–L465. **Orphaned** — not linked from `index.html`. |
+| `reports/search-api-aup-survey.html` | 199 | settled-history · **sole-holder** | A 14-provider terms-of-service survey with verbatim clauses and per-1k prices. `SPIKE.md` restates the eight-gap *list* (L464–L465) and none of the reasoning that eliminated 13 alternatives. | `grep -ic` on `SPIKE.md` **and** `docs/`: `Tavily` 0/0, `Perplexity` 0/0, `Brave` 0/0, `SerpApi` 0/0, `hiQ` 0/0. **Orphaned** — not linked from `index.html`. |
 
 ---
 
@@ -145,7 +145,7 @@ error as section D, caught the same way (`findings.md` F12).
 | `packages/geoiq/docs/inbox-design.md` | 222 | **split · part sole-holder** | §(a) topology, §(d) trust boundary, §(f) seams and §(h) cloud shape describe a gateway/contributions model absent from `SPIKE.md`; §(c) fp rule and §(g) sticker sim restate §6; §Open questions (L209) → live-work. | L3 "Status: design (spike). Gates PR #10."; `grep -ic` on `SPIKE.md` → `contributions` 0, `gateway-side` 0, "two central Atlas3 warehouses" 0. **Section-level read still owed** — laned on keyword absence, not a full read. |
 | `.claude/spike/bedrock-surface.md` | 135 | discard | Docs-derived notes on a managed-Bedrock surface the design abandoned, and unasserted by its own admission. | L4 "**Nothing here is asserted against the account yet**"; the abandonment at `SPIKE.md` L1082–L1086. |
 | `.claude/spike/mcp-wiring.md` | 64 | discard | Tooling wiring for the `spike-commissioning` plugin that was dropped. | `SPIKE.md` L1084 "That machinery is **dropped for this PoC**". |
-| `.claude/spike/spike-workspace-shape.md` | 76 | settled-history · absent | The layout convention for throwaway spike repos — reusable process knowledge, not spike content. | L3 "Its product is knowledge, not a running system". |
+| `.claude/spike/spike-workspace-shape.md` | 76 | **discard · stale** | Describes a scaffold generator's output, and does not match this repo: its tree lists a `writeback.md` that `.claude/spike/` does not contain. | L15 `│       └── writeback.md`; the directory holds four files and that is not one of them. |
 | `.claude/spike/aws-account-guardrails.md` | 82 | **withhold** | Account-scoping and credential-handling material. Class recorded; nothing quoted. | `findings.md` F11. |
 
 ---
@@ -153,26 +153,59 @@ error as section D, caught the same way (`findings.md` F12).
 ## D. `archive/` — four superseded spike documents, 3,903 lines
 
 The corpus has already done half this triage: `archive/README.md`
-gives a verdict and a findings pointer for each, and
-`docs/design-timeline.md` gives the arc they form. But the verdicts
-are all that has been restated. **`SPIKE.md` never restates the
-findings themselves — it points at the archive instead**, three times
-over, and the Disposition table retires three requirements with the
-words "Findings archived." So these bodies are not detail behind a
-summary that survives elsewhere; they are the **sole holders** of the
-evidence, and they are sitting in a repo scheduled for teardown.
+gives a verdict and a findings pointer for each. But the verdicts are
+all that has been restated. **`SPIKE.md` never restates the findings
+themselves — it points at the archive instead**, and the Disposition
+table retires three requirements with the words "Findings archived."
 
-Disposition: **convert the verdict, carry the body.** A third option
-beside convert and discard — the summary becomes a record, and the
-body has to survive the corpus somewhere, or the import loses the
-only copy.
+**And the archive is not uniform.** Three of the four are sole
+holders of real proved findings; the largest is not, and holds
+nothing. Laning the directory as a class — in either direction — is
+wrong:
+
+| document | lines | what a full read found |
+| --- | --- | --- |
+| SPIKE-01 | 482 | 2 surviving findings: the empty-graph gate with its controlled receipt, and that KB ingestion reads only the sidecar/CSV/inline metadata — never S3 tags or user-metadata |
+| SPIKE-02 | 433 | **11 surviving findings** — the richest settled-history document in the corpus; see below |
+| SPIKE-03 | 2142 | **none.** 20 of 22 finding sections end "Does not settle …" |
+| SPIKE-04 | 846 | 2 surviving findings: a prod-fence gap that was acted on, and probe-zero tooling facts |
+
+**SPIKE-02 is the one to convert.** Measured, unrestated detail:
+metadata lands as prefixed per-key chunk properties rather than a
+blob; a retrieval filter is genuinely selective; `includeForEmbedding:
+true` buys no structural upgrade; prose in the body is the only lever
+that mints a traversable entity; the chunker does not strip
+front-matter; extraction reliability tracks phrasing not file type;
+extracted entity names are not normalized; the coverage tradeoff
+(the prose entity attaches only to the chunk holding the sentence,
+while the metadata tag rides every chunk); post-ingestion graph writes
+are retrieval-safe but destroyed by re-ingestion. `SPIKE.md` returns
+**zero** for `metadata_`, `includeForEmbedding`, `stitch`, `Haiku`,
+`GetInferenceProfile` and `non-empty`.
+
+**And `archive/README.md`'s verdict for SPIKE-03 is not proved by
+SPIKE-03.** It asserts "A is short of the need — metadata rollup
+filters but cannot *traverse* the network, so a self-managed graph (B)
+is required", and no probe in that document ever measured
+county→state rollup: the one that tried was interrupted before
+retrieval returned, and the Approach-B probe never ran. **The
+architecture decision the entire active PoC rests on was reasoned, not
+evidenced.** Any record that captures it has to carry that caveat
+rather than inherit the README's "Verdict:" framing — which is a
+books-verdict question, not a cut question, and belongs to whoever
+converts it.
+
+Disposition: **convert the verdict, carry the body** — for SPIKE-01,
+-02 and -04. A third option beside convert and discard: the summary
+becomes a record, and the body has to survive the corpus somewhere or
+the import loses the only copy. SPIKE-03 discards.
 
 | anchor | lines | lane | reason | evidence |
 | --- | --- | --- | --- | --- |
 | `archive/README.md` | 25 | settled-history · absent | Three closed spikes, each with a one-line verdict and a pointer to its findings section. Convert this. | L3 "Closed spikes, kept for their findings (the product of a learning spike)." |
 | `archive/SPIKE-01-graphrag-hierarchy.md` | 482 | settled-history · **sole-holder** | Verdict restated in the README and the timeline; the §10 findings behind it are restated nowhere. | `archive/README.md` "**Verdict: DISPROVEN at the attach gate** … Findings in its §10"; `SPIKE.md` L11 "kept for their findings", L1102 cites it as "Prior work" and stops there. |
 | `archive/SPIKE-02-managed-graph-influence.md` | 433 | settled-history · **sole-holder** | Same. Its shareable form is `reports/spike-02-report.html`, which is a rendering of the verdict, not of the matrix. | `archive/README.md` "**PROVEN but limited** … Full matrix in its §10"; the one `SPIKE.md` cross-reference (L609) borrows the reliability *question*, not the findings. |
-| `archive/SPIKE-03-spatial-hierarchy.md` | 2142 | settled-history · **sole-holder** | Same, and this is the spike whose verdict founded the current design — the largest single body of unrestated evidence in the corpus. | `archive/README.md` "**A is short of the need … a self-managed graph (B) is required.** … Findings in its §7." |
+| `archive/SPIKE-03-spatial-hierarchy.md` | 2142 | **discard** | **Holds no findings at all.** 20 of its 22 finding sections end in a "Does not settle …" paragraph; 16 are meta-process probes skipped as unsound before running, and the two that reached AWS were interrupted or gate-blocked. | `grep -c "Does not settle" archive/SPIKE-03-spatial-hierarchy.md` → **20** against `grep -c '^### '` → 22. Its two useful outputs are restated: the concurrency rule at `SPIKE.md` §10, the process lesson at `docs/design-timeline.md` L86–L88. |
 | `archive/SPIKE-04-partB-commissioning-findings.md` | 846 | settled-history · **sole-holder** | The only record of the Part B probes, including all findings for the three requirements the corpus declares dead. | `SPIKE.md` L1086–L1087 "The full historical findings sink is preserved at `archive/SPIKE-04…`"; the Disposition table (L1104–L1106) retires `managed-retrieval-index`, `synthesis-flow` and `relational-store` with "Findings archived." |
 
 **Why this row set changed.** These four were first laned
@@ -194,9 +227,9 @@ for teardown — a fact about the corpus's future, not about the files.
 | anchor | lines | lane | reason | evidence |
 | --- | --- | --- | --- | --- |
 | `README.md` | 115 | discard | Quick start for a repo scheduled to be archived. | `reports/spike-roadmap.html` L150 "repo archives beside SPIKE-01/02/03". |
-| `CLAUDE.md` | 103 | discard | Agent instructions scoped to this repo's operation. | Same. |
+| `CLAUDE.md` | 103 | **withhold** (+ operating doc) | Its guardrails name the client's production VPC by id, in the course of forbidding it. Class recorded; nothing quoted. The rest is repo operating instruction. | `findings.md` F11; two prod-network identifiers present. |
 | `poc/README.md` | 117 | discard | How to run the harness. | Same; and `SPIKE.md` §8 already inventories the commands. |
-| `scripts/README.md` | 52 | discard | Gotchas for reusable scripts distilled from the archived spikes. | `archive/README.md` closing line points here for gotchas. |
+| `scripts/README.md` | 52 | settled-history · **sole-holder** | Nine numbered, proved AWS platform gotchas — empty-graph requirement, no pause API, the IAM grants a KB role needs, accepted FM ids. `SPIKE.md` restates none. | The numbered list L20–L46; `grep -ic GetInferenceProfile SPIKE.md` → 0, `Haiku` → 0, `non-empty` → 0. |
 | `ui/README.md`, `ui/app/README.md`, `ui/app/index.html` | 56 / 32 / 13 | discard | The scenario-lab UI's own operating docs and shell. | The UI is described as a scenario lab at `SPIKE.md` L911–L913. |
 | `transcripts/README.md` | 13 | discard | A holder README for session transcripts. | Its own length and content. |
 | `fixtures/spike-02/README.md`, `fixtures/spike-04/catalog-items/README.md` | 38 / 33 | discard | Describe fixture inputs, regenerable. | `SPIKE.md` §9 L537–L540 "Not a catalog — just inputs". |
@@ -245,30 +278,44 @@ file-type filter nearly lost, 11,538 lines.
 
 | lane | rows | notes |
 | --- | --- | --- |
-| `settled-history` | 63 | 43 `current`, 7 `as-written`, **5 `covered`** by the destination books, **5 `absent`** and high-value, **4 `sole-holder`** archive bodies |
-| `live-work` | 17 | including 7 cross-book tensions, 3 unstarted phases, and 6 forward tails of settled sections |
-| `discard` | 14 rows / 21 files | operating documentation, fixtures, superseded notes, the report index |
-| `withhold` | 3 | `SPIKE.md` §10 and §11, `.claude/spike/aws-account-guardrails.md` — class recorded, nothing quoted |
+| `settled-history` | 62 | 41 `current`, 7 `as-written`, **7 `sole-holder`** + 1 partial, 5 `covered` by the destination books, 4 `absent` |
+| `live-work` | 17 | including 7 cross-book tensions, 2 unstarted phases, and 6 forward tails of settled sections |
+| `discard` | 15 rows / 22 files | operating documentation, fixtures, the report index, 2 `stale`, and `archive/SPIKE-03` (2,142 lines that settle nothing) |
+| `withhold` | 4 | `SPIKE.md` §10 and §11, `.claude/spike/aws-account-guardrails.md`, and `CLAUDE.md` — class recorded, nothing quoted |
 | split | 2 | `SPIKE.md` §7 Phasing and `packages/geoiq/docs/inbox-design.md`, each laned per sub-part |
 | unsettleable | 5 | queued as questions above, not laned |
 
 **99 rows over 46 files**, 58 of them inside `SPIKE.md` alone.
-Several `discard` rows bundle same-purpose files, so the 14 `discard`
-rows cover 21 files.
+Several `discard` rows bundle same-purpose files.
 
-**The conversion work-list, ranked.** Five `settled-history · absent`
-rows carry material the books do not have and nobody else holds:
-`docs/design-timeline.md` (the decision arc),
+**Every row in this tally moved at least once.** The lane counts here
+are the third revision, not the first: the session's own reading, then
+a restatement check that overturned four rows, then a full read of the
+regions the check could not judge, which overturned three more —
+including one 2,142-line document the check had promoted. The revision
+history is the finding (F12), not an embarrassment to be tidied out of
+it.
+
+**The conversion work-list, ranked.**
+
+*Convert:* `docs/design-timeline.md` (the decision arc),
 `docs/book-supervisor.md` + `docs/book-supervisor-state.json` (the
 import machinery and its ledger), `archive/README.md` (the closed-spike
-verdicts), and `.claude/spike/spike-workspace-shape.md` (how to run a
-throwaway spike).
+verdicts — with the SPIKE-03 caveat attached, see section D).
 
-Behind them sit the four `sole-holder` archive bodies — 3,903 lines
-whose verdicts are restated everywhere and whose findings are restated
-nowhere. They need somewhere to live before the repo is torn down,
-and that is a different act from conversion: nobody has to read them
-today, but losing them is irreversible.
+*Carry, do not convert:* the sole holders — `archive/SPIKE-02` first
+(11 measured findings, the richest single document in the corpus),
+then `SPIKE-01` and `SPIKE-04`, `reports/search-api-aup-survey.html`
+(a 14-provider survey that exists nowhere else),
+`reports/stations-workbench.html`, `scripts/README.md`'s nine platform
+gotchas, and `docs/overture-tiles-eval.md`. They need somewhere to
+live before the repo is torn down, which is a different act from
+conversion: nobody has to read them today, and losing them is
+irreversible.
+
+*Adopt whole:* the five reports carrying 1,062 lines of hand-authored
+SVG. A diagram cannot be restated in markdown, so adoption is the only
+cheap correct move (`findings.md` F13).
 
 **And the delta is computable without reading anything:** 30 commits
 and twelve documents have landed since the last writeback sweep

@@ -385,6 +385,17 @@ It is not a sketch. It carries, already earned:
 | escalate "contradictions between SPIKE.md and the book, session-mined decisions with no SPIKE.md trace" to the operator in Discord (L101–L107) | clause 3's queued questions |
 | **tri-file consistency** — a maturity change must touch all three of the yaml, the table, and the prose, "the trap the rule exists for" (L53–L61) | a rule flywheel does not have and should consider |
 
+**One distinction to keep straight, because two readings of this file
+collide.** As an artifact *of the corpus being imported*, it is
+ephemeral: the operating manual for a loop that will not run again,
+and the cut lanes it accordingly. As *prior art for #266*, it is the
+most valuable document in the corpus. Those are different questions
+about the same file, and an import that answers only the first throws
+away the answer to the second. Whoever writes the carrier should read
+it regardless of what lane it ends up in — which is itself a small
+finding about the cut: **a lane is a disposition for the corpus, not a
+judgement about whether anyone should read the thing.**
+
 It also differs from the promise in one way that vindicates the
 promise: the supervisor is **incremental and continuous** (hourly,
 against a live spike), where the promise is a **one-shot import of a
@@ -548,19 +559,42 @@ which a class-level judgement had already mis-laned:
 
 | artifact | what a class judgement said | what the check found |
 | --- | --- | --- |
-| `archive/SPIKE-01..04` (3,903 lines) | superseded; summary survives | `grep -n "SPIKE-0[1-4]\|archive/" SPIKE.md` → 5 hits, all pointers |
+| `archive/SPIKE-01/-02/-04` (1,761 lines) | superseded; summary survives | `grep -n "SPIKE-0[1-4]\|archive/" SPIKE.md` → 5 hits, all pointers |
 | `reports/stations-workbench.html` (695) | a rendering of `SPIKE.md`, like its ten siblings | `sqlrooms` 0, `pmtiles` 0, `zuplo` 0 in `SPIKE.md` |
+| `reports/search-api-aup-survey.html` (199) | its content is restated as the eight-gap list | `Tavily` / `Perplexity` / `Brave` / `SerpApi` / `hiQ` → 0 in `SPIKE.md` *and* 0 in `docs/` |
+| `scripts/README.md` (52) | gotchas distilled from the archives | nine proved platform facts; `GetInferenceProfile` 0, `Haiku` 0, `non-empty` 0 in `SPIKE.md` |
 | `docs/overture-tiles-eval.md` (68) | a dated eval, content folded into the design | `planetiler` 0, `pmtiles` 0 in `SPIKE.md` |
 | `packages/geoiq/docs/inbox-design.md` (222) | design body restating §6 | `contributions` 0, `gateway-side` 0 in `SPIKE.md` |
 
-**4,888 lines — 42% of the corpus** — sat in dispositions that would
-have let it die with the repo, and every one of those dispositions was
-reached by a reasonable-sounding inference from a summary, a directory
-name, or a sibling. (An upper bound: `inbox-design.md` is only partly
-unrestated, and its section-level read is still owed.) The point does
-not rest on the exact figure — it rests on the fact that no amount of
-care in the *inference* would have caught any of them, and one `grep`
-caught all four.
+**And the check cuts both ways, which is the part worth keeping.** A
+full read of the archive — which the grep did not substitute for —
+overturned one of its results in the *opposite* direction.
+`archive/SPIKE-03-spatial-hierarchy.md` is 2,142 lines, the largest
+document in the archive, and it holds **no findings at all**: 20 of
+its 22 finding sections end in a "Does not settle …" paragraph, 16
+being meta-process probes skipped as unsound before they ran.
+
+```
+$ grep -c "Does not settle" archive/SPIKE-03-spatial-hierarchy.md
+20
+$ grep -c "^### " archive/SPIKE-03-spatial-hierarchy.md
+22
+```
+
+So the grep promoted 2,142 lines that should be discarded, and missed
+two artifacts (`scripts/README.md`, the survey body) that should be
+kept. **The check is a filter, not a verdict.** It reliably says *this
+is not restated*; it says nothing about whether what is not restated
+is worth anything. Both halves need a reader.
+
+**A sharper thing surfaced underneath.** `archive/README.md` asserts
+SPIKE-03's verdict — "A is short of the need … so a self-managed graph
+(B) is required" — and no probe in SPIKE-03 ever measured it. The
+architecture decision the entire active PoC rests on was **reasoned,
+not evidenced**. That is not a lane question; it is exactly the kind of
+thing a books-verdict has to carry forward, and an importer that
+converts the README's verdict at face value launders an inference into
+a finding.
 
 **What the carrier needs:** *restated* is a claim to verify, never one
 to infer from the presence of a summary. The check is cheap — grep the
@@ -573,7 +607,79 @@ it today; losing it is irreversible.
 
 ---
 
-## F13 — Machinery observation (not a tracker item)
+## F13 — A diagram is a sole holder by construction. Markdown cannot restate an SVG.
+
+**Bears on:** clause 2's conversion step, the pricing question `#195`
+raised, #266.
+
+Every restatement test in F12 asks whether the live document *says*
+the same thing. Four of the reports carry something the live document
+cannot say at all:
+
+| report | inline SVG |
+| --- | --- |
+| `reports/kb-staging-lifecycle.html` | 393 lines, 11 blocks |
+| `reports/sticker-roundtrip.html` | 218 lines |
+| `reports/vintage-resolution.html` | 213 lines |
+| `reports/web-lane-design.html` | 172 lines |
+| `reports/stations-workbench.html` | 66 lines |
+
+**1,062 lines of hand-authored SVG, 1,621 coordinate attributes**,
+none of it generated — there is no template and no generator in the
+repo. `SPIKE.md` is markdown. Even where a report's *prose* is a
+faithful derived view — and for `sticker-roundtrip.html` it is, since
+`SPIKE.md` L365 cites it as the diagram of record — **the diagram is
+not derived from anything.** It is the only copy, and re-deriving it
+means re-drawing it.
+
+This is a different kind of sole-holder from F12's. There the content
+existed and nothing restated it; here the content cannot be restated
+in the destination's medium. The cut cannot detect it with a grep,
+because there is no phrase to search for. What detects it is asking
+what *form* an artifact carries that its supposed source could not
+express.
+
+**Consequence:** an import's cheapest correct move for a diagram is to
+adopt the artifact whole rather than convert it — which is what
+`#195` was reaching for, and the one part of that hypothesis that
+survives intact.
+
+---
+
+## F14 — The reports are not shaped like an interactive session's page, and adopting them as one is most of the work of writing one.
+
+**Bears on:** the pricing question `#195` raised, #266.
+
+`#195` observed the reports "are already in the shape flywheel's own
+interactive sessions emit". Half of that is right and the expensive
+half is wrong.
+
+**Right — they are self-contained artifacts.** A grep across all
+eleven for `<img`, `<link`, `src=` and `@import` returns **zero**:
+one inline `<style>` each, one 30-line vanilla script in the whole
+set, `prefers-color-scheme` handling throughout, published by GitHub
+Pages verbatim with no build step. They drop into a flywheel session
+directory as-is, and `npx -y lavish-axi <file>` opens any of them
+today.
+
+**Wrong — they are not decision pages.** `skills/interactive/SKILL.md`
+asks for a page carrying every decision the batch aims to close, with
+options, trade-offs, and deep links into the chapters and map nodes
+each decision turns on. The spike reports have no options-vs-tradeoffs
+blocks, no deep links to any book or context map, and **zero
+cross-links between reports** outside `index.html`. They are narrative
+explainers and finding write-ups — what a *research* or *writeback*
+session emits, not what an *interactive* session emits.
+
+So the pricing answer splits cleanly, and neither half is the one
+`#195` guessed: **adopting them as session deliverables is nearly
+free** (F13 says do it for the diagrams alone), and **adopting them as
+annotatable decision pages costs about what writing one costs**,
+because the decision structure and the map links are the page.
+
+---
+
+## F15 — Machinery observation (not a tracker item)
 
 The research session type is configured `worktree=False`
 (`bin/_flywheel_intent.py` L117), documented as "Research is the type

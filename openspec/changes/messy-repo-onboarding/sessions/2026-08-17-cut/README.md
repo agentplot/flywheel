@@ -26,7 +26,7 @@ skill hardens.
   reason and a checkable pointer each, plus the rows the session could
   not settle and turned into questions.
 - `findings.md` — what the measurement taught that the survey could
-  not: thirteen findings, each bearing on a named clause or successor
+  not: fifteen findings, each bearing on a named clause or successor
   item.
 - `conversion/` — one settled artifact taken end to end: session
   record, decision record, books-verdict, processed-ledger entry.
@@ -51,10 +51,16 @@ a run design for the carrier we are about to write, with its own
 ledger naming the exact unconverted delta (F9, F10).
 
 **The finding that cost the most to reach** is F12, because this
-session got it wrong first. Four artifacts across three directories —
-4,888 lines, 42% of the corpus — were laned on inferences that sounded
-careful: a summary exists, so the body is detail; the siblings are
-renderings, so this is too. Every one was false, none would have been
-caught by more care in the inference, and one `grep` caught all four.
-The lane that loses material is never `discard` — it is the
-disposition that sounds safe.
+session got it wrong first and then got the correction wrong too.
+Artifacts across four directories — around a quarter of the corpus —
+were laned on inferences that sounded careful: a summary exists, so
+the body is detail; the siblings are renderings, so this is too. A
+grep for whether the live document *restates* the content or merely
+points at it overturned four rows. Then full reads overturned three
+more in the opposite direction, including 2,142 lines the grep had
+promoted and that settle nothing.
+
+So: the lane that loses material is never `discard` — it is the
+disposition that sounds safe. And the check that catches it is a
+filter, not a verdict: it reliably says *this is not restated*, and
+says nothing about whether what is not restated is worth keeping.
