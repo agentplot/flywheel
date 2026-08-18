@@ -2562,3 +2562,22 @@ class CloseReadyTest(unittest.TestCase):
                       tracker.writes)
         self.assertNotEqual(outcome.status, "paused",
                             "a container's wait never pauses the landing")
+
+    def test_new_cards_withdraw_the_close_ready_mark(self):
+        # More units arrive after the mark: "ready to land" is no longer
+        # true, so the label comes off until the new units finish too.
+        snap = Snapshot(
+            items=[item(9, inbox.UNIT, inbox.NEEDS_OPERATOR, title="Unit: x"),
+                   Item(number=1, milestone="bolt/x", title="one",
+                        state="closed",
+                        labels=frozenset({inbox.CLOSED_MERGED}))],
+            milestone="bolt/x")
+        snap.plan_cards = (inbox.PlanCard(
+            number=30, title="Unit: more", body="", status="Backlog",
+            milestone="bolt/x"),)
+        tracker = FakeTracker(snap)
+        a_loop(tracker).run(max_cycles=1)
+        self.assertIn(("remove_label", 9, inbox.NEEDS_OPERATOR),
+                      tracker.writes)
+        self.assertNotIn(("add_label", 9, inbox.NEEDS_OPERATOR),
+                         tracker.writes)

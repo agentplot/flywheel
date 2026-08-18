@@ -2764,6 +2764,17 @@ class BoltLoop:
         unlanded = open_items + [i for i in on_milestone if i.merge_closed]
         held = self.holding_cards(snapshot)
         if held:
+            # New cards reopened the delivery: a close-ready mark placed
+            # earlier is no longer true, so it comes off until the new
+            # units finish too.
+            if not self.dry_run:
+                for parent in (i for i in open_items if i.is_container
+                               and inbox.NEEDS_OPERATOR in i.labels):
+                    self.tracker.remove_label(parent.number,
+                                              inbox.NEEDS_OPERATOR)
+                    self.ledger.note(f"close-ready withdrawn from "
+                                     f"#{parent.number} — new card(s) hold "
+                                     f"the landing")
             cards = ", ".join(f"#{c.number}" for c in held)
             self._log(f"landing held — unit card(s) still open: {cards}")
             self.ledger.note(
