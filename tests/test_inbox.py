@@ -174,9 +174,18 @@ class ServerInboxTest(unittest.TestCase):
         snap = Snapshot(items=[item(1, inbox.READY, milestone="v2.0")])
         self.assertEqual(inbox.server_inbox(snap), [])
 
-    def test_an_item_on_a_closed_milestone_is_not_a_run_job(self):
+    def test_a_ready_item_on_a_closed_bolt_milestone_is_a_run_job(self):
+        # The operator's close releases the landing, and a failed landing
+        # files a born-ready fix item — the loop must stay alive for it.
         snap = Snapshot(items=[
             item(1, inbox.READY, milestone="bolt/a", milestone_state="closed")])
+        self.assertEqual([j.milestone for j in inbox.server_inbox(snap)
+                          if j.kind == "run"], ["bolt/a"])
+
+    def test_an_item_on_a_closed_intent_milestone_is_not_a_run_job(self):
+        snap = Snapshot(items=[
+            item(1, inbox.READY, milestone="intent/a",
+                 milestone_state="closed")])
         self.assertEqual([j for j in inbox.server_inbox(snap) if j.kind == "run"], [])
 
     def test_a_batch_at_board_ready_is_a_job_on_its_own(self):
