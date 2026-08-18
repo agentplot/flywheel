@@ -561,6 +561,38 @@ A unit file already on disk SHALL NOT be overwritten, whether the loop
 wrote it or a hand did: durable prose in git outranks the mutable tracker
 state it came from.
 
+**A unit whose title parses no slug SHALL stop the cycle with a reason
+naming it.** The file is named by the slug the card's title carries, so a
+title that carries none names no file; the loop SHALL NOT pass over such a
+unit as though there were nothing to write. It SHALL halt the cycle with a
+reason, and the reason SHALL reach the run record and the run report the
+same way every other pause reason does. Passing over it is a guess — that
+an approval the operator made does not matter — and the loop pauses rather
+than guessing.
+
+The reason SHALL name every unit on the milestone whose title parses no
+slug, in item order, each by its number and by its title exactly as the
+tracker carries it, and SHALL state what a unit title must carry for a
+file to be named from it. One pause SHALL report them all, so a milestone
+carrying several is fixed in one pass rather than one pause per card.
+
+**The units of that pass whose titles do parse are still written.** A
+nameable unit missing its file SHALL be written and committed exactly as
+it would be on a pass with no unnameable unit on the milestone, and the
+pause SHALL follow those writes: one misnamed card does not hold another
+approval's durable prose. Where that pass also failed to commit, the
+commit failure SHALL be the reason returned and the unnameable unit SHALL
+be reported on a later pass — both conditions persist until a hand clears
+them, so neither is lost.
+
+**The reason SHALL be given wherever the guard reports at all**, including
+a pass that makes no write of its own: a dry run over a milestone carrying
+an unnameable unit SHALL state that the bolt would pause and why rather
+than reporting that there was nothing to write, and a run whose tracker is
+a fixture — which writes no tree — SHALL still give the reason, because
+naming the unit is a read of the tracker and not a write to anyone's
+checkout.
+
 #### Scenario: the first unit
 
 - **WHEN** the first card on a bolt's milestone is expanded
@@ -585,4 +617,32 @@ state it came from.
   land
 - **THEN** the next pass leaves the file's content alone and re-runs the
   commit, so the record ends carrying it
+
+#### Scenario: a unit title that parses no slug
+
+- **WHEN** a pass finds a unit on the milestone whose title parses no
+  slug
+- **THEN** the cycle halts with a reason naming that unit by number and by
+  its title, and stating what a unit title must carry — and the run record
+  carries that reason
+
+#### Scenario: a nameable unit beside an unnameable one
+
+- **WHEN** a pass finds one unit whose title parses a slug and is missing
+  its file, and another whose title parses none
+- **THEN** the nameable unit's file is written and committed, and the
+  cycle then halts with the reason naming the unnameable one
+
+#### Scenario: several unnameable units
+
+- **WHEN** a pass finds more than one unit on the milestone whose title
+  parses no slug
+- **THEN** one reason names all of them, in item order
+
+#### Scenario: a dry run over an unnameable unit
+
+- **WHEN** a dry run passes over a milestone carrying a unit whose title
+  parses no slug
+- **THEN** it reports the pause and its reason, writes nothing, and does
+  not report the pass as having nothing to write
 
