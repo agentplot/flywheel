@@ -60,9 +60,35 @@ silently chosen lane — clause 3.
 
 ## Reading
 
-One design session, five parallel readers over disjoint clusters
+Five parallel readers were dispatched over disjoint clusters
 (`SPIKE.md`; `reports/`; `docs/` + `.claude/spike/`; `archive/` +
-READMEs + fixtures; and the corpus-versus-books overlap audit), each
-returning rows in this schema with its own evidence. The session
-judged the lanes, reconciled the readers, and owns every row. No row
-was accepted that the session could not check.
+READMEs + fixtures; and a corpus-versus-books overlap audit). **None
+returned before the session settled**, so every row here is the
+session's own reading. That is worth stating rather than smoothing
+over, because it bounds the rows two ways:
+
+- **Read in full by the session:** all of `SPIKE.md` except the bodies
+  of §12's finding blocks; `docs/book-boundaries.md`,
+  `book-supervisor.md`, `book-supervisor-log.md`,
+  `book-supervisor-state.json`, `archive/README.md`,
+  `reports/spike-roadmap.html` and `reports/index.html`; the opening
+  status block of every other `docs/` and `.claude/spike/` file; and
+  the relevant chapters of `books/geo-iq` and `books/atlas-kit`.
+- **Laned on the corpus's own evidence rather than a full read:** the
+  four `archive/SPIKE-0*.md` bodies (3,903 lines) and nine of the
+  eleven report bodies. Those rows cite the corpus's own summaries —
+  `archive/README.md`'s per-spike verdicts, `reports/index.html`'s
+  descriptions, `SPIKE.md`'s own citations of each report — which is
+  real evidence and is named as such in the row, but it is weaker
+  than a read, and a later session may sharpen those rows.
+
+No row was accepted that the session could not check. Where the check
+was a pointer rather than a reading, the row says so.
+
+That the fan-out produced nothing usable is itself worth carrying into
+#266: **an import session's reading is not obviously parallelisable.**
+Most of what made this cut work — the marker harvest, the
+corpus-versus-books coverage call, the stale-roadmap contradiction,
+the ledger that named the delta — came from holding several artifacts
+in view at once, which is exactly what splitting the corpus across
+readers prevents.
