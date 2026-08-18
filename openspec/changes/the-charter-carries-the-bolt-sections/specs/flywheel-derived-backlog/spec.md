@@ -24,10 +24,12 @@ never a missing one.
 **The charter is checked, not assumed.** After the session that writes
 the charter settles, the loop SHALL read `bolt.md` and confirm it carries
 a merge-criteria section with a body. A charter that does not SHALL stop
-the cycle with a reason naming the change directory and what is missing,
-in place of the "the session settled" pass it gets today. The check reads
-the file, so a later pass over a charter that has since gained its
-sections passes without re-driving anything.
+the cycle with a reason naming the change directory and what is missing:
+a settle is not the whole post-condition. The check SHALL use the same
+reader the landing reads the criteria through, so "the guard passed" and
+"the landing can read it" cannot disagree, and it SHALL read the file, so
+a later pass over a charter that has since gained its sections passes
+without re-driving anything.
 
 **The bolt's merge criteria are read from the charter's own region.**
 The region ends at the first `# `-level heading that opens a unit

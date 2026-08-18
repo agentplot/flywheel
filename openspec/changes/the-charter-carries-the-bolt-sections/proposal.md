@@ -23,32 +23,39 @@ charter `bolt.md` plus one `units/<slug>.md` per approved unit", born
 "the charter at scaffold, from the milestone's description; each unit
 artifact at its expansion, frozen by the approval".
 
-The tree does neither. `schemas/bolt-default/schema.yaml` — and its three
-siblings — declare one artifact, `bolt`, and no `unit`. Its `bolt`
-instruction demands "EXACTLY these four sections, and nothing else" and
-then contradicts itself in the next paragraph: "What follows those four
-sections … one `# Unit: <slug>` section per unit expanded on this bolt's
-milestone … You copy the lowest-numbered unit's document when you
-scaffold; the loop appends every later one as each approval expands."
-`guard_scaffold` in `bin/_flywheel_bolt_loop.py` orders exactly that, and
-`guard_charter` appends the rest into the same file.
+The tree splits the difference, and lands on neither. A build session has
+already made the charter half of this true: `BoltParams` now carries the
+milestone description, `guard_scaffold`'s work order names
+`CHARTER_SECTIONS` — `## Scope`, `## Sources`, `## Repos`,
+`## Merge criteria` — and asks for the `Landing:` line stated under every
+schema, the guard checks the settled charter through `merge_criteria()`
+rather than trusting the settle, and `land_stage` carries a third refusal
+for a charter that states no criteria.
 
-The result is that no planner-born bolt has a charter at all. Both such
-charters in this tree — `openspec/changes/loop-boundaries/bolt.md` and
+What none of that touched is the record's shape.
+`schemas/bolt-default/schema.yaml` — and its three siblings — still
+declare one artifact, `bolt`, and no `unit`. Each still says "EXACTLY
+these four sections, and nothing else" and then contradicts itself in the
+next paragraph: "What follows those four sections is not narrative and is
+not yours to compose: one `# Unit: <slug>` section per unit expanded on
+this bolt's milestone … You copy the lowest-numbered unit's document when
+you scaffold; the loop appends every later one as each approval expands."
+`guard_scaffold`'s order still says "BELOW them: … copy the
+LOWEST-NUMBERED one's body into bolt.md verbatim, under a
+`# Unit: <slug>` heading"; `guard_charter` still appends the rest into
+that same file; and `merge_criteria()`'s `^#{1,2}\s` lookahead exists —
+by its own docstring — to survive those headings.
+
+So a charter that now opens correctly still ends as a container for prose
+the book says belongs in its own file, and one failure survives the fix
+outright. The two records already in the older shape —
+`openspec/changes/loop-boundaries/bolt.md` and
 `openspec/changes/archive/2026-08-17-matches-the-book/bolt.md` — open at
-`# Unit: <slug>` and carry no `## Scope`, `## Sources`, `## Repos` or
-`## Merge criteria`. Run the loop's own two readers over them and both
-come back empty-handed: `merge_criteria()` returns `""`, and
-`landing_mode()` searches that empty string and falls through to its
-`merge` default — so a bolt that meant to land by pull request lands
-straight onto main, and a defaulted mode is indistinguishable from a
-declared one. The landing session is told to "VERIFY every one of its
-Merge criteria … by running them" and is handed nothing to run.
-
-The description the planner authored — the delivery, the unit sequence,
-the price, which the book names three times as the charter's source — is
-read once by `bin/flywheel-bolt-loop` for the plan-mode flag and never
-reaches the session that writes the charter.
+`# Unit: <slug>` with no charter above, and the reader returns `""` for
+both. Because it takes the first `## Merge criteria` anywhere in the
+file, a unit document carrying one of its own would be handed to the
+landing as this bolt's criteria. Neither record has a unit artifact,
+because the shape that would write one does not exist yet.
 
 `bolt/matches-the-book` is merged and waiting to land through this path.
 
@@ -68,21 +75,18 @@ reaches the session that writes the charter.
   `bolt` artifact instruction stops at "exactly these four sections, and
   nothing else" and drops the paragraph that told the scaffold session to
   append a unit's document beneath them.
-- **The milestone description reaches the scaffold session.** It is
-  already read by `bin/flywheel-bolt-loop`; it is carried to the work
-  order as the charter's stated source rather than dropped after the
-  plan-mode flag.
-- **The scaffold guard checks the charter it got back.** Settling is no
-  longer the whole test: the guard reads `bolt.md` through the same
-  reader the landing uses and fails with a reason naming what is missing.
 - **The merge criteria are read from the charter's own region.** A
-  `# Unit:` section left in an existing `bolt.md` by the old shape can
+  `# Unit:` section left in an existing `bolt.md` by the older shape can
   never supply this bolt's criteria: the reader stops at the first such
-  heading.
-- **A landing refuses an unreadable charter.** No bolt-level merge
-  criteria, or an empty section, and the landing fails ahead of any
-  landing session — nothing verified, nothing on main, nothing closed or
-  upgraded. Verifying an empty criteria list is not a green landing.
+  heading, so an absent charter reads as absent rather than as whatever
+  the unit prose below happened to say.
+- **Three behaviours the tree already has become requirements of record**,
+  since this change is what carries them into `openspec/specs/`: the
+  milestone description reaching the scaffold session as the charter's
+  stated source; the guard checking the settled charter through the same
+  reader the landing uses; and the landing refusing a charter that states
+  no criteria, ahead of any landing session and under a force as much as
+  automatically.
 
 ## Capabilities
 
@@ -111,20 +115,20 @@ None.
 - `schemas/*/templates/bolt.md` — read as the authority for the four
   section headings, and **not edited**: the template already names them
   and nothing else, which is exactly the shape the book asks for.
-- `bin/_flywheel_bolt_loop.py` — `guard_scaffold`'s work order and its
-  post-settle check; `guard_charter`, which appends `# Unit:` sections
-  into `bolt.md` and must instead write one file per unit;
-  `UNIT_HEADING`, whose only job is that append; `merge_criteria()`,
-  whose `^#{1,2}\s` lookahead exists to survive those headings;
-  `BoltParams`, which carries no milestone description; `land_stage`,
-  which reads the criteria only through `landing_mode()` and never asks
-  whether there were any.
-- `bin/flywheel-bolt-loop` — `build_loop` already reads the milestone's
-  `description`; it passes it on.
-- `tests/test_bolt_loop.py` — the charter tests assert the append-into-
-  `bolt.md` shape, and `LandingTest.program` stubs `merge_criteria` on
-  every landing test, so no test reaches the real reader from
-  `land_stage`.
+- `bin/_flywheel_bolt_loop.py` — `guard_scaffold`'s work order, whose
+  charter paragraph stands and whose "BELOW them: … copy the
+  LOWEST-NUMBERED one's body" paragraph goes; `guard_charter`, which
+  appends `# Unit:` sections into `bolt.md` and must instead write one
+  file per unit; `UNIT_HEADING`, whose only job is that append;
+  `merge_criteria()`, which must bound itself to the charter's region.
+  `BoltParams.description`, the post-settle check, and `land_stage`'s
+  charter refusal are already as the specs state and are verified, not
+  rewritten.
+- `tests/test_bolt_loop.py` — the charter tests assert the
+  append-into-`bolt.md` shape; `LandingTest.program` stubs
+  `merge_criteria` on every landing test; and `ReadingTest`'s one
+  real-reader test reads a path that has since been archived, so it takes
+  its `skipTest` branch on any current worktree.
 - **Existing records are not rewritten in place.** The two `bolt.md`
   files already carrying a `# Unit:` section keep it: a guard that
   rewrote committed prose would contradict the rule that durable prose in

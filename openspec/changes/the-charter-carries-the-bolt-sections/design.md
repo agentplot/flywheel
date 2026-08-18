@@ -1,55 +1,65 @@
 ## Context
 
-See `proposal.md` — Why. What the tree bore out when this was written,
-read from the files named:
+See `proposal.md` — Why. What the tree bears out at HEAD, read from the
+files named. A build session has already applied the charter half, so
+part of this shape is on disk:
 
 - `schemas/bolt-default/schema.yaml` declares one artifact, `bolt` →
   `bolt.md`, with `template: bolt.md`. Its instruction says "**Output:**
-  bolt.md with exactly these sections" and lists Scope, Sources, Repos,
-  Merge criteria, then "EXACTLY these four sections, and nothing else",
-  and then a paragraph beginning "What follows those four sections is not
-  narrative and is not yours to compose: one `# Unit: <slug>` section per
-  unit …". The other three members carry the same `bolt` artifact block.
+  bolt.md with exactly these sections", lists Scope, Sources, Repos,
+  Merge criteria, says "EXACTLY these four sections, and nothing else",
+  and then adds "What follows those four sections is not narrative and is
+  not yours to compose: one `# Unit: <slug>` section per unit …". All
+  four members carry that paragraph — `grep -l` finds it in
+  `bolt-default`, `bolt-quick`, `bolt-adversarial` and `bolt-direct` —
+  and each declares exactly one artifact.
 - `schemas/bolt-default/templates/bolt.md` is `# Bolt: [name]` plus those
   four headings and a `Landing: merge` line — the four sections and
-  nothing else, which is already the shape the book asks for.
+  nothing else, already the shape the book asks for. Only that member's
+  template shows the `Landing:` line, which is why the work order asks
+  for it rather than leaving it to the template.
 - `bin/_flywheel_bolt_loop.py`:
-  - `guard_scaffold` ("0 — scaffold-if-missing") drives the session that
-    writes `bolt.md`. Its precondition and its post-check are both
-    `self.params.change_dir.exists()`. Its order says to copy the
-    lowest-numbered `unit`-labeled issue's body under a `# Unit: <slug>`
-    heading, "otherwise write bolt.md from what the milestone and its
-    items say".
+  - `BoltParams.description` exists and carries the milestone's
+    description, empty under `--fixture`.
+  - `guard_scaffold` names `CHARTER_SECTIONS` — `## Scope`, `## Sources`,
+    `## Repos`, `## Merge criteria` — in its order, asks for the
+    `Landing:` line under every schema, and puts the description in the
+    order as the charter's stated source. Then: "BELOW them: if the
+    milestone carries any `unit`-labeled issue, copy the LOWEST-NUMBERED
+    one's body into bolt.md verbatim, under a `# Unit: <slug>` heading …
+    Either way the bolt's own `## Merge criteria` stays the FIRST such
+    heading in the file". Its post-settle check calls `merge_criteria()`
+    and fails with a reason when it is empty.
   - `guard_charter` ("0.6") appends `# Unit: <slug>` sections to
     `bolt.md`, comparing `UNIT_HEADING` matches in the file at HEAD
-    against the milestone's `unit`-labeled issues, then `git add --`/
-    `git commit --` by pathspec. It already re-reads HEAD rather than the
-    working tree to survive a torn commit, and already skips itself under
-    `--dry-run` and under `FixtureTracker`.
+    against the milestone's `unit`-labeled issues, then `git add --` /
+    `git commit --` by pathspec. It already reads HEAD rather than the
+    working tree to survive a torn commit, already leaves a section it
+    finds in the working tree alone and re-runs only the commit, and
+    already skips itself under `--dry-run` and under `FixtureTracker`.
   - `merge_criteria()` matches `^##\s+Merge criteria\s*$` with a
-    lookahead of `^#{1,2}\s`; its docstring says the `#` in that
-    lookahead is there because `guard_charter` appends `# Unit:`
-    headings. It returns `""` when the record is absent or nothing
-    matches.
+    lookahead of `^#{1,2}\s`; its docstring says the `#` is there because
+    `guard_charter` appends `# Unit:` headings. It searches the whole
+    file, so the first such section anywhere in it wins.
   - `landing_mode()` searches `merge_criteria() or ""` for
-    `Landing:\s*(merge|pr)` and returns `"merge"` on no match, so an empty
-    charter and one that says `Landing: merge` are the same value.
-  - `land_stage` has two refusals before it drives anything: a live
-    `needs-operator` wait on any item, and `branch_advanced`. It reads the
-    criteria only through `landing_mode()`.
-- `bin/flywheel-bolt-loop`, `build_loop`, reads
-  `description = (milestone or {}).get("description", "")` and passes it
-  to `plan_mode_declared` alone; `BoltParams` has no field for it.
+    `Landing:\s*(merge|pr)` and returns `"merge"` on no match.
+  - `land_stage` carries three refusals before it drives anything: a live
+    `needs-operator` wait, an empty `merge_criteria()`, and
+    `branch_advanced` — with the comment stating why all three sit there
+    rather than beside the release conditions.
 - `bin/_flywheel_inbox.py`, `PlanCard.slug`, parses the card title as
   `^\s*(?:Unit|Plan|Bolt):\s*([a-z0-9][a-z0-9-]*)\s*$` — so a slug is
-  already a safe file name, and `units/<slug>.md` needs no further
-  sanitising.
+  already a safe file name, and `units/<slug>.md` needs no sanitising.
 - `tests/test_bolt_loop.py`: `LandingTest.program` assigns
-  `program.merge_criteria = lambda: criteria` on every landing test, so
-  nothing exercises the real reader from `land_stage`; and
+  `program.merge_criteria = lambda: criteria` on every landing test; and
   `ReadingTest`'s one real-reader test reads
-  `openspec/changes/loop-server/bolt.md`, which has since been archived
-  under `openspec/changes/archive/`, so it takes its `skipTest` branch.
+  `openspec/changes/loop-server/bolt.md`, which no longer exists outside
+  `openspec/changes/archive/`, so it takes its `skipTest` branch.
+
+What is left is entirely the record's shape: one artifact where the book
+says two, a work order that still asks for a unit document inside the
+charter, a guard that appends into it, and a reader that searches the
+whole file.
 
 Constraints the shape has to respect:
 
@@ -116,12 +126,15 @@ as the charter, which the region rule below prevents.
 
 **The merge-criteria reader takes the charter's region, not the whole
 file.** The region is the file up to the first `# Unit:` heading, and the
-whole file when there is none. Today's `^#{1,2}\s` lookahead stops the
-*section* at such a heading but still lets a `## Merge criteria` that
-appears **inside** a unit's document be found first when the charter above
-has none — which is precisely the state both stale records are in.
-Bounding the region first makes "the bolt's criteria" mean the charter's,
-and makes the absent case genuinely absent so the landing refusal fires.
+whole file when there is none. The existing `^#{1,2}\s` lookahead stops
+the *section* at such a heading but still lets a `## Merge criteria`
+appearing **inside** a unit's document be found first when the charter
+above has none — precisely the state both stale records are in. Bounding
+the region first makes "the bolt's criteria" mean the charter's, and
+makes the absent case genuinely absent so the guard's check and the
+landing's refusal both fire on it. Once the scaffold stops writing unit
+prose into `bolt.md`, this matters only for records already in the older
+shape — which is exactly why it is not enough to fix the writer.
 
 **The post-settle check calls `merge_criteria()`, not a new parser.** So
 "the guard passed" and "the landing can read it" cannot disagree. The
@@ -153,20 +166,23 @@ as `branch_advanced`'s "nothing to land, nothing closed". Placing it
 there also gives it the forced-landing behaviour for free: those refusals
 sit inside `land_stage`, which a force reaches.
 
-**Checking the scaffold's output does not cost `guard_scaffold` its
-idempotency.** The check runs only on the path where the guard just drove
-a session; a pass that finds the directory already present returns before
-it, as today. A charter still missing its sections on a later pass is
-caught by the landing refusal rather than by a guard that would have to
-rewrite committed prose to fix it.
+**The charter half already on disk is verified, not rebuilt.**
+`BoltParams.description`, the work order's `CHARTER_SECTIONS` paragraph,
+the post-settle check and `land_stage`'s charter refusal are already as
+the specs here state. The build's job for them is to confirm the file
+bears the claim out and to leave them alone; the specs carry them into
+`openspec/specs/` at archive, which is the only reason they appear as
+requirements at all.
 
 ## Risks / Trade-offs
 
-- **A bolt mid-flight with a sectionless charter now cannot land** —
+- **A bolt mid-flight with a sectionless charter cannot land** —
   `bolt/loop-boundaries`, this bolt, is one, and `bolt/matches-the-book`
-  is the other. → Intended: a silent wrong landing becomes a legible
-  refusal naming the file. The way past it is to write the four sections
-  into that charter, a one-file edit.
+  is the other. The refusal is already in the tree; bounding the reader
+  to the charter's region makes it fire on a record whose unit prose
+  carries a `## Merge criteria` of its own. → Intended: a silent wrong
+  landing becomes a legible refusal naming the file. The way past it is
+  to write the four sections into that charter, a one-file edit.
 - **`guard_charter` writing files rather than appending changes what a
   half-applied change looks like.** A record could end with the unit file
   written and the stale `# Unit:` section still in `bolt.md`, so the same
