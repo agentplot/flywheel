@@ -4,17 +4,17 @@
 
 The landing verifies the bolt's merge criteria by running them, so a
 charter that states none gives it nothing to verify. The bolt loop SHALL
-refuse the landing when the bolt's `bolt.md` carries no bolt-level merge
-criteria section, or carries one whose body is empty — including the case
-where the file itself is absent. The refusal SHALL come ahead of any
+refuse the landing when the bolt's `bolt.md` states no merge criteria —
+no such section in the charter's own region, a section whose body is
+empty, or no `bolt.md` at all. The refusal SHALL come ahead of any
 landing session and ahead of anything reaching the main branch: nothing
 is verified, no item is closed, and no item is upgraded to
 `closed:done`.
 
 The refusal SHALL name the charter's path and say that its merge criteria
-could not be read, so the operator's next act is obvious. A landing that
-was refused this way SHALL be legible as refused wherever the run reports
-its landing, and SHALL NOT read as a landing that was never reached for.
+could not be read, so the operator's next act is obvious. A landing
+refused this way SHALL be legible as refused wherever the run reports its
+landing, and SHALL NOT read as a landing that was never reached for.
 
 **A forced landing does not pass this refusal.** Forcing is a claim about
 the operator's release — that the milestone close has been made or is
@@ -26,12 +26,13 @@ This is a refusal within the landing, not a third release condition: it
 is asked after the open-unit-card hold and the milestone-close condition
 have been satisfied, alongside the landing's existing refusals — a live
 operator wait on any item, and a bolt branch that carries no work beyond
-its cut point.
+its cut point. Unlike a release condition it cannot be answered on the
+board; the charter is what has to change.
 
-#### Scenario: a charter with no merge criteria section
+#### Scenario: a charter that states no merge criteria
 
 - **WHEN** every release condition is satisfied and the bolt's `bolt.md`
-  carries no bolt-level merge criteria section
+  states no merge criteria in the charter's own region
 - **THEN** no landing session runs, nothing reaches the main branch, no
   item is closed or upgraded, and the run's landing line names the
   charter and says its merge criteria could not be read
@@ -40,8 +41,8 @@ its cut point.
 
 - **WHEN** the charter carries the merge criteria heading with no body
   under it
-- **THEN** the landing is refused exactly as for a charter with no such
-  section at all
+- **THEN** the landing is refused exactly as for a charter that carries
+  no such section at all
 
 #### Scenario: a forced landing over an unreadable charter
 
@@ -51,7 +52,6 @@ its cut point.
 
 #### Scenario: a charter that states its criteria
 
-- **WHEN** the charter carries a bolt-level merge criteria section with a
-  body
+- **WHEN** the charter carries a merge criteria section with a body
 - **THEN** the landing proceeds under its existing preconditions and
   gains nothing from this requirement
