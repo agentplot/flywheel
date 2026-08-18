@@ -386,3 +386,31 @@ class PerChangeDriveTest(unittest.TestCase):
             self.snapshot([merged, second]), (second,))
         self.assertEqual([i.number for i in runnable], [14])
         self.assertEqual(held, ())
+
+
+class ClosedMilestoneJobTest(unittest.TestCase):
+    """The operator's close releases the landing — and the loop must stay
+    alive for both halves of what follows: merged items awaiting their
+    upgrade, and the born-ready fix item a failed landing files."""
+
+    def job_for(self, item):
+        return [(j.milestone, j.kind) for j in inbox.server_inbox(
+            inbox.TrackerSnapshot(items=[item]))]
+
+    def test_a_merged_item_on_a_closed_bolt_milestone_is_a_job(self):
+        merged = inbox.Item(number=5, milestone="bolt/x",
+                            milestone_state="closed", state="closed",
+                            labels=frozenset({"closed:merged"}))
+        self.assertIn(("bolt/x", "run"), self.job_for(merged))
+
+    def test_a_ready_fix_item_on_a_closed_bolt_milestone_is_a_job(self):
+        fix = inbox.Item(number=9, milestone="bolt/x",
+                         milestone_state="closed",
+                         labels=frozenset({"state:ready"}))
+        self.assertIn(("bolt/x", "run"), self.job_for(fix))
+
+    def test_a_closed_intent_milestone_item_is_never_a_job(self):
+        stray = inbox.Item(number=9, milestone="intent/x",
+                           milestone_state="closed",
+                           labels=frozenset({"state:ready"}))
+        self.assertEqual(self.job_for(stray), [])

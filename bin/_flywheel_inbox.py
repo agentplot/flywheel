@@ -503,11 +503,17 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         if item.milestone_state != "open":
             # The operator's close on a bolt milestone RELEASES the landing:
             # merged items still awaiting their upgrade keep the loop's job
-            # alive until the landing has run and closed them done.
-            if (item.merge_closed and item.milestone
-                    and item.milestone.startswith(BOLT_PREFIX)):
-                add(item.milestone, "run",
-                    f"#{item.number} merged; the close released the landing")
+            # alive until the landing has run and closed them done — and so
+            # does the born-ready fix item a failed landing files, or the
+            # close strands its own repair.
+            if item.milestone and item.milestone.startswith(BOLT_PREFIX):
+                if item.merge_closed:
+                    add(item.milestone, "run",
+                        f"#{item.number} merged; the close released the landing")
+                elif item.is_open and (item.ready or item.in_progress):
+                    add(item.milestone, "run",
+                        f"#{item.number} ready on the closed milestone — "
+                        f"a landing's fix item")
             continue
         if milestone_slug(item.milestone) is None:
             continue
