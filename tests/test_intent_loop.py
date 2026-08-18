@@ -321,9 +321,24 @@ class DryCycleTest(unittest.TestCase):
                 Batch(number=10, kind="unit", status="Backlog",
                       sub_issues=(9, 2), milestone="intent/x")],
         )
-        self.assertEqual(self._guards(cycle2), (),
+        # The one write left is the spent approval leaving the board:
+        # batch #4's Ready released everything it covered, so the consume
+        # fires once...
+        self.assertEqual([w.kind for w in self._guards(cycle2)],
+                         ["clear_status"],
+                         "a spent Ready is consumed, and nothing else moves")
+
+        # ...and with the status gone, the tracker is settled for good.
+        cycle3 = Snapshot(
+            items=list(cycle2.items),
+            batches=[Batch(number=4, kind="unit", status=None,
+                           sub_issues=(1,), milestone="intent/x")] + [
+                Batch(number=10, kind="unit", status="Backlog",
+                      sub_issues=(9, 2), milestone="intent/x")],
+        )
+        self.assertEqual(self._guards(cycle3), (),
                          "a settled tracker must produce no write at all")
-        self.assertEqual(self._guards(cycle2), (),
+        self.assertEqual(self._guards(cycle3), (),
                          "and must keep producing none")
 
 

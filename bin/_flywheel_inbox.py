@@ -751,6 +751,30 @@ def bolt_inbox(snapshot, slug):
     )
 
 
+def ready_consume_plan(snapshot, milestone=None):
+    """Batches whose board Ready is spent — a PLAN, not a write.
+
+    The operator's Ready is an approval, and an approval is consumed by
+    the work it starts: once none of a batch's sub-issues is still
+    `state:queued`, everything the Ready covered has been released, and
+    the batch leaving the Ready column is what keeps the board honest —
+    Ready shows only approvals not yet picked up, and nothing that joins
+    a batch later inherits a spent approval. Idempotent: a batch with no
+    board Status is not in the plan.
+    """
+    numbers = []
+    for batch in snapshot.batches:
+        if not batch.at_ready or not batch.sub_issues:
+            continue
+        if milestone is not None and batch.milestone not in (None, milestone):
+            continue
+        subs = [snapshot.item(n) for n in batch.sub_issues]
+        if any(i is not None and i.is_open and i.queued for i in subs):
+            continue                      # flip first; consume next pass
+        numbers.append(batch.number)
+    return tuple(numbers)
+
+
 def unblocked(snapshot, items):
     """Those with no open blocker. Not part of the record's bolt filter —
     a convenience for the loop that wants it."""
@@ -774,6 +798,7 @@ class IntentInbox:
     ready: tuple = ()
     ready_units: tuple = ()
     queued_to_flip: tuple = ()
+    spent_ready: tuple = ()
     handoff: HandoffPlan = None
     orphan_queued: tuple = ()
     to_collect: tuple = ()
@@ -903,6 +928,7 @@ def intent_inbox(snapshot, slug):
         ready=tuple(i for i in on_milestone if i.ready),
         ready_units=units,
         queued_to_flip=flip_consume_plan(snapshot, milestone),
+        spent_ready=ready_consume_plan(snapshot, milestone),
         handoff=handoff,
         orphan_queued=compose_plan(snapshot, slug, handoff),
         to_collect=collect_plan(snapshot, slug),

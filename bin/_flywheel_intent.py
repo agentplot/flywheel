@@ -243,6 +243,12 @@ class Writer:
         if self.apply and self.tracker:
             self.tracker.remove_label(number, label)
 
+    def clear_status(self, number):
+        self._record("clear_status", f"#{number}", "board Status consumed")
+        if self.apply and self.tracker is not None and hasattr(
+                self.tracker, "clear_board_status"):
+            self.tracker.clear_board_status(number)
+
     def comment(self, number, body):
         self._record("comment", f"#{number}", body.splitlines()[0][:80])
         if self.apply and self.tracker:
@@ -294,6 +300,17 @@ class Writer:
 # ---------------------------------------------------------------------------
 # Guard 1 — flip-consume
 # ---------------------------------------------------------------------------
+
+def apply_ready_consume(writer, numbers):
+    """A spent approval leaves the Ready column.
+
+    The bolt loop consumes a card's Ready at expansion; this is the intent
+    side's same move, one pass after the flip. A batch still at Ready with
+    its work released is how a later joiner inherits an approval the
+    operator never gave it (observed live: #265)."""
+    for number in numbers:
+        writer.clear_status(number)
+
 
 def apply_flip_consume(writer, numbers):
     """`state:queued` -> `state:ready`, for the sub-issues a Ready batch releases.
@@ -521,6 +538,7 @@ def run_guards(writer, inbox, snapshot, config):
     """All three, every cycle, in order, each idempotent. Returns its writes."""
     mark = writer.mark()
     apply_flip_consume(writer, inbox.queued_to_flip)
+    apply_ready_consume(writer, getattr(inbox, "spent_ready", ()))
     apply_handoff(writer, inbox.handoff, snapshot, config)
     apply_compose(writer, inbox.orphan_queued, config, snapshot)
     return writer.since(mark)
