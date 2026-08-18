@@ -3,7 +3,7 @@
 The five OpenSpec workflow schemas the loops track their work under:
 
 - `flywheel-intent` — one design thread: decisions, questions,
-  assertions, sessions, typed tasks, and the intent loop's shape in
+  sessions, typed tasks, and the intent loop's shape in
   `apply.instruction`.
 - `bolt-direct` · `bolt-default` · `bolt-quick` · `bolt-adversarial` —
   one construction

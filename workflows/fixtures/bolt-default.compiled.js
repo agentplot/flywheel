@@ -151,7 +151,7 @@ while (true) {
     work,
     (it) => drive(
       `spec-writing-${it.change}`.slice(0, 32), A.repoDir,
-      `/opsx:ff ${it.change}\n\nSpec for item #${it.number} - ${it.title}\nOne spec-driven change for this one assertion, derived from ${it.record} and the decisions it cites. Worktree: wt switch --create build/${it.change} --base ${A.boltBranch} --no-cd in ${A.repoDir}. openspec validate --strict green before it counts. ${T} Flip #${it.number} to state:in-progress. Commit; do not merge or push. Deliver by settling.`,
+      `/opsx:ff ${it.change}\n\nSpec for item #${it.number} - ${it.title}\nOne spec-driven change for this one item, derived from ${it.record} and the decisions it cites. Worktree: wt switch --create build/${it.change} --base ${A.boltBranch} --no-cd in ${A.repoDir}. openspec validate --strict green before it counts. ${T} Flip #${it.number} to state:in-progress. Commit; do not merge or push. Deliver by settling.`,
       `spec:${it.change}`, it.number).then((o) => { trace.push({ stage: `spec:${it.change}`, status: o && o.status, detail: o && o.detail }); return o }),
     (spec, it) => (spec && spec.status === 'done')
       ? drive(

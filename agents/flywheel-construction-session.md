@@ -42,7 +42,7 @@ branch, the comment is on each item — and the loop collects them. Settle
 without them and the loop re-prompts you once, then sets
 `needs-operator` and waits for the operator rather than guessing.
 
-Your batch's items point at assertion records — the assertion is the
+Your batch's items carry or cite their sources — the item body is the
 proposal. Any claim about a neighbouring artifact's state is checked by
 re-reading the neighbour from disk, because neighbours move while
 batches run. Book chapters and the context map are the design loop's;

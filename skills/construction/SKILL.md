@@ -1,19 +1,21 @@
 ---
 name: construction
-description: Run the flywheel construction loop — the bolt loop drives released assertions through spec, build, verify, merge and landing across built-repo bolt branches, tracked as items on the org's tracker. Use when a bolt is created or amended, when the operator asks to check on or land construction work, or when construction findings need routing.
+description: Run the flywheel construction loop — the bolt loop drives an approved plan's work items through spec, build, verify, merge and landing across built-repo bolt branches, tracked as items on the org's tracker. Use when a bolt is created or amended, when the operator asks to check on or land construction work, or when construction findings need routing.
 ---
 
 # Flywheel construction — the bolt loop
 
 One bolt = one construction iteration = one OpenSpec change bound to a
 bolt schema member — `bolt-direct`, `bolt-default`, `bolt-quick`,
-`bolt-adversarial`,
+`bolt-adversarial`, `bolt-plan`,
 where **the member picked at creation IS the bolt type**, setting the
 review steps the loop schedules and the stages it runs (`bolt-direct`
-declares spec, build, merge, land — no verify) — plus the tracker
-milestone `bolt/<slug>` holding its items. The items are the released
-assertions, moved there at release; **the assertion is the proposal**,
-and every spec derives from the assertion record and the decisions it
+declares spec, build, merge, land — no verify; `bolt-plan` runs the
+plan path) — and a unit card naming a type runs its batch under that
+type. The tracker
+milestone `bolt/<slug>` holds its items, born by the approved plan's
+expansion; **the item body is the proposal**,
+and every spec derives from the item and the sources it
 cites, never from a restatement. A bolt exists only past the operator's
 release, so the server starts its loop the moment the milestone has a
 job, and the release that created a bolt covers every wave of agents
@@ -99,32 +101,31 @@ did not schedule: no review, no re-review, no bounce round exists
 unless the bolt type's own instruction names it. What this skill holds
 is the practice shared by every stage the loop does run:
 
-- **One spec-driven change per assertion** (`/opsx:ff` each); the
-  assertion's record binds one change id and one landing ref. `openspec validate --strict` green before a spec
+- **One spec-driven change per work item** (`/opsx:ff` each); the
+  item binds one change id and one landing ref. `openspec validate --strict` green before a spec
   counts; cite by anchor or quoted phrase, never line number; re-read
   every neighbour a spec claims something about from disk at build
   time.
-- **The plan-mode path — quick bolts only**: where a `bolt-quick`
-  declares it, the build session starts in plan mode
+- **The plan path — `bolt-plan` only**: on a `bolt-plan` batch the
+  build session starts in plan mode
   (`--permission-mode plan`); approval is a judgment, so an approver
   session checks the plan against the item's claim and the loop drives
   the plan dialog on the verdict it answers with, pausing the batch
-  after two returns rather than bouncing again. On other types every item is
-  specced — the bolt type is the scrutiny the operator chose at
-  release, and a declaration against those types is refused rather than
-  honoured quietly.
+  after two returns rather than bouncing again. On every other type
+  every item is
+  specced — the type is the scrutiny the operator chose at
+  approval, and an unknown type pauses the batch rather than running
+  a downgraded loop.
 - **Merging**: session branch to bolt branch through the gate
   (`wt merge <bolt-branch> --no-remove -C <worktree>`, never
-  `--yes`). At that merge-back the loop closes each assertion
+  `--yes`). At that merge-back the loop closes each item
   `closed:merged` with the merge SHA — which is what checks it off on
   its unit parent's native bar. Bolt branch to main through the merge
   gate, one
   writer at a time, when `bolt.md`'s merge criteria hold: the landing
   comments the landing SHA and **upgrades** each item's reason from
-  `closed:merged` to `closed:done` on the already-closed item, archives
-  the built repo's spec-driven change,
-  and comments the source intent's assertion item so the intent
-  records the landing.
+  `closed:merged` to `closed:done` on the already-closed item, and
+  archives the built repo's spec-driven change.
 
 ## State claims
 

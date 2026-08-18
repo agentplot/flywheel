@@ -1,5 +1,5 @@
 {
-  "_": "Exercises the intent guards: #201 ready (dispatch), #202 settled assertion (sits uncomposed \u2014 construction's work is born by the planner), #203 orphan queued (compose).",
+  "_": "Exercises the intent guards: #201 ready (dispatch), #203 orphan queued (compose).",
   "milestone": "intent/sandbox-design",
   "items": [
     {
@@ -12,17 +12,6 @@
       "blocked_by": [],
       "parent_batch": 204,
       "record": "openspec/changes/sandbox-design/questions/fixture-question.md"
-    },
-    {
-      "number": 202,
-      "title": "A settled assertion with no batch and no blocker (sits uncomposed)",
-      "labels": [
-        "type:assertion",
-        "state:queued"
-      ],
-      "blocked_by": [],
-      "parent_batch": null,
-      "record": "openspec/changes/sandbox-design/assertions/settled-claim.md"
     },
     {
       "number": 203,

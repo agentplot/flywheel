@@ -53,7 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,
                              IN_PROGRESS, NEEDS_OPERATOR, QUEUED, READY,
                              STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
-                             STATUS_BACKLOG, TYPE_ASSERTION, Tracker,
+                             STATUS_BACKLOG, Tracker,
                              TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, set_needs_operator,
                              set_stage, unblocked)
@@ -125,7 +125,7 @@ def type_of(item):
     Invariant 4: "`type:*` is the session type that works the item." There is
     NO default here, and that is deliberate — the compiled fixture
     (`workflows/fixtures/flywheel-intent.compiled.js`) falls back to
-    `type:research`, which would hand a released assertion to a research
+    `type:research`, which would hand any mistyped item to a research
     session. An item the loop cannot type is reported, not guessed at.
     """
     for label in sorted(item.labels):
@@ -371,7 +371,7 @@ def compose_unit(writer, config, title, numbers, into=None):
     triage, where their word is itself the approval; that move is made by
     the release path with `flywheel-board`, not from inside this loop.
 
-    `into` appends late-settling assertions to the unit that already
+    `into` appends late-arriving items to the unit that already
     exists, through the same command.
     """
     compose_batch(writer, config, "unit", title, numbers, into=into)
@@ -459,9 +459,6 @@ def batch_ready(snapshot, items):
     "batch the ready items by their type label - one session type per batch,
     prototypes always alone. A batch runs only when every blocked_by of every
     item in it is closed - computed from the field, not reasoned."
-
-    `type:assertion` is never dispatched: it is a released claim, guard 2's
-    business and construction's, not a design session's.
     """
     groups, undispatchable = {}, []
     for item in sorted(unblocked(snapshot, items), key=lambda i: i.number):
@@ -518,7 +515,7 @@ def session_order(batch, config):
         f"Your session directory is "
         f"openspec/changes/{config.slug}/sessions/<date>-<topic>/ and you are "
         "its sole writer. Write your records (decisions, questions, "
-        "assertions, the session README) in your worktree; queue your own "
+        "the session README) in your worktree; queue your own "
         "discoveries as items — whoever finds queues; comment each item you "
         "worked; never close your own items.",
         "",
@@ -926,14 +923,6 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
 
             batches, undispatchable = batch_ready(snapshot, inbox.ready)
             for item, kind in undispatchable:
-                if kind == "assertion":
-                    # NOT an escalation. A settled assertion is
-                    # construction's, never a design session's: the
-                    # planner reads the book and cards the work, and the
-                    # operator's approval releases it. It sits here
-                    # undispatched by design; escalating each one turns
-                    # settling into a `needs-operator` storm.
-                    continue
                 set_needs_operator(
                     writer, item.number,
                     f"The intent loop cannot dispatch this item: its type is "

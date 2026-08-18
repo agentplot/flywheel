@@ -7,7 +7,7 @@ description: Run the read a flywheel code-review construction session takes over
 
 You are a construction session charged with the **code-review type**.
 Your batch is built work on its build branches or merged back on the
-bolt branch; your output is a verdict per assertion, before the batch
+bolt branch; your output is a verdict per work item, before the batch
 lands.
 
 ## Adversarial means trying to refute
@@ -22,7 +22,7 @@ the failure mode this type exists to prevent.
 
 ## What a verdict is
 
-Per assertion: **clear**, or the defects named — each with the file, the
+Per item: **clear**, or the defects named — each with the file, the
 evidence, and the requirement or decision it violates, concrete enough
 to fix without re-running your read. Distinguish defect classes: a build
 defect (the tree misses the spec), a spec defect (the spec misses its
@@ -61,11 +61,11 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: built work for assertion items (`type:assertion`), on build branches or the bolt branch.
-- **You leave**: one verdict comment per assertion item. You never edit what you review; a bounce re-dispatches the build.
+- **You receive**: built work for the batch's items, on build branches or the bolt branch.
+- **You leave**: one verdict comment per item. You never edit what you review; a bounce re-dispatches the build.
 - A defect beyond the batch is a queued item on the right milestone.
 
 ## What you report
 
-The verdict per assertion with defects classed and evidenced, and what
+The verdict per item with defects classed and evidenced, and what
 the next batch should work.

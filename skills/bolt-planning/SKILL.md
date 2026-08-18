@@ -63,7 +63,7 @@ Two levels, two different objects:
   delivers it. The book's sentences justify the unit; the user's
   story shapes it.
 - **Size each change by how much code it actually is, never by how
-  many book sentences it serves.** If several assertions would be
+  many book sentences it serves.** If several claims would be
   implemented together as one small commit, make them one change, not
   several. Every change costs a full loop cycle — a spec session, a
   review, a build session, verify, a merge — so splitting is only

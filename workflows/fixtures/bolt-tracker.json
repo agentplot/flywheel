@@ -5,19 +5,19 @@
     {
       "number": 101,
       "title": "scratch/sandbox-note.md states the fixture claim",
-      "labels": ["type:assertion", "state:ready"],
+      "labels": ["state:ready"],
       "blocked_by": [],
       "parent_batch": null,
-      "record": "openspec/changes/sandbox-loop/assertions/sandbox-note.md",
+      "record": "openspec/changes/sandbox-loop/decisions/sandbox-note.md",
       "change": "sandbox-note"
     },
     {
       "number": 102,
       "title": "scratch/sandbox-index.md lists sandbox-note.md",
-      "labels": ["type:assertion", "state:ready"],
+      "labels": ["state:ready"],
       "blocked_by": [101],
       "parent_batch": null,
-      "record": "openspec/changes/sandbox-loop/assertions/sandbox-index.md",
+      "record": "openspec/changes/sandbox-loop/decisions/sandbox-index.md",
       "change": "sandbox-index"
     },
     {

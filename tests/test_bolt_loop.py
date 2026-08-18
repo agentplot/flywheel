@@ -310,7 +310,7 @@ class StatelessResumeTest(unittest.TestCase):
 
     def _snap(self):
         return Snapshot(items=[
-            item(96, inbox.IN_PROGRESS, inbox.TYPE_ASSERTION,
+            item(96, inbox.IN_PROGRESS,
                  milestone="bolt/x")])
 
     def test_an_unmerged_in_progress_item_is_re_driven_not_stranded(self):
@@ -1175,7 +1175,7 @@ class StageLabelTest(unittest.TestCase):
         # is an ancestor of everything it was cut from, so bare ancestry
         # read it as merged and closed its items. Advancement is the fact
         # that makes ancestry mean something.
-        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+        snap = Snapshot(items=[item(1, 
                                     inbox.IN_PROGRESS, change="add-thing")],
                         milestone="bolt/x")
         tracker = FakeTracker(snap)
@@ -1187,7 +1187,7 @@ class StageLabelTest(unittest.TestCase):
         self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
 
     def test_an_absent_branch_gets_no_stage(self):
-        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+        snap = Snapshot(items=[item(1, 
                                     inbox.IN_PROGRESS, change="add-thing")],
                         milestone="bolt/x")
         tracker = FakeTracker(snap)
@@ -1259,7 +1259,7 @@ class StageLabelTest(unittest.TestCase):
         `closed:merged` — the one combination `merge_closed` (which is
         `not is_open and CLOSED_MERGED in labels`) reads as False.
         """
-        torn = item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+        torn = item(1, inbox.IN_PROGRESS,
                     inbox.CLOSED_MERGED, change="add-thing")
         snapshot = Snapshot(items=[torn], milestone="bolt/x")
         tracker = FakeTracker(snapshot)
@@ -1288,7 +1288,7 @@ class StageLabelTest(unittest.TestCase):
         self.assertTrue(any("closed" in a for a in first), first)
 
         # Second pass, against the tracker the first one left behind.
-        repaired = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+        repaired = Snapshot(items=[item(1, 
                                         inbox.IN_PROGRESS, inbox.CLOSED_MERGED,
                                         change="add-thing", state="closed")],
                             milestone="bolt/x")
@@ -1300,7 +1300,7 @@ class StageLabelTest(unittest.TestCase):
 
     def test_an_item_already_closed_at_merge_is_left_entirely_alone(self):
         # Idempotence in the normal direction, which the old skip did give.
-        closed = item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+        closed = item(1, inbox.IN_PROGRESS,
                       inbox.CLOSED_MERGED, change="add-thing", state="closed")
         snapshot = Snapshot(items=[closed], milestone="bolt/x")
         tracker = FakeTracker(snapshot)
@@ -1419,8 +1419,8 @@ class StageLabelTest(unittest.TestCase):
 class LandingTest(unittest.TestCase):
 
     def snapshot(self):
-        return Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
-                               item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)],
+        return Snapshot(items=[item(1, inbox.IN_PROGRESS),
+                               item(2, inbox.IN_PROGRESS)],
                         milestone="bolt/x")
 
     def program(self, criteria, ancestor=0, runner=None, tracker=None):
@@ -1448,7 +1448,7 @@ class LandingTest(unittest.TestCase):
         self.assertEqual([w for w in tracker.writes if w[0] == "close"], [])
 
     def test_a_live_wait_on_any_item_holds_the_landing(self):
-        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+        snap = Snapshot(items=[item(1, inbox.IN_PROGRESS,
                                     inbox.NEEDS_OPERATOR)],
                         milestone="bolt/x")
         tracker = FakeTracker(snap)
@@ -1481,13 +1481,13 @@ class LandingTest(unittest.TestCase):
         more than one card — and `elaboration=number` adds an elaboration
         beside them, which no landing closes.
         """
-        items = [item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS, parent_batch=parent),
-                 item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS, parent_batch=parent)]
+        items = [item(1, inbox.IN_PROGRESS, parent_batch=parent),
+                 item(2, inbox.IN_PROGRESS, parent_batch=parent)]
         batches = [Batch(number=parent, kind=kind, status=inbox.STATUS_READY,
                          sub_issues=(1, 2), milestone=milestone)]
         if second:
             number, subs = second
-            items += [item(n, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+            items += [item(n, inbox.IN_PROGRESS,
                            parent_batch=number) for n in subs]
             batches.append(Batch(number=number, kind=inbox.UNIT,
                                  status=inbox.STATUS_READY,
@@ -1525,7 +1525,7 @@ class LandingTest(unittest.TestCase):
                       "the open unit closes even though it rode the item set")
 
     def test_closing_the_parent_touches_no_sub_issue(self):
-        # The assertions' closes belong to the merge boundary and to the
+        # The work items' closes belong to the merge boundary and to the
         # upgrade; a container's close is not a cascade.
         snapshot = self.with_unit()
         program, tracker = self.program("Landing: merge", ancestor=0,
@@ -1574,7 +1574,7 @@ class LandingTest(unittest.TestCase):
 
     def test_a_handoff_parent_off_the_bolt_milestone_is_reached_by_parentage(self):
         # The handoff path puts the parent on `intent/<slug>` deliberately —
-        # it is born before any assertion has moved to a bolt — so the only
+        # it is born before any work item has moved to a bolt — so the only
         # handle is a landed item's own parent.
         snapshot = self.with_unit(milestone="intent/x")
         program, tracker = self.program("Landing: merge", ancestor=0,
@@ -1636,19 +1636,19 @@ class LandingTest(unittest.TestCase):
         # for. The previous test pinned it only after setting `_merged`.
         merged = [Item(number=n, milestone="bolt/x", milestone_state="closed",
                        title=str(n), state="closed",
-                       labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
+                       labels=frozenset({inbox.CLOSED_MERGED}))
                   for n in (1, 2)]
         program = a_loop(FakeTracker())
         box = inbox.BoltInbox(milestone="bolt/x")
         self.assertEqual(program._merged, 0, "a fresh process merged nothing")
         self.assertTrue(program.landing_wanted("auto", box, merged))
 
-    def test_a_bolt_with_an_assertion_still_building_is_not_landed(self):
+    def test_a_bolt_with_an_item_still_building_is_not_landed(self):
         # The caution `_merged` encoded, kept: an empty ready set is also
         # what a process sees while a sibling's session is still building.
         merged = Item(number=1, milestone="bolt/x", title="1", state="closed",
-                      labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
-        building = item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)
+                      labels=frozenset({inbox.CLOSED_MERGED}))
+        building = item(2, inbox.IN_PROGRESS)
         program = a_loop(FakeTracker())
         box = inbox.BoltInbox(milestone="bolt/x")
         self.assertFalse(program.landing_wanted("auto", box, [merged, building]))
@@ -1666,12 +1666,12 @@ class LandingTest(unittest.TestCase):
 
     def merge_closed_only(self):
         """The NORMAL state at the landing once the merge boundary closes:
-        every assertion closed at `closed:merged`, nothing open."""
+        every work item closed at `closed:merged`, nothing open."""
         return Snapshot(items=[
             Item(number=1, milestone="bolt/x", title="one", state="closed",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+                 labels=frozenset({inbox.CLOSED_MERGED})),
             Item(number=2, milestone="bolt/x", title="two", state="closed",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+                 labels=frozenset({inbox.CLOSED_MERGED})),
         ], milestone="bolt/x")
 
     def test_a_failed_landing_on_an_all_merge_closed_milestone_still_pauses(self):
@@ -1688,7 +1688,7 @@ class LandingTest(unittest.TestCase):
 
     def test_an_andon_on_a_merge_closed_item_is_still_read(self):
         # The landing session's own work order tells it to raise the andon
-        # on an item; by then every assertion is closed.
+        # on an item; by then every work item is closed.
         snapshot = self.merge_closed_only()
         tracker = FakeTracker(snapshot, comments={
             1: [{"body": inbox.format_andon("criterion two failed again")}]})
@@ -1727,7 +1727,7 @@ class LandingHoldTest(unittest.TestCase):
                               team="build")
 
     def merged(self, number, parent=None, milestone_state="closed"):
-        """An assertion that has reached the bolt branch — the state at the
+        """A work item that has reached the bolt branch — the state at the
         landing, once the merge boundary has closed every item.
 
         `milestone_state="closed"`, matching the fixtures elsewhere in this
@@ -1738,10 +1738,10 @@ class LandingHoldTest(unittest.TestCase):
         return Item(number=number, milestone="bolt/x", title=f"item {number}",
                     state="closed", parent_batch=parent,
                     milestone_state=milestone_state,
-                    labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
+                    labels=frozenset({inbox.CLOSED_MERGED}))
 
     def at_the_landing(self, cards=(), batches=()):
-        """Every assertion `closed:merged` and the operator's close made: the
+        """Every work item `closed:merged` and the operator's close made: the
         landing is otherwise wanted, so anything that declines it here is the
         card hold and nothing else."""
         return Snapshot(items=[self.merged(1), self.merged(2)],
@@ -1750,7 +1750,7 @@ class LandingHoldTest(unittest.TestCase):
 
     def milestone_still_open(self, cards=(), batches=()):
         """The same tree, with the operator's close NOT yet made: every
-        assertion merged, and the milestone the items carry still open."""
+        item merged, and the milestone the items carry still open."""
         return Snapshot(items=[self.merged(1, milestone_state="open"),
                                self.merged(2, milestone_state="open")],
                         batches=list(batches), plan_cards=list(cards),
@@ -1858,7 +1858,7 @@ class LandingHoldTest(unittest.TestCase):
         # coincide here — and the run that reports `not attempted` sends the
         # operator to watch the work when the standing question is the card.
         snapshot = Snapshot(items=[self.merged(1),
-                                   item(2, inbox.TYPE_ASSERTION, inbox.READY)],
+                                   item(2, inbox.READY)],
                             plan_cards=[self.card()], milestone="bolt/x")
         program, tracker, runner = self.program(snapshot)
         box = inbox.bolt_inbox(snapshot, "x")
@@ -1930,7 +1930,7 @@ class LandingHoldTest(unittest.TestCase):
     # reads the milestone state has no positive coverage at all.
 
     def test_an_open_milestone_declines_an_automatic_landing(self):
-        # Every assertion merged and every card ruled: necessary, never
+        # Every work item merged and every card ruled: necessary, never
         # sufficient. Merged work does not reach main on the machinery's own
         # initiative — the operator's close is the release gesture.
         snapshot = self.milestone_still_open()
@@ -1987,9 +1987,9 @@ class LandingHoldTest(unittest.TestCase):
         """
         running = Snapshot(
             items=[self.merged(1, parent=9), self.merged(2, parent=9),
-                   item(3, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=10,
+                   item(3, inbox.READY, parent_batch=10,
                         milestone_state="closed"),
-                   item(4, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=10,
+                   item(4, inbox.READY, parent_batch=10,
                         milestone_state="closed")],
             batches=[Batch(number=9, kind=inbox.UNIT, status=inbox.STATUS_READY,
                            sub_issues=(1, 2), milestone="bolt/x"),
@@ -2031,12 +2031,12 @@ class MergeCloseTest(unittest.TestCase):
     def a_batch(self, *items):
         return loop.WorkBatch(slug="add-thing", items=tuple(items))
 
-    def test_the_merge_boundary_closes_assertions_with_closed_merged(self):
+    def test_the_merge_boundary_closes_work_items_with_closed_merged(self):
         tracker = FakeTracker()
         program = a_loop(tracker, shell=self.shell())
         program.close_merged([
-            item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
-            item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)])
+            item(1, inbox.IN_PROGRESS),
+            item(2, inbox.IN_PROGRESS)])
         self.assertEqual(tracker.reasons, [(1, inbox.CLOSED_MERGED),
                                            (2, inbox.CLOSED_MERGED)])
         self.assertTrue(all("abc1234" in w[2] for w in tracker.writes
@@ -2048,12 +2048,12 @@ class MergeCloseTest(unittest.TestCase):
         tracker = FakeTracker()
         program = a_loop(tracker, shell=self.shell())
         program.close_merged([
-            item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
+            item(1, inbox.IN_PROGRESS),
             item(5, inbox.IN_PROGRESS, title="an expansion-born item")])
         self.assertEqual(sorted(n for n, _ in tracker.reasons), [1, 5])
 
     def test_a_full_cycle_merges_and_closes_in_one_go(self):
-        snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.READY,
+        snapshot = Snapshot(items=[item(1, inbox.READY,
                                         change="add-thing")],
                             milestone="bolt/x")
         tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
@@ -2083,10 +2083,10 @@ class MergeCloseTest(unittest.TestCase):
         return Snapshot(items=[
             Item(number=1, milestone="bolt/x", milestone_state="closed",
                  title="one", state="closed",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+                 labels=frozenset({inbox.CLOSED_MERGED})),
             Item(number=2, milestone="bolt/x", milestone_state="closed",
                  title="two", state="closed",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED})),
+                 labels=frozenset({inbox.CLOSED_MERGED})),
         ], milestone="bolt/x")
 
     def landing(self, snapshot, ancestor=0):
@@ -2115,7 +2115,7 @@ class MergeCloseTest(unittest.TestCase):
 
     def test_an_item_that_never_merged_back_still_ends_at_closed_done(self):
         # The landing's job is the end state, not a transition it witnessed.
-        snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+        snapshot = Snapshot(items=[item(1, 
                                         inbox.IN_PROGRESS)],
                             milestone="bolt/x")
         program, tracker = self.landing(snapshot)
@@ -2147,7 +2147,7 @@ class MergeCloseTest(unittest.TestCase):
         return tracker, actions
 
     def test_a_process_that_died_after_the_label_has_its_close_repaired(self):
-        snapshot = Snapshot(items=[item(1, inbox.TYPE_ASSERTION,
+        snapshot = Snapshot(items=[item(1, 
                                         inbox.IN_PROGRESS, inbox.STAGE_MERGED,
                                         change="add-thing")],
                             milestone="bolt/x")
@@ -2160,7 +2160,7 @@ class MergeCloseTest(unittest.TestCase):
         snapshot = Snapshot(items=[
             Item(number=1, milestone="bolt/x", title="one", state="closed",
                  change="add-thing",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))],
+                 labels=frozenset({inbox.CLOSED_MERGED}))],
             milestone="bolt/x")
         tracker, actions = self.reconcile(
             snapshot, seed={1: {inbox.CLOSED_MERGED}})
@@ -2171,7 +2171,7 @@ class MergeCloseTest(unittest.TestCase):
         snapshot = Snapshot(items=[
             Item(number=1, milestone="bolt/x", title="one", state="closed",
                  change="add-thing",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_DONE,
+                 labels=frozenset({inbox.CLOSED_DONE,
                                    inbox.STAGE_MERGED}))],
             milestone="bolt/x")
         tracker, actions = self.reconcile(snapshot)
@@ -2182,7 +2182,7 @@ class MergeCloseTest(unittest.TestCase):
         snapshot = Snapshot(items=[
             Item(number=1, milestone="bolt/x", title="one", state="closed",
                  change="add-thing",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED,
+                 labels=frozenset({inbox.CLOSED_MERGED,
                                    inbox.STAGE_MERGED}))],
             milestone="bolt/x")
         tracker = FakeTracker(snapshot)
@@ -2754,15 +2754,15 @@ class LandingCharterTest(unittest.TestCase):
     def merged(self, number):
         return Item(number=number, milestone="bolt/x", title=f"item {number}",
                     state="closed", milestone_state="closed",
-                    labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
+                    labels=frozenset({inbox.CLOSED_MERGED}))
 
     def snapshot(self):
-        return Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
-                               item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)],
+        return Snapshot(items=[item(1, inbox.IN_PROGRESS),
+                               item(2, inbox.IN_PROGRESS)],
                         milestone="bolt/x")
 
     def at_the_landing(self):
-        """Every assertion merge-closed and the operator's close made, so
+        """Every work item merge-closed and the operator's close made, so
         the landing is otherwise wanted and only the charter can refuse."""
         return Snapshot(items=[self.merged(1), self.merged(2)],
                         milestone="bolt/x")
@@ -2833,7 +2833,7 @@ class LandingCharterTest(unittest.TestCase):
     def test_a_live_wait_still_pauses_ahead_of_the_charter_refusal(self):
         # The charter refusal joins the existing two; it does not displace
         # the live wait, which is a standing question about an item.
-        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+        snap = Snapshot(items=[item(1, inbox.IN_PROGRESS,
                                     inbox.NEEDS_OPERATOR)],
                         milestone="bolt/x")
         with tempfile.TemporaryDirectory() as tmp:
@@ -3057,7 +3057,7 @@ Landing: pr
                                ("git", "rev-parse"): Result(0, "abc1234\n"),
                                ("git", "rev-list"): Result(0, "1\n")})
             snapshot = Snapshot(
-                items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)],
+                items=[item(1, inbox.IN_PROGRESS)],
                 milestone="bolt/x")
             program = a_loop(FakeTracker(snapshot), shell=shell,
                              repo_dir=str(tmp), bolt_worktree=str(tmp))
@@ -3227,7 +3227,7 @@ class UnitTypeTest(unittest.TestCase):
 
     def loop_with(self, body):
         snapshot = Snapshot(
-            items=[item(1, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=9),
+            items=[item(1, inbox.READY, parent_batch=9),
                    item(9, inbox.UNIT, body=body)],
             batches=[Batch(number=9, kind=inbox.UNIT, sub_issues=(1,),
                            milestone="bolt/x")])

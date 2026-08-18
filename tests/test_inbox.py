@@ -48,16 +48,7 @@ class FixtureContractTest(unittest.TestCase):
     def test_the_intent_fixture_fires_exactly_the_guards_it_annotates(self):
         snap = Snapshot.from_fixture(FIXTURES / "intent-tracker.json")
         box = inbox.intent_inbox(snap, "sandbox-design")
-        self.assertEqual([i.number for i in box.orphan_queued], [203],
-                         "#202 is an assertion and sits uncomposed — "
-                         "construction's work is born by the planner")
-
-    def test_an_assertion_is_never_composed(self):
-        # Assertions are construction's: composing one into an elaboration
-        # would charge a design session for an item no design type works.
-        snap = Snapshot.from_fixture(FIXTURES / "intent-tracker.json")
-        box = inbox.intent_inbox(snap, "sandbox-design")
-        self.assertNotIn(202, {i.number for i in box.orphan_queued})
+        self.assertEqual([i.number for i in box.orphan_queued], [203])
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +203,7 @@ class ServerInboxTest(unittest.TestCase):
         # restarted, and the bolt never lands.
         snap = Snapshot(items=[
             Item(number=1, milestone="bolt/a", state="closed",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))])
+                 labels=frozenset({inbox.CLOSED_MERGED}))])
         self.assertEqual([(j.milestone, j.kind) for j in inbox.server_inbox(snap)],
                          [("bolt/a", "run")])
 
@@ -228,7 +219,7 @@ class ServerInboxTest(unittest.TestCase):
     def test_a_landed_item_gives_its_milestone_no_job(self):
         snap = Snapshot(items=[
             Item(number=1, milestone="bolt/a", state="closed",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_DONE}))])
+                 labels=frozenset({inbox.CLOSED_DONE}))])
         self.assertEqual([j for j in inbox.server_inbox(snap) if j.kind == "run"],
                          [])
 
@@ -237,7 +228,7 @@ class ServerInboxTest(unittest.TestCase):
         # ready set is what the cycle works.
         snap = Snapshot(items=[
             Item(number=1, milestone="bolt/a", state="closed",
-                 labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED,
+                 labels=frozenset({inbox.CLOSED_MERGED,
                                    inbox.READY}))])
         self.assertEqual(inbox.bolt_inbox(snap, "a").ready, ())
 
@@ -274,26 +265,12 @@ class ServerInboxTest(unittest.TestCase):
         self.assertEqual([(j.milestone, j.kind) for j in jobs],
                          [("bolt/landed", "archive")])
 
-    def test_a_settled_assertion_alone_names_no_job(self):
-        # An intent whose last question just closed: a settled unbatched
-        # assertion, no ready item, no Ready batch. Nothing to run — the
-        # loop births nothing from an assertion; construction's work is
-        # born by the planner, and starting a loop here would dry-cycle.
-        snap = Snapshot(items=[
-            item(1, inbox.TYPE_ASSERTION, inbox.QUEUED, milestone="intent/a"),
-        ])
-        self.assertEqual(inbox.server_inbox(snap, sweep=False), [])
-        self.assertEqual(inbox.server_inbox(snap), [],
-                         "the sweep no longer wakes a loop for it either")
-
     def test_a_server_job_covers_every_milestone_a_loop_would_find_work_on(self):
         # The containment property. A server filter may over-approximate; a
         # loop filter must be exact. If this ever fails, work exists that no
         # process will ever be started to do.
         families = [
             Snapshot(items=[item(1, inbox.READY, milestone="bolt/a")]),
-            Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.QUEUED,
-                                 milestone="intent/a")]),
             Snapshot(items=[item(1, inbox.QUEUED, milestone="intent/a")]),
             Snapshot(items=[item(1, inbox.QUEUED, milestone="bolt/a",
                                  parent_batch=9)],
@@ -402,7 +379,7 @@ class DispatchInboxTest(unittest.TestCase):
         self.assertTrue(inbox.dispatch_inbox(snap).empty)
 
     def test_a_merge_closed_escalation_is_still_relayed(self):
-        # The landing can now find every assertion already closed, so its
+        # The landing can now find every work item already closed, so its
         # pause lands on a closed item. A needs-operator nobody reads is
         # the same silence as one never written.
         snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR,

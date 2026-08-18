@@ -46,7 +46,6 @@ UNIT = "unit"
 ELABORATION = "elaboration"
 PLAN = "plan"
 STALE = "stale"
-TYPE_ASSERTION = "type:assertion"
 
 #: The stage names. A `stage:*` label is ADDITIONAL to the item's `state:*`
 #: label and never a substitute for it — every one of the four inbox filters
@@ -172,10 +171,6 @@ class Item:
     @property
     def in_progress(self):
         return IN_PROGRESS in self.labels
-
-    @property
-    def is_assertion(self):
-        return TYPE_ASSERTION in self.labels
 
     @property
     def is_container(self):
@@ -582,11 +577,10 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         if item.ready or item.in_progress:
             add(item.milestone, "run", f"#{item.number} {item.state or ''}".strip())
         elif (sweep and item.queued and item.parent_batch is None
-              and not item.is_container and not item.is_assertion):
+              and not item.is_container):
             # over-approximation: compose may have work here. Batch parents
-            # are containers and assertions are construction's — counting
-            # either keeps a job open forever (compose_plan skips both for
-            # the same reason).
+            # are containers, not work — counting one keeps a job open
+            # forever (compose_plan skips them for the same reason).
             add(item.milestone, "run", f"#{item.number} queued and unbatched")
 
     for milestone in snapshot.closed_milestones:
@@ -816,14 +810,10 @@ def compose_plan(snapshot, slug):
     sweep skips.
     """
     milestone = f"{INTENT_PREFIX}{slug}"
-    # Assertions are construction's, never a design session's: the planner
-    # cards their work from the book, so composing one into an elaboration
-    # would charge a design session for an item no design type can work.
-    # They sit on the milestone uncomposed.
     return tuple(
         i for i in snapshot.on(milestone)
         if i.is_open and i.queued and i.parent_batch is None
-        and not i.is_container and not i.is_assertion
+        and not i.is_container
     )
 
 
@@ -908,7 +898,7 @@ def dispatch_inbox(snapshot):
     For the same reason it has no *open* condition either, quite: it relays
     an item that is closed at `closed:merged`, because such an item is still
     in flight — its bolt has not landed — and the landing is exactly where a
-    pause can now find every assertion already closed. A `needs-operator`
+    pause can now find every work item already closed. A `needs-operator`
     nobody reads is the same silence as one never written. The condition
     stays bounded: the landing upgrades the reason to `closed:done`, and the
     item drops out of this filter for good.

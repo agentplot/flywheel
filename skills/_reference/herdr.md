@@ -365,7 +365,7 @@ GH_TOKEN=$tok gh issue edit <n> --repo <org>/<tracker> --add-label closed:done
 GH_TOKEN=$tok gh issue close <n> --repo <org>/<tracker> --comment "<landing SHA / outcome>"
 ```
 
-A construction assertion closes twice over, and the bolt loop does both —
+A construction work item closes twice over, and the bolt loop does both —
 never a session. At the merge-back it closes `closed:merged` with the merge
 SHA, which is what advances the unit parent's native bar; at the landing the
 reason is **upgraded** on the already-closed item, so it never carries both

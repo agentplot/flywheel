@@ -169,21 +169,18 @@ class DryCycleTest(unittest.TestCase):
 
     def test_the_guards_converge_and_then_write_nothing_forever(self):
         cycle1 = Snapshot(
-            items=[item(1, "state:queued", parent_batch=4),
-                   item(2, "type:assertion", "state:queued")],
+            items=[item(1, "state:queued", parent_batch=4)],
             batches=[Batch(number=4, kind="unit", status="Ready",
                            sub_issues=(1,), milestone="intent/x")],
         )
         self.assertEqual(
             [w.kind for w in self._guards(cycle1)],
             ["label", "label"],
-            "the flip releases #1; the settled assertion #2 sits uncomposed "
-            "— construction's work is born by the planner, never here")
+            "the flip releases #1")
 
-        # #1 flipped. The assertion stays where it is, claimed by nothing.
+        # #1 flipped.
         cycle2 = Snapshot(
-            items=[item(1, "state:ready", parent_batch=4),
-                   item(2, "type:assertion", "state:queued")],
+            items=[item(1, "state:ready", parent_batch=4)],
             batches=list(cycle1.batches),
         )
         # The one write left is the spent approval leaving the board:
@@ -528,41 +525,10 @@ class PauseMarksTheBatchTest(unittest.TestCase):
         self.assertEqual(inbox.collect_plan(paused, "x"), ())
 
 
-class ReleasedAssertionsTest(unittest.TestCase):
-    """A released assertion never escalates.
+class UndispatchableItemsTest(unittest.TestCase):
+    """An item the loop cannot type is the operator's to answer."""
 
-    Assertions are construction's, never a design session's: the planner
-    cards their work from the book. `batch_ready` reports them
-    undispatchable — correctly, they are not a design type — and the loop
-    must not write `needs-operator` on each.
-    """
-
-    def released(self):
-        return Snapshot(
-            items=[item(2, "type:assertion", inbox.READY, parent_batch=10),
-                   item(3, "type:assertion", inbox.READY, parent_batch=10)],
-            batches=[Batch(number=10, kind="unit", status=inbox.STATUS_READY,
-                           sub_issues=(2, 3), milestone="intent/x")])
-
-    def test_the_assertions_arrive_undispatchable_by_design(self):
-        snap = self.released()
-        batches, undispatchable = intent.batch_ready(snap, snap.items)
-        self.assertEqual(list(batches), [])
-        self.assertEqual(sorted(k for _, k in undispatchable), ["assertion"] * 2)
-
-    def test_released_assertions_escalate_nothing(self):
-        snap = self.released()
-        tracker = FakeTracker(snapshot=snap)
-        intent.run(config(slug="x", apply=True), tracker=tracker,
-                   runner=ScriptedRunner(), clock=Clock())
-        self.assertEqual(
-            [c for c in tracker.calls
-             if c[0] == "add_label" and c[2] == inbox.NEEDS_OPERATOR], [],
-            "the assertions are construction's, not a fault")
-
-    def test_a_genuinely_untyped_item_is_still_escalated(self):
-        # The exclusion is for assertions only; an item the loop cannot
-        # type at all is still the operator's to answer.
+    def test_an_untyped_ready_item_is_escalated(self):
         snap = Snapshot(items=[item(1, inbox.READY)])
         tracker = FakeTracker(snapshot=snap)
         intent.run(config(slug="x", apply=True), tracker=tracker,
@@ -627,12 +593,6 @@ class BatchingTest(unittest.TestCase):
                                item(2, "type:research", "state:ready")])
         batches, _ = intent.batch_ready(snap, snap.items)
         self.assertEqual([b.numbers for b in batches], [(2,)])
-
-    def test_an_assertion_is_never_dispatched_to_a_design_session(self):
-        snap = Snapshot(items=[item(1, "type:assertion", "state:ready")])
-        batches, undispatchable = intent.batch_ready(snap, snap.items)
-        self.assertEqual(batches, ())
-        self.assertEqual([i.number for i, _ in undispatchable], [1])
 
     def test_an_untyped_item_is_reported_rather_than_defaulted(self):
         # workflows/fixtures/flywheel-intent.compiled.js falls back to
@@ -817,7 +777,7 @@ class CycleTest(unittest.TestCase):
         report = intent.run(config(
             slug="sandbox-design",
             fixture=str(FIXTURES / "intent-tracker.json")))
-        self.assertTrue(any("#202" in line for line in report.resting))
+        self.assertTrue(any("#203" in line for line in report.resting))
         self.assertTrue(any("batch #204" in line for line in report.resting))
 
     def test_a_run_naming_no_signal_reports_no_unresolved_note(self):

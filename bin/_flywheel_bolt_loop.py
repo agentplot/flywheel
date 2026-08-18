@@ -745,7 +745,7 @@ def analyse(items, snapshot=None, slug=""):
     """Group ready items into the batches one session could take.
 
     Type is the hard boundary and relatedness decides within a type
-    (tracker.md invariant 3); on a bolt every work item is `type:assertion`,
+    (tracker.md invariant 3); a bolt's work items share one kind,
     so what remains is relatedness, and the tracker already carries it as
     the unit an item was released in. Items sharing a parent ride together —
     unless they name distinct changes: an expanded plan task IS its own
@@ -2161,7 +2161,7 @@ class BoltLoop:
     def spec_brief(self, batch, change):
         items = ", ".join(f"#{n}" for n in batch.numbers)
         records = ", ".join(sorted({i.record for i in batch.items if i.record})) or (
-            "the item bodies themselves — the assertion IS the proposal")
+            "the item bodies themselves — the item body IS the proposal")
         book = (f"The design book lives at {self.params.book_dir} — the "
                 f"items' chapter citations (books/flywheel/src/...) resolve "
                 f"under its repo root. READ the cited chapters before "
@@ -2171,7 +2171,7 @@ class BoltLoop:
         return (
             f"Spec for {items} on milestone {self.params.milestone}.\n\n"
             + book +
-            f"One spec-driven change for these assertions, derived from {records} "
+            f"One spec-driven change for these items, derived from {records} "
             f"and the decisions they cite, never from a restatement. You are IN "
             f"the build/{batch.slug} worktree, already cut from "
             f"{self.params.bolt_branch} by the loop — work here, and never "
@@ -2656,7 +2656,7 @@ class BoltLoop:
         # items — it is the loop's own tracker surface for this stage: the
         # launch marker the stall budget is recovered from, the notify and
         # failure pauses, and the andon the landing session may raise. Once
-        # the merge boundary closes every assertion, an open-items-only set
+        # the merge boundary closes every work item, an open-items-only set
         # is EMPTY on the handoff path, and all four of those go silent:
         # the pause writes no `needs-operator` anywhere and the andon marker
         # the landing session's own work order tells it to write is never
@@ -2772,7 +2772,7 @@ class BoltLoop:
         A bolt milestone holds as many units as the operator has approved
         cards on it, and one landing serves them all — so this closes
         **every** open unit on the milestone, not one. By here each unit's
-        bar is full and every assertion has been upgraded to `closed:done`,
+        bar is full and every work item has been upgraded to `closed:done`,
         so the release each carries is finished and there is nothing further
         any of them can gate. Nothing closed them before, so a born-ready
         bolt's units stayed open at Status Ready and their milestone reported
@@ -2780,7 +2780,7 @@ class BoltLoop:
         the operator closed the milestone, where it collided with the
         `archive` job the same sweep adds.
 
-        **No sub-issue is touched.** The assertions' own closes belong to the
+        **No sub-issue is touched.** The work items' own closes belong to the
         merge boundary and to the upgrade above; a container's close is not a
         cascade, and the tracker's rule that whoever holds the evidence closes
         with exactly one reason is not relaxed for a container. An elaboration
@@ -2791,13 +2791,13 @@ class BoltLoop:
         places. Born-ready units sit on this bolt's milestone and are in the
         snapshot's own batches, however many of them there are. The handoff
         parent sits on the `intent/<slug>` milestone — deliberately, since it
-        is born before any assertion has moved — so it is reachable only
+        is born before any work item has moved — so it is reachable only
         through a landed item's `parent_batch`, and only when the snapshot
         carries the edge at all. Where it does not, the server's Ready-batch
         condition is what keeps a stale parent from naming a job forever; the
         two answer the same finding from opposite ends.
         """
-        # Assertions only. The stage's item set deliberately carries the open
+        # Work items only. The stage's item set deliberately carries the open
         # unit parent (it is the pause and andon surface), so subtracting the
         # whole set excluded every open unit from its own close — #255 landed
         # and stayed open, closed by the operator's hand.
@@ -2816,7 +2816,7 @@ class BoltLoop:
                 number,
                 f"The release this unit carries is finished: "
                 f"bolt/{self.params.slug} landed on {self.params.main_branch} as "
-                f"{sha}, and every assertion it released is closed:done.",
+                f"{sha}, and every work item it released is closed:done.",
                 reason=inbox.CLOSED_DONE)
 
     # -- the cycle ---------------------------------------------------------
@@ -3134,7 +3134,7 @@ class BoltLoop:
             return report
         landing_plan = [{
             "step": "landing",
-            "trigger": f"every assertion merged to {self.params.bolt_branch}",
+            "trigger": f"every work item merged to {self.params.bolt_branch}",
             "expected": ("merge criteria green; bolt landed on "
                          f"{self.params.main_branch}")}]
         if not self.ledger.gate(landing_plan):
@@ -3205,8 +3205,8 @@ class BoltLoop:
         #
         # The caution `_merged` encodes is kept: an empty ready set is also
         # what a process sees while a sibling's session is still building.
-        # But an assertion at `closed:merged` HAS reached the bolt branch,
-        # so a bolt whose every unlanded assertion is merge-closed has no
+        # But a work item at `closed:merged` HAS reached the bolt branch,
+        # so a bolt whose every unlanded item is merge-closed has no
         # sibling still building, and the criteria are verified against a
         # whole branch rather than a half-built one.
         work = [i for i in unlanded if not i.is_container]

@@ -11,11 +11,11 @@ your output is the operator's verdict, folded and reported.
 
 ## What goes in front of the operator
 
-A review document you compose in your worktree — the diff per assertion
+A review document you compose in your worktree — the diff per item
 with what it implements, the decisions it cites, and what you would
 have them look hardest at: the judgement calls, the deviations from the
 spec and their reasons, the claims you could not verify. One round per
-batch, never one per assertion, ordered by where their eyes matter
+batch, never one per item, ordered by where their eyes matter
 most. Composing it honestly matters more than composing it favourably:
 a round that hides the doubtful diff produces an approval that means
 nothing.
@@ -46,7 +46,7 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: assertion items whose built diffs an agent asked the operator's eyes for, with the reason on the item.
+- **You receive**: work items whose built diffs an agent asked the operator's eyes for, with the reason on the item.
 - **You leave**: the operator's verdict folded and commented per item. If the operator cannot be reached, the item gets the one-line question and `needs-operator` (tracker.md, invariant 7) — you never wait silently.
 
 ## What you report

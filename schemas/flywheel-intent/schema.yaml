@@ -1,7 +1,7 @@
 name: flywheel-intent
-version: 2
-description: Flywheel outer loop - one change per intent; decisions, questions,
-  assertions and session records in git; work items, their states and the
+version: 3
+description: Flywheel outer loop - one change per intent; decisions, questions
+  and session records in git; work items, their states and the
   release queue on the org's tracker
 artifacts:
   - id: intent
@@ -27,10 +27,10 @@ artifacts:
          node's current status (settled / candidate / open).
       3. **Scope** - what is in scope; what is explicitly out.
 
-      THREE SECTIONS. Questions and assertions are their own artifacts,
-      discoverable as records and tracked as items; intent.md carries no
-      list of either, because a copied list is the copy that goes stale.
-      What intent.md holds is what does not change as questions close.
+      THREE SECTIONS. Questions are their own artifacts, discoverable as
+      records and tracked as items; intent.md carries no list of them,
+      because a copied list is the copy that goes stale. What intent.md
+      holds is what does not change as questions close.
 
       Never invent scope the operator did not state or clearly imply.
     requires: []
@@ -46,8 +46,10 @@ artifacts:
       - **Context** - the map node(s), book chapter(s), and what produced it:
         the session directory and its report, a prototype note, or the
         exchange where the operator gave the word.
-      - **Consequences** - what this decision opens: writeback items,
-        assertions, new questions. Queue each as a tracker item.
+      - **Consequences** - what this decision opens: writeback items and
+        new questions (queue each as a tracker item), and construction
+        work, which is named here and reaches the tracker only as a bolt
+        plan card - the planner's or a session's - never as its own item.
 
       A decision closes on the operator's word, wherever that word is given.
       A decision closed in conversation is not a lesser one; the record is
@@ -96,41 +98,6 @@ artifacts:
       `closed:done`. A question overtaken by events closes `closed:superseded`
       with a comment saying what overtook it. The record stays - it is how
       a later reader learns the decision had a question behind it.
-    requires:
-      - intent
-  - id: assertions
-    generates: assertions/**/*.md
-    description: One record per assertion - the proposal itself, the durable
-      claim of what must be built
-    template: assertions/assertion.md
-    instruction: |
-      You are recording an assertion for a flywheel intent.
-
-      AN ASSERTION IS THE PROPOSAL. It is written the moment the work is
-      identified, it is what the operator releases, and it is what a bolt's
-      spec agents work from - nothing restates it downstream. Like a
-      question it gets two things at birth: this record, and a tracker
-      item (labels `type:assertion` + `state:queued`, milestone
-      `intent/<slug>`). The record holds:
-      - **Repo** - the built repo it lands in.
-      - **Item** - the tracker item's number.
-      - **Raised by** - the session, review, bolt report, or the operator.
-      - **The claim** - what must be true when this is built, written so a
-        reader can check it against the tree.
-      - **Why** - the defect, measurement, or decision behind it. Cite
-        `decisions/<slug>.md` and session reports; do not restate them.
-      - **Boundaries** - what it does NOT cover where a reader would assume
-        otherwise, naming the sibling that holds the rest.
-
-      Live state - queued, released, whose batch - is the item's alone.
-      When the work merges, append the terminal fact here: the change id
-      and landing ref, dated. A record asserts nothing that can go stale
-      silently.
-
-      State the claim as CONTENT the tree can be checked against, not as
-      STATE about a neighbouring artifact, and give every measurement its
-      ref. ONE ANSWER PER RECORD: when the claim narrows, rewrite every
-      statement of it here rather than appending a correction.
     requires:
       - intent
   - id: sessions
@@ -237,9 +204,9 @@ apply:
     2. COMPOSE: any state:queued design item with no parent batch ->
        group the orphans into proposed batches (flywheel-batch) at
        Backlog, by thread. Composing is not releasing; batches wait
-       for the operator. A settled assertion is never composed and
-       never handed anywhere: construction work is born by the bolt
-       planner's cards and the operator's approval.
+       for the operator. Construction work is never an intent item:
+       it is born as bolt plan cards - the planner's or a session's -
+       and released by the operator's approval.
 
     MODELS - explicit in every call the compiled script makes;
     nothing inherits silently. The workflow's own agents - query+
@@ -277,7 +244,7 @@ apply:
       the merge driver runs in the repo's main checkout; a work
       session gets a fresh sess/* worktree, a merge stage never
       does.
-      The session wrote its own records (decisions, assertions, its
+      The session wrote its own records (decisions, questions, its
       session directory) and queued its own discoveries - whoever
       finds queues; you create only batches. You merge, and you
       close finished items closed:done on the evidence.

@@ -8,7 +8,7 @@
 
 A batch is a parent issue whose sub-issues are the batch, and its kind
 is what approving it authorizes: a **unit** releases construction work
-(AI-DLC's unit of work — a handoff's assertions, or fresh work on a
+(AI-DLC's unit of work — an approved plan's changes, or fresh work on a
 live bolt); an **elaboration** authorizes design sessions on an
 intent. The batching move, in one call: creates the parent
 issue (labels `<kind>` + `state:queued`, in the named milestone,

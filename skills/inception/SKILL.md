@@ -8,7 +8,7 @@ description: Run the flywheel design loop — dispatch raw ideas into intent cha
 One intent = one OpenSpec change bound to the `flywheel-intent` schema
 (shipped in this plugin's `schemas/`), plus one tracker milestone
 (`intent/<slug>`) holding its work items. The change holds the durable
-prose — `intent.md`, `decisions/`, `questions/`, `assertions/`,
+prose — `intent.md`, `decisions/`, `questions/`,
 `sessions/` — and the tracker holds every mutable fact: item state,
 dependencies, the queue, the narrative in comments. Nothing is recorded
 in both places; a file keeps only terminal facts.
@@ -35,8 +35,9 @@ or by a work order, queue a question rather than inventing structure.
   plus pointers to the record it serves, milestone from birth, labels
   `type:*` and exactly one `state:*`. The type is the session type that
   works it — a question borrows the type of the session that will answer
-  it — except `type:assertion`: the released claim itself, whose
-  construction stages live in its comments, never as items of their own.
+  it. A bolt's work items are the exception: born by expansion with no
+  type label, their construction stages living in their comments, never
+  as items of their own.
 - **The lifecycle** is `state:queued → state:ready → state:in-progress`,
   ending closed with a `closed:*` reason — done, declined, superseded,
   parked. Anyone queues; only the operator's word makes an item ready;
@@ -53,7 +54,7 @@ or by a work order, queue a question rather than inventing structure.
   work time.
 - **Milestones** are the change-sized containers, exactly two forms:
   `intent/<slug>` and `bolt/<slug>`. Everything an intent owns —
-  questions, assertions, prototypes, writebacks — sits on its one
+  questions, prototypes, writebacks — sits on its one
   milestone, distinguished by `type:*`. Dependencies are the items'
   native blocked-by relations, declared best-effort by whoever files an
   item; the loop computes readiness from the field and never reasons
@@ -82,8 +83,8 @@ copy. Read it before doing any of them.
 ## What lives where
 
 - **A design session** writes the change's records: its own
-  `sessions/<date>-<slug>/` directory, the decision, question and
-  assertion records its work order charged it to close, and the books and
+  `sessions/<date>-<slug>/` directory, the decision and question
+  records its work order charged it to close, and the books and
   map for writeback batches — all inside its own worktree.
 - **The intent loop** writes no records. Its merge of a session's branch
   is what admits that session's file writes to main.
@@ -225,9 +226,9 @@ belongs to a session or to the operator.
 - **At the queue**, one guard, then wait. Compose the orphan queued
   design items into a proposed batch (`flywheel-batch`) at Status
   **Backlog** — composing is not releasing — and report one line per
-  batch and unbatched item. A settled assertion is never composed and
-  never handed anywhere: construction work is born by the bolt
-  planner's cards and the operator's approval, and the loop never
+  batch and unbatched item. Construction work is never an intent
+  item: it is born as bolt plan cards — the planner's, a session's,
+  or the operator's — released by approval, and the loop never
   writes a bolt change's artifacts. Moving a batch to Ready is the
   approval that charges its design session.
 - **Stop honestly**: nothing ready and the guards wrote nothing → the

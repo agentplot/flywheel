@@ -81,8 +81,7 @@ Milestone: intent/${A.slug}. Fields per item: number, title, labels (type:* and 
 GUARDS, in order, each idempotent - guard_actions records ONLY the writes you make; a check that changed nothing records NOTHING (an empty array is the normal, correct result):
 0. If openspec/changes/${A.slug} does not exist in ${A.repoDir}: scaffold it (/opsx:new ${A.slug}, bind flywheel-intent), commit, continue.
 1. Any batch at board Status Ready with state:queued sub-issues: relabel those sub-issues state:ready. The flip is spent; the labels carry the release.
-2. HANDOFF BIRTH: any type:assertion item open on this milestone with no parent_batch and no open blocked_by -> ensure ONE open type:handoff item names exactly that set (create it, or extend the open unstarted one).
-3. COMPOSE: any state:queued item with no parent_batch -> group the orphans into proposed batches (${A.pluginRoot}/bin/flywheel-batch) at Backlog, by thread. Composing is not releasing.
+2. COMPOSE: any state:queued item with no parent_batch -> group the orphans into proposed batches (${A.pluginRoot}/bin/flywheel-batch) at Backlog, by thread. Composing is not releasing.
 
 Return the snapshot AFTER your guard actions, with status ok. If you cannot read the tracker, mint the token, or resolve these parameters: status failed with the reason in failure, guard_actions empty - the run stops on your word.`,
   { label: `cycle${cycle}:query+guards`, phase: 'Cycle', schema: SNAPSHOT, ...DRIVER_OPTS })
@@ -170,7 +169,7 @@ while (true) {
     const topic = `${ty}-${A.slug}`.slice(0, 32)
     const nums = items.map((i) => `#${i.number}`).join(', ')
     const order = `${ty} session for intent ${A.slug} - items ${nums}
-Change: ${A.slug}. Your session directory: openspec/changes/${A.slug}/sessions/<date>-<topic>/ - you are its sole writer. Work the items; write your records (decisions, assertions, the session README) in your worktree; queue your own discoveries as items (${T.startsWith('FIXTURE') ? 'report them instead' : 'whoever finds queues'}); comment each item you worked. ${T}
+Change: ${A.slug}. Your session directory: openspec/changes/${A.slug}/sessions/<date>-<topic>/ - you are its sole writer. Work the items; write your records (decisions, questions, the session README) in your worktree; queue your own discoveries as items (${T.startsWith('FIXTURE') ? 'report them instead' : 'whoever finds queues'}); comment each item you worked. ${T}
 Deliver by settling: print your report as your final message and stop. Never wait on your conductor.`
     return () => drive(ty, topic, order, `${ty}:${nums}`, items[0].number)
       .then((outcome) => { trace.push({ stage: `${ty}:${nums}`, status: outcome && outcome.status, detail: outcome && outcome.detail }); return { items, ty, outcome } })

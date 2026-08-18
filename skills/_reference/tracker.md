@@ -39,18 +39,18 @@ queue a question — never invent tracker structure.**
 ## The invariants
 
 1. **An issue holds exactly one milestone**, and the milestone answers
-   "which change owns this work now." Moving an assertion item from
-   `intent/<slug>` to `bolt/<slug>` IS the release to construction —
-   no other act bolts it, and the milestone field is the test for
-   whether it happened. A discovery made during construction joins the
+   "which change owns this work now." A work item is born on
+   `bolt/<slug>` by an approved plan card's expansion — the milestone
+   field is the test for which change owns it, and nothing moves
+   design items into a bolt. A discovery made during construction joins the
    bolt's milestone only when the bolt's merge criteria need it;
    otherwise it goes to the intent that owns its subject, or
    unmilestoned for dispatch to triage.
 2. **An item joins exactly one batch, ever** (GitHub enforces this —
    attaching a parented sub-issue is a 422). Which batch:
    design-work items — questions, prototypes, writebacks — join an
-   elaboration on their intent; an assertion item
-   joins only the unit that releases it; work queued fresh on a live
+   elaboration on their intent; a work item born by expansion joins
+   its unit; work queued fresh on a live
    bolt joins a bolt-side unit. Sub-issue links are independent of
    milestones and survive the custody move.
 3. **Batches group by thread, not by type** — a prototype, the
@@ -60,10 +60,10 @@ queue a question — never invent tracker structure.**
    type, prototypes ride alone.
 4. **`type:*` is the session type that works the item.** A question
    borrows the type of the session that will answer it. The exception
-   is `type:assertion` — the released claim itself: its construction
-   stages (spec, review verdict, build, merge SHA) are comments on the
-   one item, never items of their own. Only discoveries become new
-   items.
+   is a bolt's work items, which carry no type label: their
+   construction stages (spec, review verdict, build, merge SHA) are
+   comments on the one item, never items of their own. Only
+   discoveries become new items.
 5. **The state ladder is `queued → ready → in-progress → closed:*`**,
    and each move has an owner: anyone queues; only the operator's word
    makes ready — the flip to Ready on the board for a batch, or
@@ -86,7 +86,7 @@ queue a question — never invent tracker structure.**
    `stage:merged` (on the bolt branch) and `closed:done` (landed on
    main) are two different facts, written at the same boundary but not
    the same act.
-   **A construction assertion closes at the merge-back, with
+   **A construction work item closes at the merge-back, with
    `closed:merged`**, because GitHub's native sub-issue bar counts
    closed sub-issues and `#98` puts the check-off at merge; the
    landing then **upgrades** that reason to `closed:done` with the
@@ -97,13 +97,13 @@ queue a question — never invent tracker structure.**
    flight: its bolt has not landed, the loop's picture of its
    milestone carries it, and the server counts its milestone as a job
    until the landing.
-6. **A settled assertion waits for the planner.** An assertion is
-   settled when its item is open on `intent/<slug>`, has no parent
-   batch, and has no open blockers. It stays where it is: the loop
-   births nothing from it. Construction work is born one way —
-   the bolt planner cards it from the book (or the operator dictates
-   a card), the operator approves the card, and expansion births the
-   work items on the bolt milestone.
+6. **Construction work is born as a plan card, never as an intent
+   item.** A design session records what must be built in its
+   decisions and the book; the demand reaches the tracker one way —
+   the bolt planner cards it from the book, a session composes the
+   card directly, or the operator dictates one; the operator approves
+   the card, and expansion births the work items on the bolt
+   milestone.
 7. **Blocked on the operator's word**: comment the one-line question
    on the item, add `needs-operator`, keep working what it does not
    gate. Whoever applies the answer removes the label. The label marks
@@ -148,8 +148,8 @@ through GitHub issues, and each consumer has an exact filter:
   (their `state:queued` sub-issues are relabelled first).
 - **intent loop for `intent/<slug>`** — the same filter on its
   milestone, plus the guard sweep: orphan `state:queued` design items
-  (compose). Settled assertions are skipped — construction's work is
-  born by the planner, never here.
+  (compose). Construction work never appears here — it is born as
+  plan cards, approved and expanded on its bolt.
 - **dispatch** — open issues with no milestone (triage), and open
   issues labelled `needs-operator` (relay). The relay half has no
   milestone condition: an escalation from a running bolt has one and
@@ -216,18 +216,18 @@ it; an andon raised after the answer is a new stop. Without the marker
 the loop keeps pausing on the old andon forever, because recognizing
 "answered" is code, not a judgment about prose.
 
-## The literal graph — one assertion, birth to landing
+## The literal graph — one thread, birth to landing
 
 An intent `auth-hardening` needs a forgot-password flow; one question
 gates it:
 
     #101  Decide the reset-token delivery channel      type:research · queued
-    #102  The auth page offers a forgot-password flow  type:assertion · queued
-          body → assertions/forgot-password.md · blocked-by #101
     #103  [elaboration] Settle password-reset design   sub-issues: #101
 
-The elaboration batches the *deciding*; the assertion joins no
-elaboration. #101 closes → #102 is settled (invariant 6) and sits.
+The elaboration batches the *deciding*. #101 closes → the decision
+record names the construction it opens (the auth page offers a
+forgot-password flow) — named in the record, never queued as an
+intent item (invariant 6).
 The design lands in the book through a writeback, the planner reads
 the book and cards the work as a plan card at Backlog, and the
 operator's approval expands it into a unit and its work items on
@@ -245,7 +245,7 @@ Small, fully defined, no intent behind it. Dispatch creates:
 
     milestone bolt/rename-gateway-env
     #40  Rename GATEWAY_URL to GATEWAY_BASE_URL across the built repos
-         type:assertion · state:ready — born ready on the operator's word
+         state:ready — born ready on the operator's word
     #41  [unit] Rename the gateway env var   sub-issues: #40
          on the board at Status Ready from birth — the parent carries the
          approval, and its native sub-issue bar is the bolt's progress
@@ -255,8 +255,8 @@ single item still gets one, because a special case for one item would put
 the bolt back to having no container and no bar. #40 is not added to the
 board itself — the parent is the row.
 
-There is no assertion record file — with no intent, the item body IS
-the claim. The server sees a `bolt/*` milestone with a ready item and
+The item body IS the claim — with no intent, there is no record file
+behind it. The server sees a `bolt/*` milestone with a ready item and
 no loop process on it, starts one for `bolt/rename-gateway-env`, and
 the loop's scaffold guard writes the change binding the member the work
 warrants (`bolt-quick` here — no review step).

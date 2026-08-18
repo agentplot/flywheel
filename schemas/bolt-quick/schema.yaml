@@ -1,7 +1,7 @@
 name: bolt-quick
 version: 2
 description: Flywheel construction tracking, the quick bolt type - one change per
-  bolt; the released assertions are its items on the org's tracker; per-repo
+  bolt; the approved plan's work items live on the org's tracker; per-repo
   bolt branches; the loop schedules no review step. Picked for small,
   mechanical work where a wrong claim is cheap to catch.
 
@@ -43,11 +43,11 @@ artifacts:
     instruction: |
       You are writing the bolt record for a flywheel construction change.
 
-      A bolt is one construction iteration: the record for building a batch
-      of released assertions across one or more built repos. Its loop
+      A bolt is one construction iteration: the record for building the
+      work an approved plan released across one or more built repos. Its loop
       process (`flywheel-bolt-loop --slug <slug>`) is the sole writer of
-      this change's artifacts. The work items are the released assertions' tracker items,
-      moved into the milestone `bolt/<slug>` at release; anyone may queue
+      this change's artifacts. The work items are born on the milestone
+      `bolt/<slug>` by the approved plan's expansion; anyone may queue
       an item or comment there. An item's progress through spec, review,
       build and merge is its comment history and its one `stage:*` label.
       It closes `closed:merged` with the merge SHA when its work reaches
@@ -70,8 +70,8 @@ artifacts:
 
       **Output:** bolt.md with exactly these sections:
       1. **Scope** - what this bolt builds, in one paragraph.
-      2. **Sources** - the intents whose released assertions this bolt
-         serves; work folded in later is appended here with dates.
+      2. **Sources** - the plans and intents this bolt serves;
+         work folded in later is appended here with dates.
       3. **Repos** - one line per involved built repo: repo · bolt branch
          name (`bolt/<slug>`) · worktree path. Bolt branches live for the
          length of the bolt; construction work runs on nested worktrees

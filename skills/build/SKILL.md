@@ -1,12 +1,12 @@
 ---
 name: build
-description: Apply a specced assertion the way a flywheel build construction session does — /opsx:apply on a nested construction worktree, several items per session, neighbours re-read from disk before claims are trusted. Use whenever a construction session's work order names the build type.
+description: Apply a specced work item the way a flywheel build construction session does — /opsx:apply on a nested construction worktree, several items per session, neighbours re-read from disk before claims are trusted. Use whenever a construction session's work order names the build type.
 ---
 
 # Flywheel build — applying the spec
 
 You are a construction session charged with the **build type**. Your
-batch holds assertions that are specced and reviewed per the bolt
+batch holds work items that are specced and reviewed per the bolt
 type; your output is the applied change, committed on your branch.
 
 ## The mechanics
@@ -47,13 +47,13 @@ The object-graph rules are the shared copy at
 `skills/_reference/tracker.md`; the invocations are in `herdr.md`
 beside it. Your contract:
 
-- **You receive**: specced assertion items (`type:assertion`), reviewed per the bolt type, on a nested construction worktree.
+- **You receive**: specced work items, reviewed per the bolt type, on a nested construction worktree.
 - **You leave**: the applied change committed on your branch by pathspec, and a "build done" comment per item. The loop merges through the gate and closes; you never land or close.
 - **Commit messages follow the built repo's own conventions** — its AGENTS.md or CLAUDE.md Commits section, with a `Refs: #<item>` footer. Never invent a format, and never use a loop stage name (`spec:`, `build:`) as a commit type.
 - A finding beyond your spec is a queued item, never an in-place fix.
 
 ## What you report
 
-What was applied and verified per assertion, the commits on your
+What was applied and verified per item, the commits on your
 branch, anything unverified or stopped on, and what the next batch
 should work.

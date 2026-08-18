@@ -58,7 +58,6 @@ from pathlib import Path
 TYPE_KINDS = [
     # design loop
     "planning", "interactive", "research", "prototype", "writeback",
-    "handoff",
     # construction loop (proposal-writing survives as the exception path)
     "proposal-writing", "proposal-review", "spec-writing", "build", "test",
     "code-review", "human-code-review",
@@ -66,9 +65,6 @@ TYPE_KINDS = [
 
 LABELS = {
     **{f"type:{k}": ("1d76db", f"{k} session work") for k in TYPE_KINDS},
-    # not a session type: the released claim itself, worked through
-    # spec, build and test with the stages living in its comments
-    "type:assertion": ("0052cc", "a released claim; the bolt's work item"),
     "state:queued": ("ededed", "identified, awaiting release"),
     "state:ready": ("0e8a16", "approved by the operator; work may start"),
     "state:in-progress": ("fbca04", "a session is working it"),
