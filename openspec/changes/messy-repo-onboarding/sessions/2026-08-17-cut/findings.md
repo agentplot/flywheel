@@ -217,7 +217,7 @@ between the others is triage evidence rather than noise — see F8.
 
 ---
 
-## F6 — The HTML reports are derived views, not sources. Adopt them; do not mine them.
+## F6 — The reports are *mostly* derived views. The exception is the one that matters, and only a per-report check finds it.
 
 **Bears on:** the pricing question `#195` raised, #266.
 
@@ -229,25 +229,52 @@ as items. Measured:
 - **They are hand-written, not generated.** Each of the 11 carries its
   own inline `<style>` block; there is no shared stylesheet, no
   template, no generator signature common to the set.
-- **They are not sources.** `reports/spike-roadmap.html` L150's
-  standing rules say it outright: "**SPIKE.md is the only source of
-  truth** — Part A current design, §12 append-only findings".
 - **They are the spike's product.** `reports/index.html`: "Shareable
   design sketches and findings from the knowledge-base spike. A
   throwaway spike commissioned for learning; **these pages are its
   written product**."
-- **Two of the eleven are orphaned** — `search-api-aup-survey.html`
-  and `web-lane-design.html` are not linked from `index.html`, though
-  `SPIKE.md` §7's Phase 5 cites both.
+- **The corpus declares them downstream.** `reports/spike-roadmap.html`
+  L150's standing rules: "**SPIKE.md is the only source of truth** —
+  Part A current design, §12 append-only findings".
+- **Three of the eleven are unreachable one way or another.**
+  `search-api-aup-survey.html` and `web-lane-design.html` are not
+  linked from `index.html`; and `index.html` itself lists only eight.
 
-So the answer is both, split: **adopt the reports as session
-deliverables** (they are finished, shareable, and expensive to
-re-render), and **do not mine them for cut rows** — every claim in
-them restates `SPIKE.md`, so laning them independently double-counts
-the corpus and inflates the work-list. The two orphans are the
-exception worth naming: an artifact reachable from the source of truth
-but not from the index is exactly what a link-following importer
-drops.
+So the answer to the pricing question is: **adopt them as session
+deliverables** — finished, shareable, expensive to re-render — and
+**do not mine them for cut rows**, because laning a rendering of
+`SPIKE.md` independently double-counts the corpus.
+
+**Except that "rendering of `SPIKE.md`" is a claim, and it is false for
+one of them.** `SPIKE.md` references only **two** reports in 1758
+lines (L365 `sticker-roundtrip.html`, L454
+`search-api-aup-survey.html`). The other nine were matched to it by
+subject — which is inference, not evidence. Testing the match:
+
+```
+$ grep -ic "sqlrooms" SPIKE.md   → 0     (2 reports carry it)
+$ grep -ic "pmtiles" SPIKE.md    → 0     (1 report carries it)
+$ grep -ic "zuplo" SPIKE.md      → 0     (1 report carries it)
+```
+
+`reports/stations-workbench.html` is 695 lines — a capability
+inventory across ten surfaces, a two-plane architecture ("httpfs
+straight to S3 — one endpoint is the whole contract"), two named
+boundaries (a design-system collision, S3 CORS with short-lived
+credentials), and a PoC plan — and **`SPIKE.md` covers none of it.**
+It is the newest artifact in the corpus (2026-07-24) and it is a sole
+holder. Treating the reports as a uniformly derived class would have
+dropped it.
+
+A weaker version of the same applies to
+`search-api-aup-survey.html`: `SPIKE.md` L464–L465 restates its eight
+gaps *by name*, so the list survives — but the survey evidence behind
+the list does not.
+
+**What the carrier needs:** the "derived view" disposition is per
+artifact and requires the same restatement check F12 argues for. A
+class-level judgement about a directory — *these are all renderings* —
+is exactly the shortcut that loses the one that was not.
 
 ---
 

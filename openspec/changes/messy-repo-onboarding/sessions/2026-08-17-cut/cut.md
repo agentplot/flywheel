@@ -96,10 +96,19 @@ corpus's own currency warning, and it applies to every row below it.
 
 ## B. `reports/` — 11 hand-written HTML reports
 
-Whole-file rows. The reports restate `SPIKE.md`; laning their content
-independently would double-count the corpus (`findings.md` F6), so
-each row's disposition is **adopt as a session deliverable**, not
-convert.
+Whole-file rows. Most of these restate `SPIKE.md`, so their
+disposition is **adopt as a session deliverable**, not convert —
+laning their content independently would double-count the corpus
+(`findings.md` F6).
+
+**But "derived" had to be checked per report, not assumed.**
+`SPIKE.md` references only **two** of the eleven (L365
+`sticker-roundtrip.html`, L454 `search-api-aup-survey.html`); the rest
+were matched to it by subject. Testing the match by keyword found one
+report whose subject `SPIKE.md` never touches at all — SQLRooms,
+PMTiles and Zuplo appear zero times in it — so
+`stations-workbench.html` is a **sole holder**, not a rendering. Same
+error as section D, caught the same way (`findings.md` F12).
 
 | anchor | lines | lane | reason | evidence |
 | --- | --- | --- | --- | --- |
@@ -111,9 +120,9 @@ convert.
 | `reports/atlas-grounding.html` | 198 | settled-history · current | Renders the Phase 4c result — the loop on a real catalog. | Restates §12 L822–L867. |
 | `reports/sticker-roundtrip.html` | 343 | settled-history · current | Renders the clone/pair/joint-admission round trip; `SPIKE.md` §6 L365 cites it as the diagram of record. | L365 "Diagrammed: [`reports/sticker-roundtrip.html`]". |
 | `reports/vintage-resolution.html` | 406 | settled-history · current | Renders the Phase 6b vintage-resolution design. | Restates `SPIKE.md` L1120–L1348. |
-| `reports/stations-workbench.html` | 695 | **live-work** | A SQLRooms evaluation and PoC plan for a UI surface that was never built. | Newest report (2026-07-24, commit `f6ee2d37` "SQLRooms station-workbench eval + PoC plan"); no §12 finding records it run. |
+| `reports/stations-workbench.html` | 695 | **live-work · sole-holder** | A SQLRooms capability inventory, a two-plane architecture, two named boundaries, and a PoC plan for a UI surface never built. `SPIKE.md` covers none of it. | Newest report (2026-07-24, commit `f6ee2d37`); `grep -ic sqlrooms SPIKE.md` → 0, likewise PMTiles and Zuplo. Headings include "httpfs straight to S3 — one endpoint is the whole contract" and "Two boundaries to name". |
 | `reports/web-lane-design.html` | 279 | settled-history · current | Renders the web-lane design that §12 records LIVE. | Restates `docs/web-discovery-dedup-design.md`; proven at §12 L1024. **Orphaned** — not linked from `index.html`. |
-| `reports/search-api-aup-survey.html` | 199 | settled-history · current | A provider survey with an eight-gap verification list the web lane bet on. | Cited as the precondition list by `docs/web-discovery-dedup-design.md` L5. **Orphaned** — not linked from `index.html`. |
+| `reports/search-api-aup-survey.html` | 199 | settled-history · **part sole-holder** | A provider survey whose eight-gap list `SPIKE.md` L464–L465 does restate by name; the survey evidence behind the list it does not. | Cited at `SPIKE.md` L454 and by `docs/web-discovery-dedup-design.md` L5; gaps enumerated at L464–L465. **Orphaned** — not linked from `index.html`. |
 
 ---
 
