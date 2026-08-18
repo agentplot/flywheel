@@ -625,6 +625,16 @@ class FixtureTracker:
         raw = self._item(number) or {}
         return raw.get("state") == "closed"
 
+    def sub_issues(self, number):
+        """What this parent owns — the list `attach_sub_issue` maintains.
+
+        A read over a field the fixture already carries, so the fixture path
+        answers ownership with the same question the live path asks
+        (`Tracker.sub_issues`). It records no write.
+        """
+        raw = self._item(number) or {}
+        return list(raw.get("sub_issues", ()))
+
     def milestone(self, title):
         return {"title": title, "number": 1}
 
@@ -1510,8 +1520,35 @@ class BoltLoop:
                 return failure
         return None
 
+    def _predecessor_work(self, number, snapshot):
+        """What this unit OWNS, as sub-issue numbers.
+
+        Ownership, never visibility. The snapshot fetches a `Batch` row per
+        `unit`-labelled item on the milestone and fills its `sub_issues`
+        from the tracker (`Tracker.snapshot`, the `with_edges` branch), so
+        on the guard's own path — `snapshot(milestone)` with edges on — the
+        answer is already in hand and costs nothing. The `sub_issues` read
+        is the fallback for a blocker the snapshot built no row for: one off
+        this milestone, and `FixtureTracker`, whose snapshot builds no rows
+        at all.
+
+        A scan of `snapshot.items` by `parent_batch` cannot stand in for
+        this. That field is *derived* from these very sub-issues by
+        `backfill_parentage`, and only for the items the snapshot carries —
+        so the scan silently reports the owned set minus everything closed
+        by any reason but `closed:merged`.
+        """
+        batch = snapshot.batch(number)
+        if batch is not None:
+            return tuple(batch.sub_issues)
+        return tuple(self.tracker.sub_issues(number))
+
     def _predecessor_in(self, number, snapshot):
         """Is this blocker's work all in — the MERGE, not the close?
+
+        Returns `(verdict, reason)`: the reason is None when the work is in,
+        and otherwise names WHICH of the waits this is, so the run record
+        distinguishes a wait a later pass will end from one that will not.
 
         Closure of the blocker itself is the wrong predicate under
         bolt-of-units, and provably deadlocking. A blocking card is now a
@@ -1526,29 +1563,57 @@ class BoltLoop:
         is closed. An UNEXPANDED blocker is never satisfied — it has no
         work items yet, so there is nothing that could be in, and its
         dependent waits for the operator's approval. That is the book's
-        deferral, never a refusal.
+        deferral, never a refusal. An expanded unit owning NO work items
+        defers too: nothing was born there, and expanding a dependent over
+        a predecessor that produced nothing is the unsafe direction.
 
-        Read from the snapshot the guard already holds. It is scoped to
-        this milestone and carries the open items PLUS the `closed:merged`
-        ones — exactly the two states a sibling unit's items can be in
-        while the unit is still open, since the landing that would close
-        them `closed:done` is the same act that closes the unit. So a
-        sibling's verdict costs no network call. The tracker read is the
-        fallback for the one case the snapshot cannot answer: a blocker
-        that is not on this milestone at all.
+        Read from the snapshot the guard already holds wherever it can
+        answer. It is scoped to this milestone and carries the open items
+        PLUS the `closed:merged` ones, so the common shapes — every work
+        item still open, every one merged — cost no network call.
+
+        The tracker read is the fallback for the two cases the snapshot
+        cannot answer, not the one it used to claim. First, a blocker that
+        is not on this milestone at all. Second — and this is what
+        deadlocked — an issue ON this milestone closed by any reason other
+        than `closed:merged`: `closed:done`, `closed:declined`,
+        `closed:superseded`, `closed:parked`, or no reason at all. The
+        snapshot's scope excludes every one of those, so absence from it is
+        not evidence about the work; it is the absence of evidence, and
+        `Tracker.closed` is the question that settles it. That holds for the
+        blocker itself and for each work item it owns.
+
+        Which is why WHICH work items a unit has is read from what it owns
+        (`_predecessor_work`) and never from what the snapshot happens to
+        show: an owned set answers "all of them are closed" truthfully,
+        while a visible set answers it with whatever survived the
+        snapshot's scope, and an all-finished unit's visible set is empty.
         """
         blocker = snapshot.item(number)
         if blocker is None:
-            return self.tracker.closed(number)
+            if self.tracker.closed(number):
+                return True, None
+            return False, "which is open and not on this bolt's milestone"
         if not blocker.is_open:
-            return True
+            return True, None
         if inbox.UNIT not in blocker.labels:
-            return False
-        # Its work items, by the parentage `backfill_parentage` derives from
-        # the batches' sub-issues — the field the API does not carry and the
-        # guards key on.
-        work = [i for i in snapshot.items if i.parent_batch == number]
-        return bool(work) and all(not i.is_open for i in work)
+            return False, "which has not been expanded"
+        owned = self._predecessor_work(number, snapshot)
+        if not owned:
+            # Not "nothing is in" — nothing was BORN. A torn expansion, and
+            # the reason says so rather than reading as unfinished work.
+            return False, "which owns no work items"
+        still_open = 0
+        for child in owned:
+            item = snapshot.item(child)
+            if item is not None:
+                still_open += bool(item.is_open)
+            elif not self.tracker.closed(child):
+                still_open += 1
+        if still_open:
+            return False, (f"{still_open} of whose {len(owned)} work item(s) "
+                           f"are still open")
+        return True, None
 
     def _expand_card(self, card, snapshot, actions):
         if not card.team:
@@ -1562,12 +1627,16 @@ class BoltLoop:
             actions.append(f"card #{card.number}: no Team — needs-operator")
             return f"expansion: card #{card.number} carries no Team"
         for blocker in card.blocked_by:
-            if not self._predecessor_in(blocker, snapshot):
+            settled, reason = self._predecessor_in(blocker, snapshot)
+            if not settled:
+                # The reason is computed, not inferred by whoever reads the
+                # record: "owns no work items" is a wait no later pass ends,
+                # and "n of m still open" is one that will.
                 self.ledger.note(
                     f"expansion deferred — card #{card.number} blocked by "
-                    f"#{blocker}, whose work is not all in")
+                    f"#{blocker}, {reason}")
                 self._log(f"expansion deferred: #{card.number} waits on "
-                          f"#{blocker}")
+                          f"#{blocker} — {reason}")
                 return None
         tasks = inbox.plan_tasks(card.body)
         if not tasks:

@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from context import BIN  # noqa: F401 — sys.path side effect
+from context import BIN, ledger as obs  # noqa: F401 — sys.path side effect
 
 import _flywheel_inbox as inbox
 import _flywheel_server as server
@@ -447,11 +447,20 @@ def card_item(**kw):
     return base
 
 
-def unit_item(number=11, slug="predecessor", **kw):
-    """An already-expanded unit card: `unit`, open, on this milestone."""
+def unit_item(number=11, slug="predecessor", owns=(), **kw):
+    """An already-expanded unit card: `unit`, open, on this milestone.
+
+    `owns` is the sub-issue list `attach_sub_issue` maintains on a real
+    parent, and it is what `_predecessor_in` reads: membership comes from
+    what the unit owns, never from which items a snapshot happens to
+    carry. A fixture snapshot builds no `Batch` row (`from_fixture` reads
+    ownership off a `batches:` key these files do not write), so under
+    `FixtureTracker` the ownership is answered by `FixtureTracker.sub_issues`
+    over this field.
+    """
     base = {"number": number, "title": f"Unit: {slug}", "body": PLAN_BODY,
             "labels": ["unit"], "milestone": "bolt/observer-rework",
-            "state": "open", "blocked_by": []}
+            "state": "open", "blocked_by": [], "sub_issues": list(owns)}
     base.update(kw)
     return base
 
@@ -521,7 +530,8 @@ class ExpansionTest(unittest.TestCase):
         # A bolt sees expansion once per approval, not once in its life,
         # and expanding one unit leaves every other one alone.
         with tempfile.TemporaryDirectory() as tmp:
-            items = [unit_item(11, "observer-rework"), work_item(9, parent=11),
+            items = [unit_item(11, "observer-rework", owns=(9,)),
+                     work_item(9, parent=11),
                      card_item(number=12, title="Unit: second-unit",
                                body=SECOND_BODY)]
             tracker = bolt.FixtureTracker(fixture(tmp, items))
@@ -582,7 +592,7 @@ class ExpansionTest(unittest.TestCase):
 
     def test_a_half_built_predecessor_defers(self):
         with tempfile.TemporaryDirectory() as tmp:
-            items = [card_item(blocked_by=[11]), unit_item(11),
+            items = [card_item(blocked_by=[11]), unit_item(11, owns=(9, 10)),
                      work_item(9, state="closed", labels=("closed:merged",)),
                      work_item(10, state="open")]
             tracker = bolt.FixtureTracker(fixture(tmp, items))
@@ -596,7 +606,7 @@ class ExpansionTest(unittest.TestCase):
         # and the landing waits on the cards. Closure as the predicate is
         # what deadlocked; the merge is the fact this reads.
         with tempfile.TemporaryDirectory() as tmp:
-            items = [card_item(blocked_by=[11]), unit_item(11),
+            items = [card_item(blocked_by=[11]), unit_item(11, owns=(9, 10)),
                      work_item(9, state="closed", labels=("closed:merged",)),
                      work_item(10, state="closed", labels=("closed:merged",))]
             tracker = bolt.FixtureTracker(fixture(tmp, items))
@@ -618,6 +628,190 @@ class ExpansionTest(unittest.TestCase):
             self.assertIsNone(failure)
             self.assertIn("unit", tracker._item(12)["labels"],
                           "a closed blocker is closed, whatever the reason")
+
+    def test_a_blocker_on_this_milestone_closed_off_the_happy_path_expands(self):
+        # Same fact, the other half of the fallback: #11 IS on this bolt's
+        # milestone and is still absent from the pass's snapshot, because a
+        # milestone snapshot carries the open items plus `closed:merged`
+        # only. Absence is not evidence about the work.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]),
+                     unit_item(11, state="closed",
+                               labels=["unit", "closed:declined"])]
+            tracker = CountingTracker(bolt.FixtureTracker(fixture(tmp, items)))
+            loop = self.loop(tracker)
+            snapshot = inbox.TrackerSnapshot(
+                items=(), batches=(), milestone=self.MILESTONE,
+                plan_cards=[card(blocked_by=[11])])
+            failure = loop.guard_expand(snapshot, [])
+            self.assertIsNone(failure)
+            self.assertIn("unit", tracker._item(12)["labels"],
+                          "a closed blocker is settled, whatever the reason")
+            self.assertEqual(tracker.reads, [("closed", 11)])
+
+    # -- the live snapshot's shape ------------------------------------------
+
+    def live_snap(self, blocker=11, owns=(9, 10), visible=()):
+        """The shape `Tracker.snapshot` builds, which `from_fixture` does not.
+
+        A `Batch` row per `unit`-labelled item carrying the sub-issues it
+        owns, and `items` holding the open issues plus the `closed:merged`
+        ones ONLY — so a work item closed by any other reason is simply
+        absent from it. `visible` is what the snapshot can still see.
+        """
+        items = [unit_item(blocker, owns=owns)] + list(visible)
+        return inbox.TrackerSnapshot(
+            items=[inbox.Item.from_fixture(i, self.MILESTONE) for i in items],
+            batches=[inbox.Batch(number=blocker, kind=inbox.UNIT,
+                                 sub_issues=tuple(owns),
+                                 milestone=self.MILESTONE)],
+            milestone=self.MILESTONE,
+            plan_cards=[card(blocked_by=[blocker])])
+
+    def observed(self, tracker, tmp):
+        """The loop with a run record and a log to read the wait's reason off."""
+        lines = []
+        led = obs.RunLedger(Path(tmp) / "observations", "bolt-observer-rework")
+        params = bolt.BoltParams(slug="observer-rework", repo_dir=".")
+        loop = bolt.BoltLoop(params, tracker, ledger=led, log=lines.append)
+        return loop, led, lines
+
+    def notes(self, led):
+        return [e["text"] for e in led.entries if e["kind"] == "note"]
+
+    def test_a_predecessor_whose_items_closed_off_the_happy_path_expands(self):
+        # THE DEFECT. Both of #11's work items closed `closed:superseded`,
+        # so neither is in the pass's snapshot; the old predicate scanned
+        # `snapshot.items` by `parent_batch`, found nothing, and read the
+        # empty list as work that had never been born. Every pass, forever.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]), unit_item(11, owns=(9, 10)),
+                     work_item(9, state="closed",
+                               labels=("closed:superseded",)),
+                     work_item(10, state="closed",
+                               labels=("closed:superseded",))]
+            tracker = CountingTracker(bolt.FixtureTracker(fixture(tmp, items)))
+            loop = self.loop(tracker)
+            failure = loop.guard_expand(self.live_snap(), [])
+            self.assertIsNone(failure)
+            self.assertIn("unit", tracker._item(12)["labels"],
+                          "#11 owns two work items and both are closed")
+            self.assertEqual(tracker.reads, [("closed", 9), ("closed", 10)],
+                             "one read per member the snapshot cannot answer")
+
+    def test_an_invisible_child_beside_an_open_one_defers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]), unit_item(11, owns=(9, 10)),
+                     work_item(9, state="closed", labels=("closed:declined",)),
+                     work_item(10, state="open")]
+            tracker = CountingTracker(bolt.FixtureTracker(fixture(tmp, items)))
+            loop, led, lines = self.observed(tracker, tmp)
+            snapshot = self.live_snap(visible=[work_item(10, state="open")])
+            failure = loop.guard_expand(snapshot, [])
+            self.assertIsNone(failure, "a defer is not a pause")
+            self.assertEqual(tracker.writes, [], "a defer writes nothing")
+            self.assertIn("1 of whose 2 work item(s) are still open",
+                          self.notes(led)[0])
+
+    def test_a_membership_the_snapshot_carries_costs_no_tracker_read(self):
+        # The common shapes: every work item open, and every one
+        # `closed:merged`. The tracker raises on either read, so a later
+        # change that resolves per member against the network fails here.
+        for state, labels in (("open", ("state:ready",)),
+                              ("closed", ("closed:merged",))):
+            with self.subTest(state=state):
+                with tempfile.TemporaryDirectory() as tmp:
+                    items = [card_item(blocked_by=[11]),
+                             unit_item(11, owns=(9, 10))]
+                    tracker = CountingTracker(
+                        bolt.FixtureTracker(fixture(tmp, items)), refuse=True)
+                    loop = self.loop(tracker)
+                    snapshot = self.live_snap(visible=[
+                        work_item(9, state=state, labels=labels),
+                        work_item(10, state=state, labels=labels)])
+                    failure = loop.guard_expand(snapshot, [])
+                    self.assertIsNone(failure)
+                    self.assertEqual(tracker.reads, [])
+                    expanded = "unit" in tracker._item(12)["labels"]
+                    self.assertEqual(expanded, state == "closed")
+
+    def test_an_expanded_predecessor_owning_no_work_items_defers(self):
+        # Zero sub-issues is a torn expansion — nothing was born — and the
+        # recorded wait says that, rather than reading as unfinished work.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]), unit_item(11, owns=())]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop, led, lines = self.observed(tracker, tmp)
+            failure = loop.guard_expand(self.live_snap(owns=()), [])
+            self.assertIsNone(failure, "a defer is not a pause")
+            self.assertEqual(tracker.writes, [], "a defer writes nothing")
+            self.assertIn("owns no work items", self.notes(led)[0])
+            self.assertIn("owns no work items", lines[0])
+
+    def test_an_unexpanded_predecessors_wait_reads_differently(self):
+        # The two waits the operator must be able to tell apart: one ends
+        # when the card is approved, the other never ends on its own.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]),
+                     {"number": 11, "title": "Unit: predecessor",
+                      "labels": ["plan"], "milestone": self.MILESTONE,
+                      "status": "Backlog", "state": "open", "blocked_by": []}]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop, led, lines = self.observed(tracker, tmp)
+            failure = loop.guard_expand(self.snap(tracker), [])
+            self.assertIsNone(failure)
+            self.assertIn("has not been expanded", self.notes(led)[0])
+            self.assertNotIn("owns no work items", self.notes(led)[0])
+
+    def test_the_waits_reason_reaches_the_run_record(self):
+        # Asserted on the ledger note and the log line, not on the
+        # predicate's return value, so a reordering that computes the
+        # reason and then swallows it fails here.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [card_item(blocked_by=[11]), unit_item(11, owns=(9, 10)),
+                     work_item(9, state="closed", labels=("closed:merged",)),
+                     work_item(10, state="open")]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop, led, lines = self.observed(tracker, tmp)
+            failure = loop.guard_expand(self.snap(tracker), [])
+            self.assertIsNone(failure)
+            reason = "1 of whose 2 work item(s) are still open"
+            self.assertEqual(len(self.notes(led)), 1)
+            self.assertIn("card #12 blocked by #11", self.notes(led)[0])
+            self.assertIn(reason, self.notes(led)[0])
+            self.assertIn(reason, lines[0])
+
+
+class CountingTracker:
+    """A tracker that counts the two reads the predicate may fall back to.
+
+    With `refuse` set, either read raises instead — which is how a test
+    asserts that a membership the snapshot already carries costs nothing,
+    rather than asserting it on a count that a later change could quietly
+    grow.
+    """
+
+    def __init__(self, tracker, refuse=False):
+        self._tracker = tracker
+        self.refuse = refuse
+        self.reads = []
+
+    def __getattr__(self, name):
+        return getattr(self._tracker, name)
+
+    def _read(self, kind, number):
+        self.reads.append((kind, number))
+        if self.refuse:
+            raise AssertionError(
+                f"{kind}(#{number}): the snapshot already answers this")
+
+    def closed(self, number):
+        self._read("closed", number)
+        return self._tracker.closed(number)
+
+    def sub_issues(self, number):
+        self._read("sub_issues", number)
+        return self._tracker.sub_issues(number)
 
 
 def result(returncode=0, stdout="", stderr=""):
