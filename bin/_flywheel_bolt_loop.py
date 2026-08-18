@@ -950,6 +950,14 @@ class BoltParams:
     plan_mode: bool = False
     config: LoopConfig = None
     runner_config: dict = None
+    #: The bolt milestone's description — the planner's summary, which the
+    #: book names as the charter's source. Read once by
+    #: `bin/flywheel-bolt-loop` for the plan-mode flag and carried here so
+    #: `guard_scaffold` can put it in the order that writes `bolt.md`,
+    #: rather than costing a tracker round trip on every pass. Empty under
+    #: `--fixture`, whose `milestone()` returns a stub with no description
+    #: — the "milestone carries no description" path the spec covers.
+    description: str = ""
     #: The design book's checkout, from the fleet binding — where the
     #: items' chapter citations resolve. Sessions cannot read a chapter
     #: they cannot find.
@@ -1601,6 +1609,14 @@ class BoltLoop:
                        f"{milestone} with {len(made)} item(s)")
         return None
 
+    #: The bolt-level headings a charter opens with, in the bound schema's
+    #: `bolt.md` template order. Named in the order so the session knows
+    #: what a charter IS; their CONTENT stays the template's, which the
+    #: order points at rather than inlines — a second copy here would drift
+    #: the first time a schema version moved.
+    CHARTER_SECTIONS = ("## Scope", "## Sources", "## Repos",
+                        "## Merge criteria")
+
     def guard_scaffold(self, actions):
         """0 — scaffold-if-missing.
 
@@ -1609,14 +1625,49 @@ class BoltLoop:
         cannot do with a subprocess. Idempotent: the directory existing is
         the whole test.
 
-        Which is why the session copies exactly ONE unit's plan document —
-        the lowest-numbered, the unit this bolt was born around. A
-        milestone carries as many units as the operator approves, and "the
-        milestone's unit parent" stopped being a unique referent when it
-        did; `guard_charter` appends the rest, on the pass that sees them.
-        The fallback branch stays: a quick bolt born at triage carries no
-        unit card at all, and that session is still what writes its
-        charter.
+        **What it asks for is a CHARTER.** `bolt.md` is the bolt's charter
+        — the delivery statement, the sources, the repos, and the merge
+        criteria the landing verifies — and a planner-born bolt used to get
+        none of it: the order named one thing to write, the lowest-numbered
+        unit's plan document, and the session obeyed. Two readers then read
+        nothing: `merge_criteria()` returned `""`, and `landing_mode()`
+        fell through to its `merge` default on a charter that had said
+        nothing, so a bolt meaning to land by pull request landed straight
+        onto main. So the order names the four bolt-level sections and asks
+        for the `Landing:` line stated, and points the session at
+        `openspec instructions bolt --change <slug>` for what belongs under
+        each — the template stays the authority for their content.
+
+        The `Landing:` line is the ORDER'S requirement, not a line every
+        rendered template shows: only `bolt-default`'s carries one. A
+        charter that leaves it out leaves the landing mode to a default
+        that is indistinguishable from a declaration, which is the failure
+        this closes — so it is asked for under every schema.
+
+        **The milestone's description is the charter's stated source**, and
+        it rides in the order. A milestone with none still gets its
+        sections, written from what the milestone and its items say: an
+        absent description is a thinner charter, never a missing one.
+
+        The unit copy still happens, BELOW the bolt's sections. The session
+        copies exactly ONE unit's plan document — the lowest-numbered, the
+        unit this bolt was born around. A milestone carries as many units
+        as the operator approves, and "the milestone's unit parent" stopped
+        being a unique referent when it did; `guard_charter` appends the
+        rest, on the pass that sees them, also below. The fallback branch
+        stays: a quick bolt born at triage carries no unit card at all, and
+        that session is still what writes its charter — its four sections
+        and nothing under them.
+
+        **The charter is then checked, not assumed.** A settle used to be
+        the whole post-condition. It is now the settle plus the reader:
+        `merge_criteria()`, the SAME function the landing reads through, so
+        "the guard passed" and "the landing can read it" cannot disagree.
+        The check runs only on the path where a session was just driven, so
+        the dry-cycle property is untouched — a pass that finds the
+        directory already present returns above it, and a charter that lost
+        its sections later is caught by the landing's refusal rather than
+        by a guard that would have to rewrite committed prose.
         """
         if self.params.change_dir.exists():
             return None
@@ -1625,15 +1676,36 @@ class BoltLoop:
                            f"({self.params.type_name})")
             return None
         name = session_name("scaffold", self.params.slug)
+        described = (self.params.description or "").strip()
+        sections = ", ".join(f"`{s}`" for s in self.CHARTER_SECTIONS)
         order = sessions.work_order(f"/opsx:new {self.params.slug}", (
             f"Scaffold the bolt record for bolt/{self.params.slug} and bind the "
-            f"{self.params.type_name} schema. If the milestone carries any "
-            f"`unit`-labeled issue, copy the LOWEST-NUMBERED one's body into "
-            f"bolt.md verbatim, under a `# Unit: <slug>` heading naming that "
-            f"unit — that one and no other, because the loop appends every "
-            f"later unit's document itself; otherwise write bolt.md from "
-            f"what the milestone and its items say; "
-            f"commit by pathspec, in THIS worktree on the "
+            f"{self.params.type_name} schema.\n\n"
+            f"bolt.md is the BOLT'S CHARTER. It opens with the bolt's own "
+            f"sections — {sections} — before any unit's plan document, and its "
+            f"merge criteria section states the landing mode on a `Landing: "
+            f"merge` or `Landing: pr` line. State that line even if the "
+            f"rendered template does not show one: a landing mode that was "
+            f"defaulted is not a mode that was declared. Run `openspec "
+            f"instructions bolt --change {self.params.slug}` for what belongs "
+            f"under each heading — that template is the authority for their "
+            f"content.\n\n"
+            + (f"Write those sections from this bolt milestone's description, "
+               f"which is the charter's stated source:\n\n{described}\n\n"
+               if described else
+               f"This bolt's milestone carries no description, so write those "
+               f"sections from what the milestone and its items say. A thinner "
+               f"charter, never a missing one — all four sections are still "
+               f"written.\n\n")
+            + f"BELOW them: if the milestone carries any `unit`-labeled issue, "
+            f"copy the LOWEST-NUMBERED one's body into bolt.md verbatim, under "
+            f"a `# Unit: <slug>` heading naming that unit — that one and no "
+            f"other, because the loop appends every later unit's document "
+            f"itself. If the milestone carries no unit card, the sections above "
+            f"are the whole charter. Either way the bolt's own `## Merge "
+            f"criteria` stays the FIRST such heading in the file — a unit's own "
+            f"`##` subsections must never shadow it.\n\n"
+            f"Commit by pathspec, in THIS worktree on the "
             f"branch already checked out — never create a branch or worktree; "
             f"the loop cuts the bolt branch after you settle. Do not start any other work, "
             f"and do not touch the items. Deliver by settling."))
@@ -1646,6 +1718,15 @@ class BoltLoop:
             return (f"scaffold: the session settled but "
                     f"openspec/changes/{self.params.slug} is still missing"
                     + (f" — its report: {tail}" if tail else ""))
+        # The reader, not a second regex. A separate parser here would be a
+        # second definition of "what does this charter say", and two readers
+        # disagreeing about that is the failure this change exists to close.
+        if not self.merge_criteria():
+            return (f"scaffold: the session settled but "
+                    f"openspec/changes/{self.params.slug}/bolt.md carries no "
+                    f"bolt-level `## Merge criteria` section with a body — a "
+                    f"charter opens with {sections}, and the landing reads the "
+                    f"merge criteria to know what to verify")
         actions.append(f"scaffolded openspec/changes/{self.params.slug}")
         return None
 
@@ -2402,11 +2483,23 @@ class BoltLoop:
         # read. The landing is the last boundary, with no session downstream
         # to catch what it drops.
         numbers = [i.number for i in items]
-        # Two refusals before anything is driven or closed. A live wait on
+        # Three refusals before anything is driven or closed. A live wait on
         # any item means a question is standing — landing over it is how
-        # #96–#99 got closed over an unanswered andon (#164). And a bolt
+        # #96–#99 got closed over an unanswered andon (#164). A charter that
+        # states no merge criteria gives the landing nothing to verify, and
+        # "verified an empty list" is not a green landing. And a bolt
         # branch that never advanced past its cut point has nothing to
         # land: its ancestry into main is vacuously true.
+        #
+        # All three live HERE rather than beside the release conditions.
+        # The release conditions answer "may this bolt land yet", and the
+        # operator's gesture releases them; these answer "is there anything
+        # to land, and anything to verify", which no gesture on the board
+        # fixes — so they fail rather than hold. It is also what gives the
+        # charter refusal its forced-landing behaviour for free: a force is
+        # a claim about the operator's release, never about what the
+        # charter says, and `land="force"` reaches this line like any
+        # other landing.
         for parent in items:
             # The close-ready wait lives on the unit parent, and the close
             # that started this landing IS its answer.
@@ -2419,6 +2512,16 @@ class BoltLoop:
                                 "a live wait stands on "
                                 + ", ".join(f"#{n}" for n in waiting)
                                 + " — the landing waits for the operator")
+        if not self.merge_criteria():
+            # No section, an empty body, or no bolt.md at all — the reader
+            # answers `""` to all three, and the refusal is the same one.
+            return StageOutcome(
+                "land", "failed",
+                f"openspec/changes/{self.params.slug}/bolt.md — its merge "
+                f"criteria could not be read: the charter carries no "
+                f"bolt-level `## Merge criteria` section with a body. Nothing "
+                f"was verified, nothing reached {self.params.main_branch}, "
+                f"nothing closed")
         if not self.branch_advanced(self.params.bolt_branch):
             return StageOutcome("land", "failed",
                                 f"{self.params.bolt_branch} carries no work "

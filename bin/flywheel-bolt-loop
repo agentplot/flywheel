@@ -96,7 +96,8 @@ def build_loop(args):
         bolt_worktree=worktree, bolt_branch=args.bolt_branch,
         main_branch=args.main_branch, type_name=type_name,
         book_dir=args.book,
-        plan_mode=loop.resolve_plan_mode(declared, config), config=config)
+        plan_mode=loop.resolve_plan_mode(declared, config), config=config,
+        description=description)
 
     if args.dry_run:
         tracker = loop.ReadOnlyTracker(tracker)

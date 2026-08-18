@@ -8,9 +8,11 @@ schemas and the loop block"; the same sentence stands in
 `books/flywheel/src/bolt-planning.md` under "From plan to board" and in
 `books/flywheel/src/lifecycles.md` under "The bolt's changes"). The
 schema's own template says the shape: `# Bolt: [name]`, then `## Scope`,
-`## Sources`, `## Repos`, `## Merge criteria` with its `Landing:` line
-(`schemas/bolt-default/templates/bolt.md`, and the same file under each of
-the other three `bolt-*` schemas).
+`## Sources`, `## Repos`, `## Merge criteria`. Those four `##` headings
+stand in all four `bolt-*` templates; the `Landing:` line stands in
+`schemas/bolt-default/templates/bolt.md` alone, and is this change's own
+requirement of every charter rather than something the other three
+templates show.
 
 A planner-born charter carries none of it. `guard_scaffold` in
 `bin/_flywheel_bolt_loop.py` drives a session whose work order says: "If

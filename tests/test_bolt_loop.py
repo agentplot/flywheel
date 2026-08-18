@@ -2299,6 +2299,492 @@ class TrackerTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# The charter the scaffold writes, and the landing that reads it
+# ---------------------------------------------------------------------------
+
+#: A charter of the shape the schema template names: the bolt's four
+#: sections, the `Landing:` line stated, and nothing else yet.
+CHARTER = """# Bolt: x
+
+## Scope
+What this bolt builds, one paragraph.
+
+## Sources
+- loop-boundaries — handoff task: carve the loop's boundaries
+
+## Repos
+- flywheel · bolt branch `bolt/x`
+
+## Merge criteria
+Acceptance suites green on the bolt branch; merge gate always.
+Landing: merge
+"""
+
+#: The same charter a planner-born bolt used to get: one unit's plan
+#: document under its heading, and not one bolt-level section.
+UNIT_ONLY = """# Unit: u1
+
+The unit's plan document, which is not the bolt's charter.
+
+## Left out
+
+Something this unit does not do.
+"""
+
+
+class SettlingScaffold(ScriptedRunner):
+    """A scaffold session that leaves behind the charter it was handed.
+
+    The loop reads the tree, never the report, so what this writes at
+    launch time IS this session's whole deliverable. `charter=None` is the
+    session that made the directory and wrote no charter at all.
+    """
+
+    def __init__(self, change_dir, charter=CHARTER, **kw):
+        super().__init__(**kw)
+        self.change_dir = Path(change_dir)
+        self.charter = charter
+
+    def launch(self, spec):
+        self.change_dir.mkdir(parents=True, exist_ok=True)
+        if self.charter is not None:
+            (self.change_dir / "bolt.md").write_text(self.charter)
+        return super().launch(spec)
+
+
+class ScaffoldCharterTest(unittest.TestCase):
+    """Guard 0 asks for a charter, and checks that one came back.
+
+    The order used to name one thing to write — the lowest-numbered unit's
+    plan document — so a planner-born bolt got a charter with no bolt-level
+    sections at all, and both readers of `## Merge criteria` then read
+    nothing.
+    """
+
+    def loop_over(self, tmp, runner=None, description="", dry_run=False):
+        program = a_loop(FakeTracker(), runner=runner or ScriptedRunner(),
+                         repo_dir=str(tmp), bolt_worktree=str(tmp),
+                         description=description)
+        program.dry_run = dry_run
+        return program
+
+    def change_dir(self, tmp):
+        return Path(tmp) / "openspec" / "changes" / "x"
+
+    # -- what the order says (5.1) ----------------------------------------
+
+    def test_the_order_names_the_four_sections_and_carries_the_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = ScriptedRunner()
+            program = self.loop_over(
+                tmp, runner=runner,
+                description="Carve the loop's boundaries. Three units, ~9 items.")
+            program.guard_scaffold([])
+            order = runner.launched[0].order
+            for heading in loop.BoltLoop.CHARTER_SECTIONS:
+                self.assertIn(heading, order, heading)
+            self.assertIn("Landing: merge", order)
+            self.assertIn("Landing: pr", order)
+            self.assertIn("openspec instructions bolt --change x", order,
+                          "the template stays the authority for the content")
+            self.assertIn("Carve the loop's boundaries. Three units, ~9 items.",
+                          order, "the description is the charter's stated source")
+            self.assertIn("# Unit: <slug>", order,
+                          "the first unit's document is still copied, below them")
+
+    def test_a_milestone_with_no_description_still_gets_all_four_sections(self):
+        # An absent description is a thinner charter, never a missing one.
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = ScriptedRunner()
+            program = self.loop_over(tmp, runner=runner, description="")
+            program.guard_scaffold([])
+            order = runner.launched[0].order
+            for heading in loop.BoltLoop.CHARTER_SECTIONS:
+                self.assertIn(heading, order, heading)
+            self.assertIn("carries no description", order)
+            self.assertIn("what the milestone and its items say", order)
+
+    def test_the_order_never_inlines_the_schema_template(self):
+        # `design.md`: a second copy of the template in the loop program
+        # would drift the first time a schema version moved.
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = ScriptedRunner()
+            self.loop_over(tmp, runner=runner).guard_scaffold([])
+            order = runner.launched[0].order
+            template = (ROOT / "schemas" / "bolt-default" / "templates" / "bolt.md")
+            if template.exists():
+                body = [l for l in template.read_text().splitlines()
+                        if l.startswith("[")]
+                for line in body:
+                    self.assertNotIn(line, order)
+
+    # -- what the guard does with what came back (5.2) --------------------
+
+    def test_a_unit_only_charter_fails_the_guard_by_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = SettlingScaffold(self.change_dir(tmp), charter=UNIT_ONLY)
+            program = self.loop_over(tmp, runner=runner)
+            actions = []
+            failure = program.guard_scaffold(actions)
+            self.assertIsNotNone(failure, "a settle is no longer the whole test")
+            self.assertIn("openspec/changes/x/bolt.md", failure)
+            self.assertIn("## Merge criteria", failure)
+            self.assertIn("## Scope", failure)
+            self.assertEqual(actions, [],
+                             "a charter that fails records no scaffold action")
+
+    def test_an_empty_merge_criteria_section_fails_it_too(self):
+        # Four headings and no body under the one with readers is the
+        # failure mode the risk section named.
+        charter = "# Bolt: x\n\n## Scope\ns\n\n## Merge criteria\n\n# Unit: u1\n\np\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = SettlingScaffold(self.change_dir(tmp), charter=charter)
+            program = self.loop_over(tmp, runner=runner)
+            self.assertIsNotNone(program.guard_scaffold([]))
+
+    def test_a_session_that_wrote_no_charter_at_all_fails_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = SettlingScaffold(self.change_dir(tmp), charter=None)
+            program = self.loop_over(tmp, runner=runner)
+            failure = program.guard_scaffold([])
+            self.assertIsNotNone(failure)
+            self.assertIn("openspec/changes/x/bolt.md", failure)
+
+    def test_a_charter_with_merge_criteria_passes_and_records_its_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = SettlingScaffold(self.change_dir(tmp))
+            program = self.loop_over(tmp, runner=runner)
+            actions = []
+            self.assertIsNone(program.guard_scaffold(actions))
+            self.assertEqual(actions, ["scaffolded openspec/changes/x"])
+
+    def test_the_check_is_the_landings_own_reader(self):
+        # Not a second regex: "the guard passed" and "the landing can read
+        # it" must be the same question, asked once.
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = SettlingScaffold(self.change_dir(tmp))
+            program = self.loop_over(tmp, runner=runner)
+            seen = []
+            real = program.merge_criteria
+            program.merge_criteria = lambda: seen.append(1) or real()
+            program.guard_scaffold([])
+            self.assertEqual(len(seen), 1, "merge_criteria() is what was asked")
+
+    # -- the dry-cycle property (3.3) -------------------------------------
+
+    def test_a_present_change_directory_returns_before_the_check(self):
+        # The check runs only where a session was just driven. A charter
+        # that lost its sections later is the landing's refusal to make,
+        # not a guard's — a guard would have to rewrite committed prose.
+        with tempfile.TemporaryDirectory() as tmp:
+            self.change_dir(tmp).mkdir(parents=True)
+            runner = ScriptedRunner()
+            program = self.loop_over(tmp, runner=runner)
+            actions = []
+            self.assertIsNone(program.guard_scaffold(actions),
+                              "no bolt.md here, and the guard still passes")
+            self.assertEqual(actions, [])
+            self.assertEqual(runner.launched, [])
+
+    def test_dry_run_still_only_reports_what_it_would_scaffold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = ScriptedRunner()
+            program = self.loop_over(tmp, runner=runner, dry_run=True)
+            actions = []
+            self.assertIsNone(program.guard_scaffold(actions))
+            self.assertEqual(runner.launched, [])
+            self.assertEqual(len(actions), 1)
+            self.assertIn("would scaffold openspec/changes/x", actions[0])
+
+
+class BoltParamsDescriptionTest(unittest.TestCase):
+    """The planner's summary reaches the session that writes the charter.
+
+    `build_loop` already read the milestone's description — for the
+    plan-mode flag, and for nothing else. It stopped there, so no guard
+    could see the value the book names as the charter's source.
+    """
+
+    def cli(self):
+        """`bin/flywheel-bolt-loop`, loaded by path: the commands are
+        extensionless on purpose, `bin/` being on an installed user's PATH.
+
+        Its `loop` attribute IS the module this file imported, so anything
+        replaced on it is replaced everywhere — hence the cleanups.
+        """
+        loader = importlib.machinery.SourceFileLoader(
+            "flywheel_bolt_loop_cli", str(BIN / "flywheel-bolt-loop"))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        module.resolve_token = lambda org: "token"
+        return module
+
+    def patch(self, obj, name, value):
+        had = hasattr(obj, name)
+        old = getattr(obj, name, None)
+        setattr(obj, name, value)
+        self.addCleanup(lambda: setattr(obj, name, old) if had
+                        else delattr(obj, name))
+
+    def tracker_answering(self, cli, milestone):
+        answered = []
+
+        class Tracker:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def milestone(self, name):
+                answered.append(name)
+                return milestone
+
+        self.patch(cli.loop, "BoltTracker", Tracker)
+        return answered
+
+    def built(self, cli, argv=()):
+        return cli.build_loop(cli.parse_args(
+            ["--slug", "x", "--type", "bolt-quick", "--repo-dir", str(ROOT),
+             *argv]))[1]
+
+    def test_a_loop_built_from_a_milestone_holds_its_description(self):
+        cli = self.cli()
+        described = "Carve the loop's boundaries. Three units, ~9 items."
+        asked = self.tracker_answering(
+            cli, {"title": "bolt/x", "description": described})
+        params = self.built(cli)
+        self.assertEqual(asked, ["bolt/x"], "read once, at the entry point")
+        self.assertEqual(params.description, described)
+
+    def test_a_milestone_with_no_description_holds_the_empty_string(self):
+        cli = self.cli()
+        self.tracker_answering(cli, {"title": "bolt/x"})
+        self.assertEqual(self.built(cli).description, "")
+
+    def test_a_fixture_run_holds_the_empty_string(self):
+        # `FixtureTracker.milestone()` answers a stub with no description,
+        # so a fixture takes the "milestone carries no description" path
+        # the spec already covers rather than failing differently.
+        cli = self.cli()
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "bolt-tracker.json"
+            fixture.write_text(json.dumps({"items": []}))
+            params = self.built(cli, ["--fixture", str(fixture), "--dry-run"])
+        self.assertEqual(params.description, "")
+
+    def test_plan_mode_still_reads_what_it_read_before(self):
+        # The description's other reader is untouched: it is handed the
+        # same value, and still resolves the plan-mode path from it.
+        cli = self.cli()
+        self.tracker_answering(cli, {"description": "PLAN-MODE PATH: yes"})
+        seen = []
+        real = cli.loop.plan_mode_declared
+        self.patch(cli.loop, "plan_mode_declared",
+                   lambda binding, description, *rest:
+                   seen.append(description) or real(binding, description, *rest))
+        params = self.built(cli)
+        self.assertEqual(seen, ["PLAN-MODE PATH: yes"],
+                         "the same value, still reaching the same reader")
+        self.assertTrue(params.plan_mode)
+        self.assertEqual(params.description, "PLAN-MODE PATH: yes")
+
+
+class LandingCharterTest(unittest.TestCase):
+    """The landing's charter refusal, reached through the REAL reader.
+
+    Every other landing test in this file stubs `merge_criteria`; these
+    write a charter into a temporary worktree and let `land_stage` read it,
+    because what that reader answers is precisely the thing under test.
+    """
+
+    def merged(self, number):
+        return Item(number=number, milestone="bolt/x", title=f"item {number}",
+                    state="closed", milestone_state="closed",
+                    labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
+
+    def snapshot(self):
+        return Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS),
+                               item(2, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)],
+                        milestone="bolt/x")
+
+    def at_the_landing(self):
+        """Every assertion merge-closed and the operator's close made, so
+        the landing is otherwise wanted and only the charter can refuse."""
+        return Snapshot(items=[self.merged(1), self.merged(2)],
+                        milestone="bolt/x")
+
+    def program(self, tmp, charter, snapshot=None):
+        change = Path(tmp) / "openspec" / "changes" / "x"
+        change.mkdir(parents=True, exist_ok=True)
+        if charter is not None:
+            (change / "bolt.md").write_text(charter)
+        shell = FakeShell({("git", "merge-base"): Result(0),
+                           ("git", "rev-parse"): Result(0, "abc1234\n"),
+                           ("git", "rev-list"): Result(0, "1\n"),
+                           ("wt", "list"): Result(0, json.dumps(
+                               [{"branch": "bolt/x", "path": str(tmp)}]))})
+        tracker = FakeTracker(snapshot or self.snapshot())
+        runner = ScriptedRunner()
+        program = a_loop(tracker, runner=runner, shell=shell,
+                         repo_dir=str(tmp), bolt_worktree=str(tmp))
+        return program, tracker, runner
+
+    def refused(self, tmp, charter):
+        program, tracker, runner = self.program(tmp, charter)
+        outcome = program.land_stage(self.snapshot())
+        self.assertEqual(outcome.status, "failed", outcome.detail)
+        self.assertIn("openspec/changes/x/bolt.md", outcome.detail)
+        self.assertIn("merge criteria could not be read", outcome.detail)
+        self.assertEqual(runner.launched, [], "no landing session is driven")
+        self.assertEqual([w for w in tracker.writes
+                          if w[0] in ("close", "reclose")], [],
+                         "nothing closed and nothing upgraded")
+        self.assertEqual([n for n, l in tracker.labels.items()
+                          if inbox.NEEDS_OPERATOR in l], [],
+                         "a refusal is not a pause: no item waits on anyone")
+        return outcome
+
+    # -- the three empty cases (5.3) --------------------------------------
+
+    def test_a_charter_with_no_merge_criteria_section_refuses_the_landing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.refused(tmp, UNIT_ONLY)
+
+    def test_an_empty_merge_criteria_section_refuses_it_the_same_way(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.refused(tmp, "# Bolt: x\n\n## Merge criteria\n\n# Unit: u1\n\np\n")
+
+    def test_a_change_directory_with_no_bolt_md_refuses_it_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.refused(tmp, None)
+
+    def test_a_charter_that_states_its_criteria_lands_as_before(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program, tracker, runner = self.program(tmp, CHARTER)
+            outcome = program.land_stage(self.snapshot())
+            self.assertEqual(outcome.status, "done", outcome.detail)
+            self.assertEqual([w[1] for w in tracker.writes if w[0] == "reclose"],
+                             [1, 2])
+
+    def test_the_refusal_comes_before_the_work_less_branch_refusal(self):
+        # Order matters only in what it says: a bolt that is both
+        # charterless and empty is told about its charter, which is the
+        # one an operator can act on.
+        with tempfile.TemporaryDirectory() as tmp:
+            program, _, _ = self.program(tmp, UNIT_ONLY)
+            program.branch_advanced = lambda branch: False
+            self.assertIn("merge criteria could not be read",
+                          program.land_stage(self.snapshot()).detail)
+
+    def test_a_live_wait_still_pauses_ahead_of_the_charter_refusal(self):
+        # The charter refusal joins the existing two; it does not displace
+        # the live wait, which is a standing question about an item.
+        snap = Snapshot(items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS,
+                                    inbox.NEEDS_OPERATOR)],
+                        milestone="bolt/x")
+        with tempfile.TemporaryDirectory() as tmp:
+            program, _, _ = self.program(tmp, UNIT_ONLY, snapshot=snap)
+            outcome = program.land_stage(snap)
+            self.assertEqual(outcome.status, "paused")
+            self.assertIn("#1", outcome.detail)
+
+    # -- a forced landing does not pass it (4.2) --------------------------
+
+    def test_a_forced_landing_over_an_unreadable_charter_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program, tracker, runner = self.program(
+                tmp, UNIT_ONLY, snapshot=self.at_the_landing())
+            report = program.run(max_cycles=1, land="force")
+            self.assertTrue(report.landing.startswith("failed"), report.landing)
+            self.assertIn("openspec/changes/x/bolt.md", report.landing)
+            self.assertEqual(runner.launched, [])
+            self.assertEqual([w for w in tracker.writes
+                              if w[0] in ("close", "reclose")], [])
+
+    def test_a_forced_landing_over_a_charter_with_criteria_still_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program, tracker, runner = self.program(
+                tmp, CHARTER, snapshot=self.at_the_landing())
+            report = program.run(max_cycles=1, land="force")
+            self.assertTrue(report.landing.startswith("done"), report.landing)
+            self.assertEqual([w[1] for w in tracker.writes if w[0] == "reclose"],
+                             [1, 2])
+
+    # -- and the run says so (4.3) ----------------------------------------
+
+    def test_both_readers_of_a_run_carry_the_refusal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program, _, _ = self.program(tmp, UNIT_ONLY,
+                                         snapshot=self.at_the_landing())
+            report = program.run(max_cycles=1, land="force")
+            loader = importlib.machinery.SourceFileLoader(
+                "flywheel_bolt_loop_cli", str(BIN / "flywheel-bolt-loop"))
+            spec = importlib.util.spec_from_loader(loader.name, loader)
+            cli = importlib.util.module_from_spec(spec)
+            loader.exec_module(cli)
+            printed = cli.render(report, program.params)
+            self.assertIn(f"landing: {report.landing}", printed)
+            self.assertIn("bolt.md", printed)
+            self.assertEqual(cli.as_dict(report)["landing"], report.landing)
+            self.assertNotIn("not attempted", printed)
+
+
+class CharterOrderingTest(unittest.TestCase):
+    """A unit's own `##` subsections never shadow the bolt's criteria."""
+
+    LAYERED = """# Bolt: x
+
+## Merge criteria
+Acceptance suites green on the bolt branch.
+Landing: pr
+
+# Unit: u1
+
+The unit's plan document.
+
+## Merge criteria
+The unit's own bar, which is not the bolt's.
+
+## Left out
+Something this unit does not do.
+"""
+
+    def change_dir(self, tmp, text):
+        change = Path(tmp) / "openspec" / "changes" / "x"
+        change.mkdir(parents=True, exist_ok=True)
+        (change / "bolt.md").write_text(text)
+        return change
+
+    def test_the_bolts_criteria_are_read_past_a_units_subsections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.change_dir(tmp, self.LAYERED)
+            program = a_loop(FakeTracker(), bolt_worktree=str(tmp))
+            criteria = program.merge_criteria()
+            self.assertIn("Acceptance suites green", criteria)
+            self.assertNotIn("The unit's own bar", criteria)
+            self.assertNotIn("Left out", criteria)
+            self.assertEqual(program.landing_mode(), "pr",
+                             "the declared mode, not the reader's default")
+
+    def test_the_append_lands_below_the_bolts_sections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            change = self.change_dir(tmp, CHARTER)
+            unit = Item(number=9, milestone="bolt/x", title="Unit: u2",
+                        body="The second unit's plan.\n\n## Its own heading\n\nx",
+                        labels=frozenset({inbox.UNIT}))
+            snapshot = Snapshot(items=[unit], milestone="bolt/x")
+            program = a_loop(FakeTracker(snapshot), bolt_worktree=str(tmp))
+            actions = []
+            self.assertIsNone(program.guard_charter(snapshot, actions))
+            text = (change / "bolt.md").read_text()
+            self.assertLess(text.index("## Merge criteria"), text.index("# Unit: u2"),
+                            "the bolt's criteria stay the first such heading")
+            self.assertIn("u2", actions[0])
+            after = a_loop(FakeTracker(snapshot), bolt_worktree=str(tmp))
+            self.assertIn("Acceptance suites green", after.merge_criteria())
+            self.assertNotIn("Its own heading", after.merge_criteria())
+
+
+# ---------------------------------------------------------------------------
 # Small readings
 # ---------------------------------------------------------------------------
 
