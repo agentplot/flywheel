@@ -143,21 +143,38 @@ convert.
 
 ## D. `archive/` — four superseded spike documents, 3,903 lines
 
-The corpus has already done this triage. `archive/README.md` gives a
-verdict and a findings pointer for each, and `docs/design-timeline.md`
-gives the arc they form. The disposition is therefore **convert the
-summary, cite the detail** — a third option beside convert and
-discard.
+The corpus has already done half this triage: `archive/README.md`
+gives a verdict and a findings pointer for each, and
+`docs/design-timeline.md` gives the arc they form. But the verdicts
+are all that has been restated. **`SPIKE.md` never restates the
+findings themselves — it points at the archive instead**, three times
+over, and the Disposition table retires three requirements with the
+words "Findings archived." So these bodies are not detail behind a
+summary that survives elsewhere; they are the **sole holders** of the
+evidence, and they are sitting in a repo scheduled for teardown.
+
+Disposition: **convert the verdict, carry the body.** A third option
+beside convert and discard — the summary becomes a record, and the
+body has to survive the corpus somewhere, or the import loses the
+only copy.
 
 | anchor | lines | lane | reason | evidence |
 | --- | --- | --- | --- | --- |
 | `archive/README.md` | 25 | settled-history · absent | Three closed spikes, each with a one-line verdict and a pointer to its findings section. Convert this. | L3 "Closed spikes, kept for their findings (the product of a learning spike)." |
-| `archive/SPIKE-01-graphrag-hierarchy.md` | 482 | settled-history · cite-only | Verdict already carried by the README and the timeline; the body is the evidence behind it. | `archive/README.md`: "**Verdict: DISPROVEN at the attach gate** … Findings in its §10." |
-| `archive/SPIKE-02-managed-graph-influence.md` | 433 | settled-history · cite-only | Same; its shareable form is `reports/spike-02-report.html`. | `archive/README.md`: "**Verdict: PROVEN but limited** … Full matrix in its §10". |
-| `archive/SPIKE-03-spatial-hierarchy.md` | 2142 | settled-history · cite-only | Same; this is the spike whose verdict founded the current design. | `archive/README.md`: "**A is short of the need … a self-managed graph (B) is required.** That requirement is what the active PoC … builds on." |
-| `archive/SPIKE-04-partB-commissioning-findings.md` | 846 | settled-history · cite-only | The preserved sink for the dropped Part B machinery; `SPIKE.md` names it as the place that history is kept. | `SPIKE.md` L1086–L1087 "The full historical findings sink is preserved at `archive/SPIKE-04-partB-commissioning-findings.md`." |
+| `archive/SPIKE-01-graphrag-hierarchy.md` | 482 | settled-history · **sole-holder** | Verdict restated in the README and the timeline; the §10 findings behind it are restated nowhere. | `archive/README.md` "**Verdict: DISPROVEN at the attach gate** … Findings in its §10"; `SPIKE.md` L11 "kept for their findings", L1102 cites it as "Prior work" and stops there. |
+| `archive/SPIKE-02-managed-graph-influence.md` | 433 | settled-history · **sole-holder** | Same. Its shareable form is `reports/spike-02-report.html`, which is a rendering of the verdict, not of the matrix. | `archive/README.md` "**PROVEN but limited** … Full matrix in its §10"; the one `SPIKE.md` cross-reference (L609) borrows the reliability *question*, not the findings. |
+| `archive/SPIKE-03-spatial-hierarchy.md` | 2142 | settled-history · **sole-holder** | Same, and this is the spike whose verdict founded the current design — the largest single body of unrestated evidence in the corpus. | `archive/README.md` "**A is short of the need … a self-managed graph (B) is required.** … Findings in its §7." |
+| `archive/SPIKE-04-partB-commissioning-findings.md` | 846 | settled-history · **sole-holder** | The only record of the Part B probes, including all findings for the three requirements the corpus declares dead. | `SPIKE.md` L1086–L1087 "The full historical findings sink is preserved at `archive/SPIKE-04…`"; the Disposition table (L1104–L1106) retires `managed-retrieval-index`, `synthesis-flow` and `relational-store` with "Findings archived." |
 
----
+**Why this row set changed.** These four were first laned
+`cite-only` — convert the summary, leave the body — on the strength of
+`archive/README.md`'s verdicts. Checking whether `SPIKE.md` restates
+the findings (`grep -n "SPIKE-0[1-4]\|archive/" SPIKE.md`, five hits,
+all pointers) showed it does not. `cite-only` would have been a
+disposition that quietly discarded 3,903 lines of the only copy of
+something — precisely the failure mode the promise exists to prevent.
+Recorded rather than silently fixed, because the near-miss is the
+evidence for how the lane should be written down in #266.
 
 ## E. Operating documentation, fixtures, and application files
 
@@ -219,7 +236,7 @@ file-type filter nearly lost, 11,538 lines.
 
 | lane | rows | notes |
 | --- | --- | --- |
-| `settled-history` | 63 | 43 `current`, 7 `as-written`, **5 `covered`** by the destination books, **5 `absent`** and high-value, 4 `cite-only` archives |
+| `settled-history` | 63 | 43 `current`, 7 `as-written`, **5 `covered`** by the destination books, **5 `absent`** and high-value, **4 `sole-holder`** archive bodies |
 | `live-work` | 17 | including 7 cross-book tensions, 3 unstarted phases, and 6 forward tails of settled sections |
 | `discard` | 14 rows / 21 files | operating documentation, fixtures, superseded notes, the report index |
 | `withhold` | 3 | `SPIKE.md` §10 and §11, `.claude/spike/aws-account-guardrails.md` — class recorded, nothing quoted |
@@ -236,8 +253,13 @@ rows carry material the books do not have and nobody else holds:
 `docs/book-supervisor.md` + `docs/book-supervisor-state.json` (the
 import machinery and its ledger), `archive/README.md` (the closed-spike
 verdicts), and `.claude/spike/spike-workspace-shape.md` (how to run a
-throwaway spike). Everything else settled is either already in the
-books, or is detail behind a summary that is.
+throwaway spike).
+
+Behind them sit the four `sole-holder` archive bodies — 3,903 lines
+whose verdicts are restated everywhere and whose findings are restated
+nowhere. They need somewhere to live before the repo is torn down,
+and that is a different act from conversion: nobody has to read them
+today, but losing them is irreversible.
 
 **And the delta is computable without reading anything:** 30 commits
 and twelve documents have landed since the last writeback sweep

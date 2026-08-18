@@ -478,7 +478,55 @@ settle. That near-miss is the argument.
 
 ---
 
-## F12 — Machinery observation (not a tracker item)
+## F12 — A summary that exists is not the same as the content being restated, and the archive lane is where that bites.
+
+**Bears on:** clause 2, #266. Caught by re-checking this session's own
+row, which is why it is written down rather than quietly fixed.
+
+`archive/` looks like the easiest call in the corpus. Four superseded
+spike documents, 3,903 lines; a README that gives each a one-line
+verdict and a pointer; a `design-timeline.md` that arranges them into
+an arc; and `SPIKE.md` calling them "**Closed spikes** … kept for
+their findings" (L11). Every signal says *the summary survives, the
+body is detail* — and this session's first cut laned all four
+`cite-only` on exactly that reading.
+
+The check that overturned it is one command:
+
+```
+$ grep -n "SPIKE-0[1-4]\|archive/" SPIKE.md
+7:  … the historical `spike-commissioning` findings are in `archive/`
+11: **Closed spikes:** `archive/` — SPIKE-01/02/03, kept for …
+609: - **Relation-quality caveat (the SPIKE-02 reliability question …
+1087: … preserved at `archive/SPIKE-04-partB-commissioning-findings.md`
+1102: … Prior work: `archive/SPIKE-01` …
+```
+
+Five hits, and **every one is a pointer**. The live document restates
+the *verdicts* and never the findings. L609 comes closest and borrows
+SPIKE-02's reliability *question*, not its matrix. The Disposition
+table (L1104–L1106) retires three requirements with the words
+"Findings archived." So the archive bodies are not detail behind a
+surviving summary — they are the **sole holders** of the evidence, in
+a repo whose roadmap ends "repo archives beside SPIKE-01/02/03".
+
+Laning them `cite-only` would have been a disposition that discarded
+the only copy of 3,903 lines while looking like diligence. It is worse
+than a plain `discard` mistake, because `discard` invites an argument
+and `cite-only` sounds like the material is safe.
+
+**What the carrier needs:** *restated* is a claim to verify, never one
+to infer from the presence of a summary. The check is cheap — grep the
+live document for references to the artifact and read whether they
+carry the content or only name it — and it belongs in the cut step as
+a step, not as advice. The lane it protects is worth naming too:
+`sole-holder` material has to survive the corpus somewhere before
+teardown, which is a different act from conversion. Nobody has to read
+it today; losing it is irreversible.
+
+---
+
+## F13 — Machinery observation (not a tracker item)
 
 The research session type is configured `worktree=False`
 (`bin/_flywheel_intent.py` L117), documented as "Research is the type

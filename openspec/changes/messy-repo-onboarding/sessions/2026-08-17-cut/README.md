@@ -26,7 +26,7 @@ skill hardens.
   reason and a checkable pointer each, plus the rows the session could
   not settle and turned into questions.
 - `findings.md` — what the measurement taught that the survey could
-  not: twelve findings, each bearing on a named clause or successor
+  not: thirteen findings, each bearing on a named clause or successor
   item.
 - `conversion/` — one settled artifact taken end to end: session
   record, decision record, books-verdict, processed-ledger entry.
