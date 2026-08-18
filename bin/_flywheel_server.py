@@ -424,12 +424,15 @@ class Server:
         that cannot find the book writes from the item's summary instead,
         which is how a stale card's text outlives the chapters (#260).
         """
-        for binding in (self.config.books or {}).values():
-            book = binding.get("book")
+        bindings = [b for b in (self.config.books or {}).values()
+                    if b.get("book")]
+        for binding in bindings:
             repo = binding.get("repo")
-            if book and (not repo or str(self.config.loops_cwd).endswith(
-                    str(repo).rstrip("/"))):
-                return str(book)
+            if repo and self.config.loops_cwd and str(
+                    self.config.loops_cwd).endswith(str(repo).rstrip("/")):
+                return str(binding["book"])
+        if len(bindings) == 1:
+            return str(bindings[0]["book"])
         return None
 
     # -- the pass ----------------------------------------------------------
