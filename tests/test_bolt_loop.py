@@ -15,6 +15,7 @@ import importlib.machinery
 import importlib.util
 import json
 import tempfile
+import types
 import unittest
 from pathlib import Path
 
@@ -3253,6 +3254,40 @@ class ObservedRunTest(unittest.TestCase):
             l.run(max_cycles=1, land=False)
             report = next((Path(tmp) / "bolt-x").glob("*.report.md"))
             self.assertIn("nothing ready", report.read_text())
+
+
+class UnitTypeTest(unittest.TestCase):
+    """The unit card's Type line picks the type its batches run under."""
+
+    def loop_with(self, body):
+        snapshot = Snapshot(
+            items=[item(1, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=9),
+                   item(9, inbox.UNIT, body=body)],
+            batches=[Batch(number=9, kind=inbox.UNIT, sub_issues=(1,),
+                           milestone="bolt/x")])
+        program = a_loop(FakeTracker(snapshot))
+        batch = types.SimpleNamespace(numbers=(1,))
+        return program, batch, snapshot
+
+    def test_the_unit_card_names_the_type_the_batch_runs(self):
+        program, batch, snapshot = self.loop_with(
+            "Sequence: 1 of 1 · builds on: none\n"
+            "Type: `bolt-direct` · Price: 2 changes · ~1 day\n")
+        config = program.unit_config(batch, snapshot)
+        self.assertEqual(config.name, "bolt-direct")
+        self.assertFalse(config.runs("verify"))
+        self.assertTrue(config.plan_mode_available,
+                        "the gate-only type carries the plan path")
+
+    def test_a_unit_naming_no_type_runs_the_bolts_bound_type(self):
+        program, batch, snapshot = self.loop_with("no structured line here")
+        self.assertIs(program.unit_config(batch, snapshot),
+                      program.params.config)
+
+    def test_an_unknown_type_is_refused_not_downgraded(self):
+        program, batch, snapshot = self.loop_with("Type: `bolt-bogus`")
+        with self.assertRaises(loop.LoopError):
+            program.unit_config(batch, snapshot)
 
 
 if __name__ == "__main__":

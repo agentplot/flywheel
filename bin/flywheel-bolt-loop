@@ -96,7 +96,10 @@ def build_loop(args):
         bolt_worktree=worktree, bolt_branch=args.bolt_branch,
         main_branch=args.main_branch, type_name=type_name,
         book_dir=args.book,
-        plan_mode=loop.resolve_plan_mode(declared, config), config=config,
+        # Declared, not resolved: the unit's own type gates it per batch —
+        # a bolt mixes types, and the refusal (declared but unavailable)
+        # pauses the batch on the tracker instead of failing the launch.
+        plan_mode=declared, config=config,
         description=description)
 
     if args.dry_run:

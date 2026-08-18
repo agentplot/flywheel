@@ -466,6 +466,12 @@ def resolve_plan_mode(declared, config):
     return True
 
 
+#: The unit card's Type line, the plan template's structured field. The
+#: card body is frozen by the approval, so what this reads is what the
+#: operator approved.
+UNIT_TYPE = re.compile(r"^Type:\s*`?(bolt-[a-z-]+)`?", re.M)
+
+
 # ---------------------------------------------------------------------------
 # The tracker: the wave-1 reads, plus the writes a landing needs
 # ---------------------------------------------------------------------------
@@ -1002,6 +1008,12 @@ class BoltLoop:
     def __init__(self, params, tracker, runner_factory=None, run=_run_subprocess,
                  clock=time.time, log=None, dry_run=False, ledger=None):
         self.params = params
+        #: Per-unit type configs from the unit card's Type line, cached;
+        #: the bolt's bound type is the fallback.
+        self._unit_configs = {}
+        #: The plan-mode in force for the batch being driven — the bolt's
+        #: declaration gated by the driven unit's own type.
+        self.active_plan_mode = params.plan_mode
         self.tracker = tracker
         self.dry_run = dry_run
         self.ledger = ledger or obs.NullLedger()
@@ -2151,7 +2163,7 @@ class BoltLoop:
         boundaries between these prompts — where a review attaches when
         extensions arrive. Green means the change validates, run here.
         """
-        if self.params.plan_mode:
+        if self.active_plan_mode:
             return StageOutcome("spec", "skipped",
                                 "plan-mode path: the approved plan is the spec")
         change = batch.change or batch.slug
@@ -2216,7 +2228,7 @@ class BoltLoop:
         """`/opsx:apply`, or the plan-mode path where the bolt declares it."""
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
-        if not self.params.plan_mode and not self.deliverables(batch, change):
+        if not self.active_plan_mode and not self.deliverables(batch, change):
             # Symmetric with spec's already-validates skip — but a commit on
             # the branch proves only that something was committed, and a
             # spec session's planning artifacts satisfy that alone (observed
@@ -2229,7 +2241,7 @@ class BoltLoop:
             if not unchecked:
                 return StageOutcome("build", "done",
                                     "already built — the tree proves it")
-        if self.params.plan_mode:
+        if self.active_plan_mode:
             outcome = self.plan_mode_build(batch, name)
         else:
             # The order is the command and the commit rule, nothing else:
@@ -2251,7 +2263,7 @@ class BoltLoop:
         if not outcome.ok:
             return outcome
         missing = self.deliverables(batch,
-                                    change=None if self.params.plan_mode else change)
+                                    change=None if self.active_plan_mode else change)
         if missing:
             outcome = self.reprompt_deliverables(batch, outcome, missing)
         return outcome
@@ -2285,7 +2297,7 @@ class BoltLoop:
         if not again.ok:
             return again
         still = self.deliverables(batch,
-                                  change=None if self.params.plan_mode else
+                                  change=None if self.active_plan_mode else
                                   (batch.change or batch.slug))
         if still:
             self.pause(batch.numbers, (
@@ -2407,7 +2419,7 @@ class BoltLoop:
         session, or escalate. Work sessions do work, the review judges,
         the loop does bookkeeping.
         """
-        if self.params.plan_mode:
+        if self.active_plan_mode:
             return StageOutcome("verify", "skipped",
                                 "plan-mode path: there is no change to verify against")
         change = batch.change or batch.slug
@@ -2611,7 +2623,7 @@ class BoltLoop:
             return StageOutcome("merge", "failed",
                                 f"{branch} is not an ancestor of "
                                 f"{self.params.bolt_branch} after wt merge")
-        change = None if self.params.plan_mode else (batch.change or batch.slug)
+        change = None if self.active_plan_mode else (batch.change or batch.slug)
         note = ""
         if change:
             # Archive on green is a loop write now, like every other piece
@@ -2853,6 +2865,32 @@ class BoltLoop:
 
     # -- the cycle ---------------------------------------------------------
 
+    def unit_config(self, batch, snapshot):
+        """The type the batch runs under: its unit's, else the bolt's.
+
+        The unit card's `Type:` line is the plan template's structured
+        field, chosen by the planner and frozen by the operator's
+        approval — so the stage set, strategy and plan-mode availability
+        are the UNIT's, and a bolt mixes types the way its plan said it
+        would. A batch with no unit, or a unit naming no type, runs the
+        bolt's bound type. A type that names no known schema is refused
+        loudly (LoopError), never downgraded to the fallback: the type is
+        the scrutiny the approval bought.
+        """
+        parent = next((snapshot.item(n).parent_batch for n in batch.numbers
+                       if snapshot.item(n) is not None
+                       and snapshot.item(n).parent_batch), None)
+        if parent is None:
+            return self.params.config
+        if parent in self._unit_configs:
+            return self._unit_configs[parent]
+        card = snapshot.item(parent)
+        match = UNIT_TYPE.search((card.body or "") if card else "")
+        config = (load_type(match.group(1), self.params.repo_dir)
+                  if match else self.params.config)
+        self._unit_configs[parent] = config
+        return config
+
     def _batch_plan(self, batch):
         """One batch's drive expectations, keyed by stage — the rows the
         gate hashes and the drive records as it goes."""
@@ -2970,7 +3008,23 @@ class BoltLoop:
                                              f"andon on #{paused}: {found.reason}"))
                 continue
             self.flip_in_progress(batch.numbers)
-            config = self.params.config
+            try:
+                config = self.unit_config(batch, snapshot)
+            except LoopError as error:
+                self.pause(batch.numbers, f"The unit names a type the loop "
+                                          f"cannot load: {error}")
+                outcomes.append(StageOutcome("batch", "paused", str(error)))
+                continue
+            if self.params.plan_mode and not config.plan_mode_available:
+                reason = (f"Mode: plan is declared but the unit's type "
+                          f"{config.name!r} does not offer it — the type is "
+                          f"the scrutiny the approval bought, and no program "
+                          f"downgrades it")
+                self.pause(batch.numbers, reason)
+                outcomes.append(StageOutcome("batch", "paused", reason))
+                continue
+            self.active_plan_mode = (self.params.plan_mode
+                                     and config.plan_mode_available)
             if config.runs("spec"):
                 spec = self._drive(batch, "spec",
                                    lambda: self.spec_stage(batch))
