@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flywheel — two loops for turning intent into built code</title>
-<meta name="description" content="Intent falls inward until it is code. Evidence climbs back out until a human signs it. A design loop burns fog into decisions, a construction loop drives proposals to merged, and they meet at one operator gate. A Claude Code plugin.">
+<meta name="description" content="An AI-DLC harness for Claude Code: teams of agents on two coupled loops, design and construction, built on OpenSpec. Intent falls inward until it is code, evidence climbs back out until a human signs it, and one approval of yours starts a whole batch.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%238FB9AE' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='7.5' fill='none' stroke='%23C9A227' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23B4552D'/%3E%3C/svg%3E">
 
 <!-- The two faces the hero paints above the fold, preloaded. These are also the
@@ -167,6 +167,48 @@ h1 span{color:var(--brass)}
   .arc-label{font-size:15px}
 }
 
+/* ----------------------------------------------------------------- fold --
+   Beat 1 is a split: the plain sentence and the deck on the left, the plate
+   on the right at ~46% of the fold, so the five-beat nav sits in view on a
+   laptop screen without scrolling. Below 860px the plate drops under the
+   copy rather than shrinking into illegibility. */
+.fold{display:grid;grid-template-columns:minmax(0,1fr) 46%;gap:32px;align-items:center}
+.fold-copy{min-width:0}
+.plain{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:500;
+  margin:20px 0 0;max-width:26ch;font-size:clamp(17px,2.1vw,23px);
+  line-height:1.35;letter-spacing:-.015em;color:var(--bone);
+}
+.plain em{font-style:normal;color:var(--brass)}
+@media(max-width:860px){
+  .fold{grid-template-columns:1fr;gap:16px}
+  .plain{max-width:34ch}
+}
+
+/* ----------------------------------------------------------------- walk --
+   Beat 3's seven steps. Markup and CSS rather than a diagram: the page
+   carries at most one architecture picture and that is the plate — and a
+   strip is outside check-site's mermaid rules because it never reaches them. */
+.walk{
+  border:1px solid var(--line);border-radius:10px;background:var(--panel);
+  padding:20px 20px 16px;margin:0 0 8px;overflow-x:auto;
+}
+.walk .quote{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:500;
+  font-size:15px;line-height:1.5;color:var(--bone);margin:0 0 16px;
+}
+.walk .quote i{font-style:normal;color:var(--brass)}
+.walk-row{display:flex;align-items:stretch;min-width:720px}
+.step{flex:1;padding:0 10px;position:relative}
+.step+.step::before{content:"\2192";position:absolute;left:-7px;top:0;color:var(--brass);font-size:13px}
+.step .s{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mint)}
+.step .a{font-size:11px;line-height:1.5;color:var(--ink3);margin-top:3px}
+.step .a b{color:var(--ink2);font-weight:400}
+.deeper{
+  margin:14px 0 0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink3);
+}
+
 /* ----------------------------------------------------------------- tabs --
    Progressive enhancement. Before JS runs — and if it never does — this is a
    plain scrolling document: every panel visible, the tablist a row of anchors
@@ -277,7 +319,7 @@ pre.block{
 }
 .tag.design{color:var(--brass);border-color:rgba(201,162,39,.45);background:rgba(201,162,39,.09)}
 .tag.build{color:var(--rust);border-color:rgba(180,85,45,.5);background:rgba(180,85,45,.1)}
-.tag.gate{color:var(--mint);border-color:rgba(143,185,174,.45);background:rgba(143,185,174,.09)}
+.tag.approval{color:var(--mint);border-color:rgba(143,185,174,.45);background:rgba(143,185,174,.09)}
 
 table{border-collapse:collapse;width:100%;margin:0 0 18px;font-size:12.5px;display:block;overflow-x:auto}
 th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line-soft);vertical-align:top;line-height:1.6;color:var(--ink2)}
@@ -311,8 +353,11 @@ footer a:hover{color:var(--brass)}
   <div class="wrap">
     <a class="mark" href="#top">Fly<span>wheel</span></a>
     <nav aria-label="Elsewhere">
+      <!-- The Overview destination. Until site/overview.html exists this is the
+           README by absolute URL; that page, when it lands, re-points this one
+           href and nothing else. -->
+      <a href="https://github.com/agentplot/flywheel#readme">Overview</a>
       <a href="https://github.com/agentplot/flywheel">GitHub</a>
-      <a href="https://github.com/agentplot/flywheel#readme">Docs</a>
     </nav>
   </div>
 </header>
@@ -320,12 +365,16 @@ footer a:hover{color:var(--brass)}
 <div class="hero" id="top">
   <div class="plate">
 
-    <p class="eyebrow">Claude Code plugin · spec-driven</p>
-    <h1>Fly<span>wheel</span></h1>
-    <p class="deck">Intent falls inward until it is code. Evidence climbs back out until a human signs it. Every turn leaves spec behind — and spec is the mass.</p>
+    <div class="fold">
+      <div class="fold-copy">
+        <p class="eyebrow">Claude Code plugin · AI-DLC</p>
+        <h1>Fly<span>wheel</span></h1>
+        <p class="plain">An <em>AI-DLC harness</em> for Claude Code: teams of agents on two coupled loops — design and construction — built on OpenSpec.</p>
+        <p class="deck">Intent falls inward until it is code. Evidence climbs back out until a human signs it. Every turn leaves spec behind — and spec is the mass.</p>
+      </div>
 
-    <div class="stage">
-    <svg viewBox="0 0 900 696" role="img" aria-label="Four concentric rings: human review on the outside, then intent, then bolts, with construction at the core.">
+      <div class="stage">
+      <svg viewBox="0 0 900 696" role="img" aria-label="Four concentric rings: human review on the outside, then intent, then bolts, with construction at the core.">
       <defs>
         <marker id="in" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
           <path d="M0 0 L10 5 L0 10 z" fill="#B4552D"/>
@@ -394,12 +443,15 @@ footer a:hover{color:var(--brass)}
       <text x="464" y="90" fill="#B4552D" font-size="10.5" letter-spacing="2.4">SPEC DESCENDS</text>
       <text x="464" y="588" fill="#8FB9AE" font-size="10.5" letter-spacing="2.4">EVIDENCE CLIMBS</text>
 
-      <!-- ============ gates ============ -->
+      <!-- ============ where your approval crosses the rings ============ -->
+      <!-- The boxes keep their centres (218 and 682) and grow to 100 units for
+           the longer label. Each still spans the same gap — from the r=282
+           circle to just short of the r=176 one — so no ring path moves. -->
       <g>
-        <rect x="180" y="316" width="76" height="28" rx="3" fill="#0D2528" stroke="#8FB9AE" stroke-opacity=".7"/>
-        <text x="218" y="334.5" text-anchor="middle" fill="#8FB9AE" font-size="10" letter-spacing="1.6">GATE</text>
-        <rect x="644" y="316" width="76" height="28" rx="3" fill="#0D2528" stroke="#8FB9AE" stroke-opacity=".7"/>
-        <text x="682" y="334.5" text-anchor="middle" fill="#8FB9AE" font-size="10" letter-spacing="1.6">GATE</text>
+        <rect x="168" y="316" width="100" height="28" rx="3" fill="#0D2528" stroke="#8FB9AE" stroke-opacity=".7"/>
+        <text x="218" y="334.5" text-anchor="middle" fill="#8FB9AE" font-size="10" letter-spacing="1.6">YOU APPROVE</text>
+        <rect x="632" y="316" width="100" height="28" rx="3" fill="#0D2528" stroke="#8FB9AE" stroke-opacity=".7"/>
+        <text x="682" y="334.5" text-anchor="middle" fill="#8FB9AE" font-size="10" letter-spacing="1.6">YOU APPROVE</text>
       </g>
 
       <!-- ============ arc labels ============ -->
@@ -450,14 +502,100 @@ footer a:hover{color:var(--brass)}
         <rect x="-46" y="-15" width="92" height="30" rx="4" fill="#0D2528" stroke="#EDE7DA" stroke-opacity=".8"/>
         <text x="0" y="5" text-anchor="middle" fill="#EDE7DA" font-size="11" letter-spacing="2">HUMAN</text>
       </g>
-    </svg>
+      </svg>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<nav class="tabs" id="walkthrough" aria-label="The five beats">
+  <div class="wrap">
+    <a class="tab" href="#top">What it is</a>
+    <a class="tab" href="#problem">The problem</a>
+    <a class="tab" href="#walk">One idea, walked</a>
+    <a class="tab" href="#approval">Your approval</a>
+    <a class="tab" href="#setup">Install</a>
+  </div>
+</nav>
+
+<main>
+
+<section class="panel" id="problem">
+  <div class="wrap">
+    <h2>The problem</h2>
+    <p class="sub">Why one conversation fails.</p>
+
+    <p>
+      Most agent workflows collapse design and construction into one
+      conversation. Design is slow and converging, full of open questions;
+      construction is fast, parallel, and wants a settled target. Fused, you
+      design under build pressure or build against a design still moving.
+    </p>
+    <p>
+      So there are two loops — and one act carries work from the first into
+      the second.
+    </p>
+
+    <div class="cards">
+      <div class="card">
+        <span class="tag design">outer loop</span>
+        <h4>Design — an intent</h4>
+        <p>One intent is one tracked change. Its task list is the frontier;
+          the loop's job is burning fog into decisions, writing the
+          destination into the design books, and handing settled slices on.</p>
+      </div>
+      <div class="card">
+        <span class="tag approval">between them</span>
+        <h4>Your approval</h4>
+        <p>Nothing crosses without it. One approval covers a whole batch,
+          taken on the cheapest channel that can carry it — not a meeting,
+          and not one question per item.</p>
+      </div>
+      <div class="card">
+        <span class="tag build">inner loop</span>
+        <h4>Construction — a bolt</h4>
+        <p>One bolt is one construction iteration, tracking a registry of
+          proposals from spec to merged across whatever repositories the work
+          touches. Past your approval it runs without you.</p>
+      </div>
+    </div>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#why-two-loops">Read this in full in the README</a></p>
+  </div>
+</section>
+
+<section class="panel" id="walk">
+  <div class="wrap">
+    <h2>One idea, walked</h2>
+    <p class="sub">Seven steps, and the artifact each one leaves behind.</p>
+
+    <p>
+      One raw sentence — the kind that arrives in a chat window on a Tuesday —
+      all the way to merged code. Every step hands the next one something
+      written down, so nothing rests on a conversation somebody has to
+      remember.
+    </p>
+
+    <div class="walk">
+      <p class="quote">“<i>Exports fail when the API rate-limits us.</i>” — one sentence, walked:</p>
+      <div class="walk-row">
+        <div class="step"><div class="s">dispatch</div><div class="a">files it → <b>a tracked intent</b></div></div>
+        <div class="step"><div class="s">intent</div><div class="a">frames it → <b>questions to settle</b></div></div>
+        <div class="step"><div class="s">session</div><div class="a">works it → <b>options, evidence</b></div></div>
+        <div class="step"><div class="s">decision</div><div class="a">you annotate → <b>a decision record</b></div></div>
+        <div class="step"><div class="s">approval</div><div class="a">one word → <b>an approved batch</b></div></div>
+        <div class="step"><div class="s">bolt</div><div class="a">spec · build · test → <b>commits</b></div></div>
+        <div class="step"><div class="s">merged</div><div class="a">acceptance passes → <b>main, task checked</b></div></div>
+      </div>
+      <p class="deeper">A page per concept, walking this journey a step at a time, is on its way to this site.</p>
     </div>
 
     <div class="block">
       <div class="cell">
         <h3>Rim · human</h3>
         <div class="ratio">1 turn</div>
-        <p>Plans and diffs open in a browser. Annotate, send back, or approve. Nothing descends without a signature.</p>
+        <p>The outer ring turns once per pass of yours. Slowest ring, and the one that carries the momentum.</p>
       </div>
       <div class="cell">
         <h3>Intent</h3>
@@ -482,271 +620,49 @@ footer a:hover{color:var(--brass)}
       <span>Spec accumulates at every radius</span>
     </p>
   </div>
-</div>
+</section>
 
-<nav class="tabs" id="walkthrough" aria-label="Walkthrough">
+<section class="panel" id="approval">
   <div class="wrap">
-    <a class="tab" href="#why">Why two loops</a>
-    <a class="tab" href="#loops">The two loops</a>
-    <a class="tab" href="#actors">The actors</a>
-    <a class="tab" href="#bolt">Inside a bolt</a>
-    <a class="tab" href="#install">Install</a>
-  </div>
-</nav>
-
-<main>
-
-<section class="panel" id="why">
-  <div class="wrap">
-    <h2>Why two loops</h2>
-    <p class="sub">A Claude Code plugin, and its own marketplace.</p>
+    <h2>Your approval — and how little it costs</h2>
+    <p class="sub">The one turn of the wheel nothing else can take for you.</p>
 
     <p>
-      Most agent workflows collapse design and construction into one
-      conversation. The flywheel separates them, because they run at different
-      speeds and answer to different things. Design is slow, converging, and
-      full of open questions; construction is fast, parallel, and wants a
-      settled target. Fusing them means either designing under build pressure
-      or building against a design still moving.
-    </p>
-    <p>
-      So there are two loops, each with its own record and its own actors, and
-      one place where work crosses from the first into the second.
+      Plans, options and diffs open as a page in your browser — the reading you
+      would give a pull request, on the cheapest channel that can carry the
+      question.
     </p>
 
     <div class="cards">
       <div class="card">
-        <span class="tag design">outer loop</span>
-        <h4>Design — an intent</h4>
-        <p>One intent is one tracked change. Its task list is the frontier;
-          the loop's job is burning fog into decisions, writing the
-          destination into the design books, and handing settled slices on.</p>
+        <span class="tag approval">what you do</span>
+        <h4>Read it in a browser</h4>
+        <p>Options, evidence, diffs, laid out as a page. Annotate the line you
+          disagree with, send it back — or approve it.</p>
       </div>
       <div class="card">
-        <span class="tag gate">the coupling</span>
-        <h4>The phase gate</h4>
-        <p>Nothing crosses without your word. It is one approval covering a
-          whole batch, taken on the cheapest channel that can carry it — not a
-          meeting, and not one question per item.</p>
+        <span class="tag approval">what it costs</span>
+        <h4>One approval, one batch</h4>
+        <p>Not one question per item, and not a meeting to arrive at it. A
+          batch of settled work crosses in a single act.</p>
       </div>
       <div class="card">
-        <span class="tag build">inner loop</span>
-        <h4>Construction — a bolt</h4>
-        <p>One bolt is one construction iteration, tracking a registry of
-          proposals from spec to merged across whatever repositories the work
-          touches. Past the gate it runs without you.</p>
+        <span class="tag approval">what follows</span>
+        <h4>Then it runs without you</h4>
+        <p>Spec, review, build, acceptance, merged — across as many
+          repositories as the work touches.</p>
       </div>
     </div>
 
-    <p class="more"><a href="https://github.com/agentplot/flywheel#why-two-loops">Read this in full in the README</a></p>
-  </div>
-</section>
-
-<section class="panel" id="loops">
-  <div class="wrap">
-    <h2>The two loops</h2>
-    <p class="sub">Where the work goes, and the single edge between them.</p>
-
-    <div class="figure">
-<pre class="mermaid">
-flowchart TB
-  subgraph DESIGN ["design loop — one intent, one tracked change"]
-    direction LR
-    idea["a raw idea"]
-    dispatch["dispatch<br/><small>routes it, files the intent</small>"]
-    intent["the intent<br/><small>its tasks are the frontier</small>"]
-    session["a design session<br/><small>own worktree, own directory</small>"]
-    decision["a decision<br/><small>+ the books + the context map</small>"]
-    handoff["a handoff<br/><small>batched, named, drafted</small>"]
-    idea --&gt; dispatch --&gt; intent --&gt; session --&gt; decision --&gt; handoff
-    decision -. "new fog<br/>appends tasks" .-&gt; intent
-  end
-
-  gate{{"the phase gate — your word"}}
-
-  subgraph BUILD ["construction loop — one bolt, one registry of proposals"]
-    direction LR
-    bolt["the bolt<br/><small>a registry of proposals</small>"]
-    spec["spec<br/><small>one agent per proposal</small>"]
-    review["review<br/><small>independent, one round</small>"]
-    apply["build<br/><small>apply agents, nested worktrees</small>"]
-    test["accept<br/><small>full reset, the named suites</small>"]
-    merged["merged<br/><small>through the release gate</small>"]
-    bolt --&gt; spec --&gt; review --&gt; apply --&gt; test --&gt; merged
-    review -. "bounced" .-&gt; spec
-  end
-
-  handoff --&gt; gate --&gt; bolt
-
-  finding["a design-level finding<br/><small>the design is wrong, not the build —<br/>back to dispatch, never fixed here</small>"]
-  landed["the handoff landed<br/><small>reported back, so the intent<br/>can check its task off</small>"]
-  test -.-&gt; finding
-  merged -.-&gt; landed
-
-  classDef d stroke-width:1.5px
-  classDef b stroke-width:1.5px
-  classDef g stroke-width:2px
-  classDef fb stroke-width:1.5px,stroke-dasharray:4 3
-  class idea,dispatch,intent,session,decision,handoff d
-  class bolt,spec,review,apply,test,merged b
-  class gate g
-  class finding,landed fb
-</pre>
-    </div>
-    <p class="caption">
-      Everything above the gate is design and produces records. Everything
-      below it is construction and produces commits. The dotted edges are the
-      only feedback paths: a finding that turns out to be a design problem goes
-      back to dispatch rather than being fixed in place, and a landed handoff
-      reports back so the intent can check its task off.
-    </p>
-
-    <h3>One rule does most of the work</h3>
-    <blockquote>
-      Every file edit that is not a design record is construction, and leaves
-      through the gate. Including edits to the repository the loop itself runs in.
-    </blockquote>
     <p>
-      Without that rule the design loop quietly grows a habit of making small
-      fixes, and the record of why the code looks the way it does starts
-      going missing. With it there is exactly one path out of design, and a
-      handoff carrying a single proposal is a one-proposal bolt — the same
-      path at its smallest size, not a shortcut around it.
+      It comes back to you when there is something to show, or a question only
+      you can answer. Your attention is the scarce ring, and everything else is
+      built to turn faster around it.
     </p>
-
-    <p class="more"><a href="https://github.com/agentplot/flywheel#the-design-loop--an-intent">Read this in full in the README</a></p>
   </div>
 </section>
 
-<section class="panel" id="actors">
-  <div class="wrap">
-    <h2>The actors</h2>
-    <p class="sub">Two loop programs, four agent profiles, three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
-
-    <div class="figure">
-<pre class="mermaid">
-flowchart TD
-  op(["you"])
-
-  srv["flywheel server<br/><small>one per host · every 60s</small>"]
-  disp["dispatch<br/><small>standing singleton</small>"]
-  ic["intent loop<br/><small>one process per intent</small>"]
-  rs["design session<br/><small>planning · research · prototype · writeback · handoff</small>"]
-  is["interactive session<br/><small>builds a surface you work</small>"]
-  bc["bolt loop<br/><small>one process per bolt</small>"]
-  agents["construction sessions<br/><small>proposal-writing · review · spec · build · test</small>"]
-
-  tracker["the tracker<br/><small>the only bus</small>"]
-
-  wIntent["the intent's own records<br/>decisions · tasks · design"]
-  wSession["that session's own directory"]
-  wBooks["the design books<br/>and the context map"]
-  wBolt["the bolt's registry<br/>and its tasks"]
-  wCode["the built repositories"]
-
-  op --> tracker
-  op --> disp
-  disp --> tracker
-  tracker --> srv
-  srv -- "a job" --> ic
-  srv -- "a job" --> bc
-  ic --> rs
-  ic --> is
-  bc --> agents
-
-  ic --> wIntent
-  ic --> wBooks
-  rs --> wSession
-  is --> wSession
-  rs --> wBooks
-  is --> wBooks
-  bc --> wBolt
-  agents --> wCode
-
-  classDef hu stroke-width:2px
-  classDef d stroke-width:1.5px
-  classDef b stroke-width:1.5px
-  classDef w stroke-width:1.5px,stroke-dasharray:4 3
-  class op hu
-  class disp,rs,is d
-  class srv,ic,bc,agents b
-  class tracker,wIntent,wSession,wBooks,wBolt,wCode w
-</pre>
-    </div>
-    <p class="caption">
-      Grey boxes are write scopes. A design session never writes a decision
-      record and never checks its own task off — it reports, and the loop
-      promotes. A loop never edits inside a session's directory. The books
-      and the context map are the one scope two actors share, and that is
-      deliberate: they are the destination, and both loops read them.
-      Nothing here messages anything else: every arrow into a loop is a
-      tracker query, and every arrow out of a session is a commit, an item
-      comment, or a label.
-    </p>
-
-    <table>
-      <thead>
-        <tr><th>Actor</th><th>Lives as long as</th><th>Writes</th></tr>
-      </thead>
-      <tbody>
-        <tr><td><code>dispatch</code></td><td>always — one per org fleet</td><td>new intent changes, at the moment of triage, and nothing else</td></tr>
-        <tr><td><code>flywheel server</code></td><td>always — one per host in the fleet</td><td>nothing; it starts and stops loop processes</td></tr>
-        <tr><td><code>intent loop</code></td><td>one process, while its intent has a job</td><td>that intent's records; the books; the context map</td></tr>
-        <tr><td><code>design session</code></td><td>one task batch</td><td>its session directory, its own task lines, its charged closures; the books; the context map</td></tr>
-        <tr><td><code>bolt loop</code></td><td>one process, while its bolt has a job</td><td>the bolt's proposal registry and tasks</td></tr>
-        <tr><td><code>spec / apply / testing</code></td><td>one job</td><td>the change and branch their registry row names</td></tr>
-      </tbody>
-    </table>
-
-    <p>
-      Dispatch is the only actor bridged to you. A question a construction
-      session cannot answer travels out through dispatch and the answer comes
-      back as a comment on the item that raised it — never to a different
-      actor, and never as an edit to that bolt's change.
-    </p>
-
-    <p class="more"><a href="https://github.com/agentplot/flywheel#the-actors">Read this in full in the README</a></p>
-  </div>
-</section>
-
-<section class="panel" id="bolt">
-  <div class="wrap">
-    <h2>Inside a bolt</h2>
-    <p class="sub">Every row of the registry is in exactly one of these states.</p>
-
-    <div class="figure">
-<pre class="mermaid">
-stateDiagram-v2
-  direction TB
-  [*] --&gt; to_spec
-  to_spec : to-spec
-  in_review : in-review
-
-  to_spec --&gt; specced : spec agent, validated
-  specced --&gt; in_review : independent reviewer
-  in_review --&gt; approved : verdict
-  in_review --&gt; to_spec : bounced — one round only
-  approved --&gt; building : apply agent, nested worktree
-  building --&gt; built : commit stage + merge gate
-  built --&gt; verified : batched acceptance on the bolt branch
-  verified --&gt; merged : full release gate
-  merged --&gt; [*]
-</pre>
-    </div>
-    <p class="caption">
-      Spec review is bounded to one round. A bounce is followed by a fix or by
-      a re-spec from the decision record that settled it, and the result of
-      either is built rather than read again — because further rounds converge
-      on wording rather than on whether the thing can actually be built. What
-      is bounded is <em>reading</em>; the merge gate, the acceptance suites and
-      the release gate never relax.
-    </p>
-
-    <p class="more"><a href="https://github.com/agentplot/flywheel#the-construction-loop--a-bolt">Read this in full in the README</a></p>
-  </div>
-</section>
-
-<section class="panel" id="install">
+<section class="panel" id="setup">
   <div class="wrap">
     <h2>Install</h2>
     <p class="sub">The repository is its own marketplace, so it is two commands.</p>
@@ -754,29 +670,13 @@ stateDiagram-v2
 <pre class="block"><code>/plugin marketplace add agentplot/flywheel
 /plugin install flywheel@flywheel</code></pre>
 
-    <h3>Working on the flywheel itself</h3>
-    <p>
-      Both commands are bypassed while you are editing the plugin. Point Claude
-      Code at a checkout and reload in place — no publish, no reinstall, no
-      version bump between an edit and trying it.
-    </p>
-<pre class="block"><code>claude --plugin-dir /path/to/flywheel/main
-/reload-plugins</code></pre>
-
     <h3>Where the rest of it is written down</h3>
     <ul>
-      <li><a href="https://github.com/agentplot/flywheel#readme">The README</a> — the whole machinery in prose, and the source of every walkthrough above.</li>
+      <li><a href="https://github.com/agentplot/flywheel#readme">The README</a> — the whole machinery in prose.</li>
       <li><a href="https://github.com/agentplot/flywheel/tree/main/skills">skills/</a> — the two loop skills and the thirteen session-type skills.</li>
       <li><a href="https://github.com/agentplot/flywheel/tree/main/agents">agents/</a> — the agent profiles, one file each.</li>
       <li><a href="https://github.com/agentplot/flywheel/tree/main/schemas">schemas/</a> — the OpenSpec workflow schemas, published as user schemas.</li>
     </ul>
-
-    <p>
-      <a href="https://github.com/agentplot/flywheel">Source on GitHub</a> ·
-      MIT licensed
-    </p>
-
-    <p class="more"><a href="https://github.com/agentplot/flywheel#install">Read this in full in the README</a></p>
   </div>
 </section>
 
