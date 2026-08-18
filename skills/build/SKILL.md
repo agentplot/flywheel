@@ -49,6 +49,7 @@ beside it. Your contract:
 
 - **You receive**: specced assertion items (`type:assertion`), reviewed per the bolt type, on a nested construction worktree.
 - **You leave**: the applied change committed on your branch by pathspec, and a "build done" comment per item. The loop merges through the gate and closes; you never land or close.
+- **Commit messages follow the built repo's own conventions** — its AGENTS.md or CLAUDE.md Commits section, with a `Refs: #<item>` footer. Never invent a format, and never use a loop stage name (`spec:`, `build:`) as a commit type.
 - A finding beyond your spec is a queued item, never an in-place fix.
 
 ## What you report

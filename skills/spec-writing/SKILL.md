@@ -52,6 +52,7 @@ beside it. Your contract:
 
 - **You receive**: released assertion items (`type:assertion`, `state:in-progress`), each pointing at its assertion record — the assertion is the proposal.
 - **You leave**: one spec-driven change per assertion in its built repo, `openspec validate` green, and a "spec landed" comment on each item naming the change id.
+- **Commit messages follow the built repo's own conventions** — its AGENTS.md or CLAUDE.md Commits section (a spec commit is typically `docs(openspec): <change-slug> — <what>`), with a `Refs: #<item>` footer. Never a loop stage name as a commit type.
 - The stages create no items (tracker.md, invariant 4); only discoveries are queued.
 
 ## What you report

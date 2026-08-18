@@ -105,6 +105,17 @@ as-is, so anything that needs compiling would ship uncompiled.
 
 ## Commits
 
+Messages are Conventional Commits with an imperative subject:
+`<type>(<scope>): <what>`. Types are the conventional set — `feat`, `fix`,
+`docs`, `refactor`, `test`, `chore`, `build` (build system only), `ci`,
+`perf`, `style` — never a stage name: a spec session's commit is
+`docs(openspec): <change-slug> — <what>`, and a build session's commit
+takes the type its change actually is (`feat`/`fix`/`refactor`) with the
+subsystem as scope (`feat(bolt-loop): …`, `fix(inbox): …`). Every commit
+serving a tracker item carries a `Refs: #<n>` footer; never `Closes:` or
+`Fixes:` — items close through the loop, with evidence, not as a side
+effect of a push.
+
 Stage and commit only the paths you wrote: `git add <paths>` then
 `git commit -- <paths>`. Never `-a`, never `add -A` or `add .`, never a
 pathspec-less commit — a sibling agent may share this working tree and
