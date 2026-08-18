@@ -1533,6 +1533,21 @@ class LandingTest(unittest.TestCase):
         self.assertIn((9, inbox.CLOSED_DONE), tracker.reasons,
                       "a container closes with one reason like anything else")
 
+    def test_a_unit_open_on_the_milestone_is_closed_by_the_landing(self):
+        # The live shape: the unit parent is itself an OPEN ITEM on the
+        # milestone, so it rides the stage's item set (the pause and andon
+        # surface). Subtracting that whole set as "landed" excluded every
+        # open unit from its own close — #255 landed and stayed open.
+        snapshot = self.with_unit()
+        snapshot = Snapshot(
+            items=list(snapshot.items) + [item(9, inbox.UNIT)],
+            batches=snapshot.batches, milestone="bolt/x")
+        program, tracker = self.program("Landing: merge", ancestor=0,
+                                        tracker=FakeTracker(snapshot))
+        self.assertEqual(program.land_stage(snapshot).status, "done")
+        self.assertIn(9, [w[1] for w in tracker.writes if w[0] == "close"],
+                      "the open unit closes even though it rode the item set")
+
     def test_closing_the_parent_touches_no_sub_issue(self):
         # The assertions' closes belong to the merge boundary and to the
         # upgrade; a container's close is not a cascade.

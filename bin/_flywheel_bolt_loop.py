@@ -2827,7 +2827,11 @@ class BoltLoop:
         condition is what keeps a stale parent from naming a job forever; the
         two answer the same finding from opposite ends.
         """
-        landed = {i.number for i in items}
+        # Assertions only. The stage's item set deliberately carries the open
+        # unit parent (it is the pause and andon surface), so subtracting the
+        # whole set excluded every open unit from its own close — #255 landed
+        # and stayed open, closed by the operator's hand.
+        landed = {i.number for i in items if not i.is_container}
         numbers = {b.number for b in snapshot.batches
                    if b.kind == inbox.UNIT and b.milestone == self.params.milestone}
         numbers |= {i.parent_batch for i in items if i.parent_batch}
