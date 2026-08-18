@@ -3,32 +3,42 @@
 Planning session on `intent/messy-repo-onboarding`, items #266, #267,
 #268, #269, #278: fold the first measurement's findings
 (`../2026-08-17-cut/findings.md`) into the promise, settle the three
-deferred decisions, and fix the carrier skill's design.
+deferred decisions, and fix the carrier skill.
 
 ## Contents
 
-- `round.md` — the round document, five sections: the amended cut
-  schema (#278), cross-org landing (#267), specs-into-source-repo
-  (#268), bulk triage (#269), the carrier skill and its ledger home
-  (#266). Round 2 text — round 1's only annotation was that the
-  document was unreadable jargon, and the rewrite is in plain
-  language.
-- `carrier-skill.md` — the full proposed `skills/import/SKILL.md`
-  text, referenced from round §5.
-- `plannotator-result-r1.json` — round 1, annotated.
+- `round.md` — the round document, five sections; the round-3 text
+  the operator approved.
+- `carrier-skill.md` — the skill draft the round approved; landed
+  verbatim at `skills/import/SKILL.md`.
+- `plannotator-result-r1.json` / `-r2.json` / `-r3.json` — round 1
+  **annotated** (the document was unreadable jargon; round 2 was the
+  plain-language rewrite), round 2 **annotated** (six corrections:
+  live work routes to books as well as tracker; move-not-copy with an
+  originals state folder; the import runs in the corpus org's own
+  flywheel; the #270 conversion into the public flywheel repo was a
+  mistake; the items table carries session types; diagrams-whole
+  approved), round 3 **approved** (2026-08-18).
 
-## State
+## Outcome
 
-Round 1 **annotated** (rewrite plainly — folded). Round 2 was opened
-twice and both servers were stopped externally before the operator
-submitted anything: **no round-2 annotations exist**, so nothing here
-is approved. The promise record is unamended; no decision records are
-written; the skill is a draft. The next session (or an iteration of
-this one) reopens `plannotator annotate` on `round.md`.
+All five items closed on round 3:
 
-## Surfaced along the way
+- **#278** — the promise amended in place:
+  `../../decisions/onboarding-promise.md`.
+- **#267** — `../../decisions/import-runs-in-own-org.md`: no
+  cross-org case exists; each org's flywheel imports its own corpora.
+  Cleanup of the mistaken #270 staging queued as #300.
+- **#268** — `../../decisions/no-specs-into-source-repo.md`: never.
+- **#269** — `../../decisions/bulk-triage.md`: the cut's
+  proposed-items table, one operator pass, session types per row.
+- **#266** — `skills/import/SKILL.md` landed from the approved draft;
+  ledger committed in the change directory, originals in
+  machine-local state.
 
-`agentplot/flywheel` is public, and the #270 staged conversion put
-quoted willdan corpus content on its main — round §2 puts that in
-front of the operator as an explicit call (leave or scrub), alongside
-the forward-only rule proposal.
+## Round-holding note
+
+The first two attempts to open round 2 died without annotations —
+gated plannotator servers do not survive being backgrounded in this
+environment. The round that worked ran in the foreground within the
+600s window.
