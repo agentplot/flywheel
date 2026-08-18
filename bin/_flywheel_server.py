@@ -412,7 +412,25 @@ class Server:
             worktree = self.bolt_worktree(slug)
             if worktree:
                 argv += ["--bolt-worktree", worktree]
+            book = self.bound_book()
+            if book:
+                argv += ["--book", book]
         return tuple(argv)
+
+    def bound_book(self):
+        """The design book bound to the repo the loops run in.
+
+        Chapter citations in work items resolve under it; a spec session
+        that cannot find the book writes from the item's summary instead,
+        which is how a stale card's text outlives the chapters (#260).
+        """
+        for binding in (self.config.books or {}).values():
+            book = binding.get("book")
+            repo = binding.get("repo")
+            if book and (not repo or str(self.config.loops_cwd).endswith(
+                    str(repo).rstrip("/"))):
+                return str(book)
+        return None
 
     # -- the pass ----------------------------------------------------------
 

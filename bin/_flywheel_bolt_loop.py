@@ -950,6 +950,10 @@ class BoltParams:
     plan_mode: bool = False
     config: LoopConfig = None
     runner_config: dict = None
+    #: The design book's checkout, from the fleet binding — where the
+    #: items' chapter citations resolve. Sessions cannot read a chapter
+    #: they cannot find.
+    book_dir: str = None
 
     def __post_init__(self):
         if not self.slug:
@@ -1897,8 +1901,15 @@ class BoltLoop:
         items = ", ".join(f"#{n}" for n in batch.numbers)
         records = ", ".join(sorted({i.record for i in batch.items if i.record})) or (
             "the item bodies themselves — the assertion IS the proposal")
+        book = (f"The design book lives at {self.params.book_dir} — the "
+                f"items' chapter citations (books/flywheel/src/...) resolve "
+                f"under its repo root. READ the cited chapters before "
+                f"writing: the spec derives from the chapters as they are "
+                f"NOW, not from the item's summary of them. "
+                if self.params.book_dir else "")
         return (
             f"Spec for {items} on milestone {self.params.milestone}.\n\n"
+            + book +
             f"One spec-driven change for these assertions, derived from {records} "
             f"and the decisions they cite, never from a restatement. You are IN "
             f"the build/{batch.slug} worktree, already cut from "

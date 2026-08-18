@@ -1136,3 +1136,29 @@ class ClosedMilestoneJobTest(unittest.TestCase):
                            milestone_state="closed",
                            labels=frozenset({"state:ready"}))
         self.assertEqual(self.job_for(stray), [])
+
+
+class BookPathTest(unittest.TestCase):
+    """Chapter citations resolve under the bound book, and the spec brief
+    says so — a session cannot read a chapter it cannot find (#260)."""
+
+    def test_the_server_passes_the_bound_book_to_bolt_loops(self):
+        config = server.ServerConfig(
+            books={"flywheel": {"book": "/books/flywheel", "repo": "/r"}})
+        daemon = server.Server(config, tracker=RecordingTracker(),
+                               clock=lambda: 0.0, log=lambda m: None)
+        daemon.bolt_worktree = lambda slug: None
+        argv = daemon.argv_for(inbox.Job("bolt/x", "run", "why"))
+        self.assertIn("--book", argv)
+        self.assertEqual(argv[argv.index("--book") + 1], "/books/flywheel")
+
+    def test_the_spec_brief_names_the_book_and_orders_the_read(self):
+        params = bolt.BoltParams(slug="x", repo_dir=".",
+                                 book_dir="/books/flywheel")
+        program = bolt.BoltLoop(params, bolt.FixtureTracker.__new__(
+            bolt.FixtureTracker))
+        batch = bolt.WorkBatch(slug="c", items=(
+            inbox.Item(number=1, change="c"),))
+        brief = program.spec_brief(batch, "c")
+        self.assertIn("/books/flywheel", brief)
+        self.assertIn("READ the cited chapters", brief)
