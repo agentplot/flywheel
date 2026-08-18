@@ -62,23 +62,22 @@ Two levels, two different objects:
   user of the system gains, not as the internal mechanism that
   delivers it. The book's sentences justify the unit; the user's
   story shapes it.
-- **Size change rows by implementation surface, never by how many
-  book sentences they serve.** Several assertions that land as one
-  coherent commit in one repo share ONE change row. Every row costs a
-  full loop cycle — a spec session, a review, a build session,
-  verify, a merge — so a row earns its separateness only on real
-  grounds: its own testable surface, a genuine dependency boundary,
-  or a different repo. Four rows for four lines of code is the
-  failure mode this rule exists to stop. Before delivering, reread
-  each unit's table and ask of every pair of rows: would these be one
-  commit in one repo? If yes, fold them.
-- **Repo boundaries do split rows.** A system's book may bind several
-  built repos; one unit — one user-facing proposal — then carries one
-  change per repo the work touches, because each repo runs its own
-  spec-driven change through its own gate. The unit stays whole (the
-  user's feature); the rows split where the trees split. A one-repo
-  system gets no such split: do not manufacture rows a single tree
-  would land as one commit.
+- **Size each change by how much code it actually is, never by how
+  many book sentences it serves.** If several assertions would be
+  implemented together as one small commit, make them one change, not
+  several. Every change costs a full loop cycle — a spec session, a
+  review, a build session, verify, a merge — so splitting is only
+  worth it when a piece has its own tests, a real dependency on
+  another piece, or lives in a different repo. Four changes for four
+  lines of code is the failure this rule exists to stop. Before
+  delivering, reread each unit and ask of every pair of changes:
+  would these be one commit in one repo? If yes, merge them into one.
+- **Different repos do mean different changes.** A system's book may
+  cover several built repos; a unit that touches more than one then
+  needs one change per repo, because each repo runs its own
+  spec-driven change through its own merge gate. The unit stays whole
+  — it is still one user-facing proposal — but the work splits along
+  repo lines and nowhere else. A one-repo system gets no such split.
 
 ## The plan documents
 
