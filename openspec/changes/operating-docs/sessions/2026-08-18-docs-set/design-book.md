@@ -17,31 +17,37 @@ flywheel intent has no in-repo target.
 
 ## The decision
 
-**Option A (recommended): adopt the book into agentplot/flywheel, at
-`books/flywheel/`.** The plugin repo becomes a book-carrying repo
-exactly like the repos it serves — the same `books/` convention its own
-writeback skill wraps (`books/CLAUDE.md`, `preview.py --check`,
-`check-mermaid.mjs`). `books/` joins `scripts/` in the never-shipped
-tier: in the repo, never on the user's PATH, not plugin content. The
-fleet.yaml `books:` entry repoints to the checkout; the site and README
-link to the built book.
+**Flywheel's book lives in a new org repo, `agentplot/blueprints`, at
+`books/flywheel/`** (operator's direction, folded from the first
+annotation round). The org gets one book-carrying repo — the same
+shape as willdan-blueprints: `books/<system>/` per system, the shared
+tooling (`book-grab.js`, `preview.py`, `check-mermaid.mjs`,
+`build-index.py`) at the root — rather than each repo carrying its
+own. It is exactly the `books/` convention the writeback skill already
+wraps, so writeback sessions on flywheel's intents target it with no
+bespoke rules.
 
-- **Why here and not `intent/machinery-self-desc`**: #183 flagged the
-  possible reassignment. The split that holds: **this intent settles
-  the location and the write path** (a documentation-set question —
-  the tour and quickstart need something citable); backfilling and
-  correcting the book's *content* (the gap audit's findings) is
-  machinery self-description and stays with that intent.
+- **Why a separate repo and not `books/` inside agentplot/flywheel**:
+  the plugin repo stays plugin content only — its install cache never
+  drags a book along — and every future agentplot system's book has a
+  home from day one instead of re-deciding per repo.
+- **The wiring**: this machine's fleet.yaml `books:` entry repoints to
+  the blueprints checkout; the site and README link to the built book.
+- **Why this intent and not `intent/machinery-self-desc`**: #183
+  flagged the possible reassignment. The split that holds: **this
+  intent settles the location and the write path** (a
+  documentation-set question — the tour and quickstart need something
+  citable); backfilling and correcting the book's *content* (the gap
+  audit's findings) is machinery self-description and stays with that
+  intent.
 
-Alternatives, for the annotation round:
+Rejected in the round:
 
-- **B — leave it in willdan-blueprints**, write through the fleet
-  mapping. Zero migration, but the durable explanation of a public
-  plugin stays in a private client repo, and every public doc that
+- **In-plugin-repo `books/flywheel/`** — mixes a book into a
+  shippable plugin repo.
+- **Leave it in willdan-blueprints** — the durable explanation of a
+  public plugin stays in a private client repo; every public doc that
   needs it dead-ends.
-- **C — fresh public book seeded chapter-by-chapter** from the draft.
-  Right if the draft carries client context that cannot simply move;
-  otherwise it is option A with extra steps.
 
 ## What writes into it, and when
 
@@ -57,11 +63,13 @@ The same contract as any consuming repo's book — nothing bespoke:
 
 ## Consequences (queued items once the round closes)
 
-- Audit the willdan draft for client-private content (gates option A
-  vs C).
-- Move (or seed) the book into `books/flywheel/`; repoint this
-  machine's fleet.yaml `books:` entry; link it from the site and
-  README.
+- Create `agentplot/blueprints` seeded with the willdan-blueprints
+  root tooling (`book-grab.js`, `preview.py`, `check-mermaid.mjs`,
+  `build-index.py`, `books/CLAUDE.md`).
+- Audit the willdan draft book for client-private content, then move
+  it into `agentplot/blueprints:books/flywheel/`.
+- Repoint this machine's fleet.yaml `books:` entry to the blueprints
+  checkout; link the built book from the site and README.
 - Note to `intent/machinery-self-desc` (via the report): the content
   backfill named by the 2026-08-17 gap audit remains its work; the
   location is settled here.
