@@ -29,7 +29,13 @@ WaitState = sessions.WaitState
 
 def item(number, *labels, **kw):
     kw.setdefault("milestone", "bolt/x")
-    kw.setdefault("title", f"item {number}")
+    # A `unit` item is a card the loop expanded, and its title is what
+    # names its plan document. `guard_charter` pauses the cycle on a unit
+    # title that parses no slug, so a placeholder title on a unit here
+    # would halt every cycle test in the file on a fixture artefact rather
+    # than on anything the test is about.
+    kw.setdefault("title", f"Unit: unit-{number}" if inbox.UNIT in labels
+                  else f"item {number}")
     return Item(number=number, labels=frozenset(labels), **kw)
 
 

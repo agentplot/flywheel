@@ -985,6 +985,162 @@ class CharterTest(unittest.TestCase):
             self.assertEqual(seen[:4], ["guard_expand", "guard_scaffold",
                                         "guard_topology", "guard_charter"])
 
+    # -- a unit title that parses no slug ---------------------------------
+    #
+    # The file is named from the slug the title carries, so a title
+    # carrying none names no file. Passing over it is a guess — that an
+    # approval the operator made does not matter — made where nobody can
+    # see it, so the guard pauses instead and the reason travels the way
+    # every other pause reason does.
+
+    #: Two shapes `PlanCard.slug` refuses: a capital in the slug body, and
+    #: no `Unit:` prefix at all. The prefix is case-insensitive; the body
+    #: is not.
+    CAPITALISED = "Unit: Observer Rework"
+    UNPREFIXED = "the observer rework, take two"
+
+    def test_a_unit_title_with_a_capital_halts_with_a_reason_naming_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(13, title=self.CAPITALISED)])
+            actions = []
+            reason = loop.guard_charter(snap, actions)
+            self.assertIsNotNone(reason, "a dropped unit is not nothing to do")
+            self.assertIn("#13", reason, "named by number")
+            self.assertIn(self.CAPITALISED, reason, "and by its title verbatim")
+            self.assertIn("Unit: <slug>", reason,
+                          "and what a title must carry to name a file")
+            self.assertFalse((tree / self.UNITS).exists())
+            self.assertEqual(git.of("commit"), [])
+            self.assertEqual(actions, [], "a pause is not a write")
+
+    def test_a_unit_title_with_no_prefix_at_all_halts_the_same_way(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(13, title=self.UNPREFIXED)])
+            reason = loop.guard_charter(snap, [])
+            self.assertIn(self.UNPREFIXED, reason)
+            self.assertIn("#13", reason)
+
+    def test_one_reason_names_every_unnameable_unit_in_item_order(self):
+        # Reporting the first would make the operator pay one pass per bad
+        # card, and the scan already walked all of them.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(14, title=self.UNPREFIXED),
+                      unit_item(13, title=self.CAPITALISED)])
+            reason = loop.guard_charter(snap, [])
+            self.assertIn("#13", reason)
+            self.assertIn("#14", reason)
+            self.assertLess(reason.index("#13"), reason.index("#14"),
+                            "in item order, not the tracker's order")
+
+    def test_a_nameable_unit_is_written_and_committed_before_the_pause(self):
+        # One misnamed card does not hold another approval's durable prose
+        # hostage: the writes of the pass happen, and the pause follows.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework"),
+                      unit_item(13, title=self.CAPITALISED)])
+            actions = []
+            reason = loop.guard_charter(snap, actions)
+            written = tree / self.rel("observer-rework")
+            self.assertTrue(written.exists(), "the good card is still written")
+            self.assertEqual(git.head[self.rel("observer-rework")],
+                             written.read_text(), "and reached HEAD")
+            self.assertEqual([a for a, _ in git.of("add")],
+                             [("git", "add", "--", self.rel("observer-rework"))],
+                             "by pathspec, and only the nameable one")
+            self.assertEqual(len(actions), 1, "the write is recorded")
+            self.assertIn("#13", reason, "and the cycle still halts on the other")
+
+    def test_a_failed_commit_outranks_the_unnameable_unit(self):
+        # Only one string comes back. The torn record asks for a retry now;
+        # the misnamed card waits on a hand. Both are sticky, so ordering
+        # them loses neither.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework"),
+                      unit_item(13, title=self.CAPITALISED)],
+                fail_commit=True)
+            torn = loop.guard_charter(snap, [])
+            self.assertIn("commit failed", torn)
+            self.assertNotIn("#13", torn)
+
+            # ...the operator clears whatever refused the commit. The
+            # misnamed card is still there, and now it is what comes back.
+            git.fail_commit = False
+            reason = loop.guard_charter(snap, [])
+            self.assertIn(self.rel("observer-rework"), git.head,
+                          "the retry committed the good unit")
+            self.assertIn("#13", reason)
+            self.assertIn(self.CAPITALISED, reason)
+
+    def test_a_dry_run_reports_the_pause_rather_than_nothing_to_write(self):
+        # A dry run that said "nothing to write" over a dropped unit would
+        # be the silence this pause exists to close — and the held loop is
+        # read before the pass runs.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(13, title=self.CAPITALISED)])
+            loop.dry_run = True
+            actions = []
+            reason = loop.guard_charter(snap, actions)
+            self.assertIn("#13", reason, "and it halts the cycle")
+            self.assertEqual(len(actions), 1)
+            self.assertIn("would pause", actions[0])
+            self.assertIn(self.CAPITALISED, actions[0])
+            self.assertFalse((tree / self.UNITS).exists())
+            self.assertEqual(git.of("commit"), [])
+            self.assertEqual(git.of("add"), [])
+
+    def test_a_dry_run_reports_the_writes_it_would_make_and_then_the_pause(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework"),
+                      unit_item(13, title=self.CAPITALISED)])
+            loop.dry_run = True
+            actions = []
+            reason = loop.guard_charter(snap, actions)
+            self.assertEqual(len(actions), 2)
+            self.assertIn("would write", actions[0])
+            self.assertIn("observer-rework.md", actions[0])
+            self.assertIn("would pause", actions[1])
+            self.assertIn("#13", reason)
+            self.assertEqual(git.of("commit"), [])
+
+    def test_a_fixture_run_gives_the_reason_and_still_writes_no_tree(self):
+        # Naming the unit is a read of the tracker, not a write to the
+        # operator's checkout — which is the only thing the fixture branch
+        # is protecting.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [unit_item(11, "observer-rework"),
+                     unit_item(13, title=self.CAPITALISED)]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop, git, record, snap, tree = self.setup(
+                tmp, items, tracker=tracker)
+            actions = []
+            reason = loop.guard_charter(snap, actions)
+            self.assertIn("#13", reason)
+            self.assertFalse((tree / self.UNITS).exists())
+            self.assertEqual(git.of("add"), [])
+            self.assertEqual(git.of("commit"), [])
+            self.assertEqual(actions, [])
+
+    def test_the_reason_reaches_the_cycle_as_its_halt(self):
+        # Asserted through `cycle()`, not on the returned string: a
+        # reordering that swallowed the reason before it became
+        # `result.halted` would leave the string assertions green.
+        with tempfile.TemporaryDirectory() as tmp:
+            items = [unit_item(13, title=self.CAPITALISED)]
+            tracker = bolt.FixtureTracker(fixture(tmp, items))
+            loop, git, record, snap, tree = self.setup(
+                tmp, items, tracker=tracker)
+            result = loop.cycle(1)
+            self.assertTrue(result.halted, "the cycle halts on it")
+            self.assertIn("#13", result.halted)
+            self.assertIn(self.CAPITALISED, result.halted)
+
 
 class PlannerRecordConsistencyTest(unittest.TestCase):
     """The planner is prose-driven: its record IS the two files a run reads.

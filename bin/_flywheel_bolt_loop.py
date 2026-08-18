@@ -1883,6 +1883,19 @@ class BoltLoop:
         above forbids, and `merge_criteria()` bounds itself to the
         charter's region so the section cannot masquerade as the bolt's.
 
+        **A unit whose title parses no slug pauses the cycle.** The file is
+        named from the slug the title carries, so a title carrying none
+        names no file — and passing over it would be a guess, that an
+        approval the operator made does not matter, made where nobody can
+        see it. This guard returns a reason instead, naming every such unit
+        on the milestone, and `guards()` hands it to `cycle()` as
+        `result.halted` the way every other pause travels. The writes of
+        the pass happen first and the pause follows them: one misnamed card
+        does not hold another approval's durable prose. A commit failure on
+        the same pass outranks it as the returned reason — that record is
+        torn right now — and both conditions are sticky, so the pass after
+        the commit succeeds reports the unnameable unit.
+
         A pass with nothing newly expanded writes nothing and commits
         nothing — the dry-cycle property every other guard has.
         """
@@ -1891,6 +1904,7 @@ class BoltLoop:
         rel_dir = f"openspec/changes/{self.params.slug}/units"
         sealed = self._committed_units(rel_dir)
         wanted = []
+        unnameable = []
         for item in sorted(snapshot.on(self.params.milestone),
                            key=lambda i: i.number):
             if inbox.UNIT not in item.labels:
@@ -1898,10 +1912,15 @@ class BoltLoop:
             # The unit IS the card that was expanded, so the card's own
             # title grammar is what names its slug — and `PlanCard.slug`
             # yields `[a-z0-9][a-z0-9-]*`, which needs no sanitising to be
-            # a file name. A title that parses no slug is the subject of a
-            # sibling change and is left alone here.
+            # a file name. A title that parses no slug names no file, and
+            # the loop pauses on it rather than passing over it: the fact
+            # has to reach the run record, which is where the operator's
+            # facts originate, and a log line reaches only the loop's log.
             slug = inbox.PlanCard(number=item.number, title=item.title).slug
-            if not slug or f"{slug}.md" in sealed:
+            if not slug:
+                unnameable.append(item)
+                continue
+            if f"{slug}.md" in sealed:
                 continue
             if not (item.body or "").strip():
                 self._log(f"charter: unit #{item.number} has an empty body; "
@@ -1909,18 +1928,29 @@ class BoltLoop:
                 continue
             sealed.add(f"{slug}.md")
             wanted.append((slug, item.body))
-        if not wanted:
-            return None
+        # Owed from here on, whatever else this pass does. Every return
+        # below carries it except the commit failure, which outranks it.
+        pause = self.unnameable_units(unnameable) if unnameable else None
         named = ", ".join(f"{slug}.md" for slug, _ in wanted)
         if self.dry_run:
-            actions.append(f"would write unit file(s) {named} under {rel_dir}")
-            return None
+            if wanted:
+                actions.append(
+                    f"would write unit file(s) {named} under {rel_dir}")
+            if pause:
+                # A dry run that reported "nothing to write" over a dropped
+                # unit would be the silence the pause exists to close, and
+                # the held loop is read before the pass runs.
+                actions.append(f"would pause — {pause}")
+            return pause
+        if not wanted:
+            return pause
         if isinstance(self.tracker, FixtureTracker):
             # `guard_topology` skips itself under a fixture too, so
             # `bolt_worktree` is still `repo_dir` — the OPERATOR'S checkout,
             # on whatever branch happens to be out. A fixture run exercises
-            # the tracker's filters; it never writes anyone's tree.
-            return None
+            # the tracker's filters; it never writes anyone's tree. Naming
+            # the unit is a read of the tracker, so the pause still travels.
+            return pause
         self.ledger.expect(f"charter:{self.params.slug}",
                            f"{rel_dir} missing {named}",
                            f"one commit adding {named}")
@@ -1947,7 +1977,33 @@ class BoltLoop:
         self.ledger.actual(f"charter:{self.params.slug}",
                            f"{named} committed under {rel_dir}")
         actions.append(f"charter gained unit file(s) {named} in {rel_dir}")
-        return None
+        return pause
+
+    @staticmethod
+    def unnameable_units(items):
+        """The pause reason for units whose titles parse no slug.
+
+        One reason for all of them, in item order: the scan already walked
+        every card, and reporting the first would make the operator pay one
+        pass per bad title. Each is named by number and by its title
+        verbatim — `repr`, so a trailing space or an underscore is visible,
+        because the defect is usually invisible in a paraphrase.
+
+        The grammar is stated in prose and not as a second regex.
+        `PlanCard.slug` is the one place a unit title is parsed; a pattern
+        written out here would be a second definition of what a unit title
+        is, free to drift from the one that decides. This reason describes
+        the parse; it never re-decides it.
+        """
+        named = "; ".join(f"#{i.number} {i.title!r}" for i in items)
+        carry = "these titles carry" if len(items) > 1 else "this title carries"
+        return (f"charter: unit {named} — a unit's plan document is named "
+                f"from the slug its card's title carries, and {carry} none. "
+                f"The loop pauses rather than guess which unit the operator "
+                f"meant. A unit title reads `Unit: <slug>` and nothing else, "
+                f"the slug lowercase letters, digits and hyphens, opening "
+                f"with a letter or a digit. Retitle the card and the next "
+                f"pass writes its document.")
 
     def guard_flip_consume(self, snapshot, actions):
         """1 — the sub-issues a Ready unit releases.
