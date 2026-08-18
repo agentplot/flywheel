@@ -2467,3 +2467,40 @@ class ObservedRunTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BuildWitnessTest(unittest.TestCase):
+    """A commit on the branch is not the build's witness — the change's own
+    task list is: every box checked, or the build still owes work (observed
+    live: a spec session's planning commit satisfied the old skip and build
+    skipped over zero implementation)."""
+
+    def loop_with_tasks(self, tmp, body):
+        change_dir = Path(tmp) / "openspec" / "changes" / "add-thing"
+        change_dir.mkdir(parents=True)
+        (change_dir / "tasks.md").write_text(body)
+        runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 4)
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
+        program = a_loop(FakeTracker(), runner=runner, shell=shell)
+        program.batch_worktree = lambda b: tmp
+        return program, runner
+
+    def test_unchecked_tasks_mean_the_build_still_runs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program, runner = self.loop_with_tasks(
+                tmp, "# Tasks\n\n- [x] 1.1 done\n- [ ] 1.2 not yet\n")
+            batch = loop.WorkBatch(slug="add-thing", items=(
+                item(1, inbox.READY, change="add-thing"),))
+            program.build_stage(batch)
+            self.assertTrue(runner.launched,
+                            "an unchecked task list is not a built change")
+
+    def test_a_checked_task_list_completes_the_witness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program, runner = self.loop_with_tasks(
+                tmp, "# Tasks\n\n- [x] 1.1 done\n- [x] 1.2 also done\n")
+            batch = loop.WorkBatch(slug="add-thing", items=(
+                item(1, inbox.READY, change="add-thing"),))
+            outcome = program.build_stage(batch)
+            self.assertEqual(outcome.status, "done")
+            self.assertEqual(runner.launched, [])

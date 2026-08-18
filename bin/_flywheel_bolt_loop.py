@@ -1913,11 +1913,18 @@ class BoltLoop:
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
         if not self.params.plan_mode and not self.deliverables(batch, change):
-            # Symmetric with spec's already-validates skip: the branch holds
-            # a commit and the change validates, so a restarted loop re-buys
-            # no build for a boundary the tree already proves.
-            return StageOutcome("build", "done",
-                                "already built — the tree proves it")
+            # Symmetric with spec's already-validates skip — but a commit on
+            # the branch proves only that something was committed, and a
+            # spec session's planning artifacts satisfy that alone (observed
+            # live on #260: build skipped over zero implementation). The
+            # build's witness is the change's own task list: every box
+            # checked, or the build still owes work.
+            tasks = (Path(self.batch_worktree(batch) or self.params.repo_dir)
+                     / "openspec" / "changes" / change / "tasks.md")
+            unchecked = tasks.exists() and "- [ ]" in tasks.read_text()
+            if not unchecked:
+                return StageOutcome("build", "done",
+                                    "already built — the tree proves it")
         if self.params.plan_mode:
             outcome = self.plan_mode_build(batch, name)
         else:
