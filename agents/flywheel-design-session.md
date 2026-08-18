@@ -23,10 +23,16 @@ downstream acts on:
   a worktree, the loop merges your branch through the gate; a session
   that edits no files needs none of this.
 - **the tracker** — a comment on each item you worked, saying what
-  happened; new work you notice is a queued item
+  happened; uncertainty you cannot settle returns to the intent as a
+  new question — a `state:queued` item
   (`GH_TOKEN=$("${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-token …) gh issue create`), filed in a minute
-  and never a reason to stop. A small fix inside your batch's released
-  scope is work, not a finding — do it and note it in your report.
+  and never a reason to stop. **Queued is where your writes end**: you
+  never move an item to `state:ready` — that promotion is the
+  operator's board approval and nobody else's — you never mark your
+  own new items in-progress or in-session, and you never launch
+  another session; charging sessions is the loop's. A small fix inside
+  your batch's released scope is work, not a finding — do it and note
+  it in your report.
 - **your report** — what you found or built, the evidence as pointers,
   and what you ask the operator to decide. You print it and then settle;
   there is nobody to prompt.
