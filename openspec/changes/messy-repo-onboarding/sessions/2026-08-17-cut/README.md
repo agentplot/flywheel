@@ -42,8 +42,19 @@ boundary.
 ## The short version
 
 The promise survives the measurement; the cut's **shape** does not.
-Three lanes are not enough columns: `settled-history` splits by
-whether the destination books already carry it, and again by whether
-what was settled is still true. And the corpus already contains a
-run design for the carrier we are about to write. Details in
-`findings.md`.
+Three lanes are not enough columns. `settled-history` splits by
+whether the destination books already carry it (F3), again by whether
+what was settled is still true (F8), and again by whether anything
+else holds a copy at all (F12). `discard` splits by whether the
+material may be quoted forward (F11). And the corpus already contains
+a run design for the carrier we are about to write, with its own
+ledger naming the exact unconverted delta (F9, F10).
+
+**The finding that cost the most to reach** is F12, because this
+session got it wrong first. Four artifacts across three directories —
+4,888 lines, 42% of the corpus — were laned on inferences that sounded
+careful: a summary exists, so the body is detail; the siblings are
+renderings, so this is too. Every one was false, none would have been
+caught by more care in the inference, and one `grep` caught all four.
+The lane that loses material is never `discard` — it is the
+disposition that sounds safe.
