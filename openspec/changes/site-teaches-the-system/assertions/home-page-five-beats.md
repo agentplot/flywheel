@@ -1,7 +1,7 @@
 # Assertion: the home page teaches the five beats, opening on the split hero
 
 - **Repo:** agentplot/flywheel — `site/index.html`
-- **Item:** #TBD
+- **Item:** #305
 - **Raised by:** the handoff session `sessions/2026-08-18-bolt-plan/`, from
   the closed decision `../decisions/page-teaching-order.md` and the operator's
   round recorded in `../sessions/2026-08-18-beats-and-tour/README.md`

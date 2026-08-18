@@ -1,7 +1,7 @@
 # Assertion: three scrollytelling tour pages walk one idea end to end
 
 - **Repo:** agentplot/flywheel — `site/tour-*.html`
-- **Item:** #TBD
+- **Item:** #307
 - **Raised by:** the handoff session `sessions/2026-08-18-bolt-plan/`, from
   the operator's answers to Q4 and Q5 in
   `../sessions/2026-08-18-beats-and-tour/README.md` (item #285).

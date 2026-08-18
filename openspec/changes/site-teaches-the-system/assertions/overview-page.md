@@ -1,7 +1,7 @@
 # Assertion: overview.html carries the operator reference the home page sheds
 
 - **Repo:** agentplot/flywheel — `site/overview.html`
-- **Item:** #TBD
+- **Item:** #306
 - **Raised by:** the handoff session `sessions/2026-08-18-bolt-plan/`, from
   the operator's answer to Q2 in
   `../sessions/2026-08-18-beats-and-tour/README.md` (item #284).
