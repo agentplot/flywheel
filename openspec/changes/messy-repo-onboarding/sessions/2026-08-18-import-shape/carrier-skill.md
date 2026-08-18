@@ -27,6 +27,18 @@ is the process shape it writes down once. The cut and every
 conversion are judgment every time — this skill structures that
 judgment and replaces none of it.
 
+**An import runs inside the corpus org's own flywheel.** The org that
+owns the corpus runs the import against its own design repo, tracker,
+and state — corpus content never crosses into another org's repos.
+What is shared across orgs is this skill, nothing corpus-specific.
+
+**An import is a move, not a copy.** As each artifact is processed it
+is removed from the source repo, and the untouched original is stored
+at `$XDG_STATE_HOME/flywheel/<org>/imports/<repo>/originals/<path>`
+(default `~/.local/state`), so nothing is lost and nothing sits
+converted in two places. The shrinking source repo is the visible
+progress; the ledger (step 4) is its committed record.
+
 ## The two inputs
 
 An import reads **two** trees, always:
@@ -80,10 +92,10 @@ The lanes:
 
 | lane | meaning | conversion consequence |
 | --- | --- | --- |
-| `discard` | the row is the record that it was seen | none |
-| `withhold` | seen, must not be carried forward | none; row records the **class** (account id, network id, credential path, IAM grant) and **quotes nothing** — never an excerpt, never a line range that invites a look |
+| `discard` | the row is the record that it was seen | none beyond the originals folder |
+| `withhold` | seen, must not be carried forward | none; row records the **class** (account id, network id, credential path, IAM grant) and **quotes nothing** — never an excerpt, never a line range that invites a look; the original exists only in the state folder |
 | `settled-history` | a concluded decision, design, or finding | convert per the two qualifiers below |
-| `live-work` | work still to do | queued tracker items, all at Backlog |
+| `live-work` | work still to do | routed by kind — design-level direction and forward intent go **into the design books** (bolt planning carves bolt unit plans from the books on demand); only already-concrete, actionable work becomes queued tracker items, all at Backlog |
 
 `settled-history` carries two qualifiers, both mandatory:
 
@@ -119,8 +131,11 @@ Ask what form each artifact carries; adopt diagrams whole rather than
 converting them.
 
 **Operating documentation** — how to run the thing as it stands — is
-none of the lanes. Ask the operator **once per corpus**: retiring →
-`discard`; living on → out of the cut's scope entirely.
+none of the lanes. Ask the operator **once per corpus**: if the repo
+lives on, it is out of the import's scope entirely; if the repo is
+being imported out of existence, it is removed with everything else
+and its originals kept in the state folder — recoverable, never
+converted into records it does not contain.
 
 **A lane is a disposition for the corpus, never a judgment about
 whether anyone should read the artifact.** Where a row is prior art
@@ -140,26 +155,26 @@ One artifact at a time, thoroughly:
   explicit verdict with the chapter cited. "Already written, here is
   the chapter" is a first-class verdict. Superseded material converts
   with its dated caveat in the record's first lines.
-- **Live work** → queued tracker items: title, provenance pointer
-  (corpus repo@sha + span + cut row), proposed route. Bulk mechanics:
-  the cut's proposed-items table is the operator's one review pass;
-  dedupe against the corpus's own progress ledger and the currency
+- **Live work** → routed by kind. Design-level direction and forward
+  intent are written **into the design books** — bolt planning reads
+  the books and creates bolt unit plans on demand, so the books are
+  the default destination for future work. Already-concrete,
+  actionable work becomes queued tracker items: title, provenance
+  pointer (corpus repo@sha + span + cut row), proposed route, and
+  **the session type that will work it**. Bulk mechanics: the cut's
+  proposed-items table is the operator's one review pass — each row
+  names its destination (book vs item) and its session type; dedupe
+  against the corpus's own progress ledger and the currency
   qualifier first; collision with open items is judged in-session
   against one `gh issue list` pull, and a colliding row becomes a
   pointer comment on the existing item.
 - **Sole holders and diagrams** → adopt the artifact whole into the
-  import's archive directory, unmodified, beside a one-line index
-  entry.
-
-**Cross-org boundary:** where the corpus's org is not the importing
-org, the landing tier waits on the source org's tracker machinery.
-Produce the conversion in full and **stage** it: every output names
-its exact landing path; ledger rows carry `landed: false` and
-`landing_blocked_by`. The staging tree for a foreign-org corpus is a
-change directory **in the source org's design repo** — the importing
-org's tree carries only items, pointers, and withhold rows, never
-quoted corpus content. Match the staging tree's visibility to the
-corpus before writing a word.
+  destination design repo, unmodified, beside a one-line index
+  entry — durable and shared, unlike the machine-local originals
+  folder.
+- **Removal** closes each conversion: the processed artifact leaves
+  the source repo (its original already in the state folder), in the
+  same commit series that records it processed.
 
 ## Step 4 — Mark processed
 
