@@ -595,9 +595,9 @@ class BatchingTest(unittest.TestCase):
         self.assertEqual([b.numbers for b in batches], [(2,)])
 
     def test_an_untyped_item_is_reported_rather_than_defaulted(self):
-        # workflows/fixtures/flywheel-intent.compiled.js falls back to
-        # type:research here. A fixture reviewed and never run does not
-        # outrank "batch the ready items by their type label".
+        # A fallback type would hand a mistyped item to whatever session
+        # that type charges; "batch the ready items by their type label"
+        # means an untypable item is reported instead.
         snap = Snapshot(items=[item(1, "state:ready")])
         batches, undispatchable = intent.batch_ready(snap, snap.items)
         self.assertEqual(batches, ())

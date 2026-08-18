@@ -154,12 +154,12 @@ apply:
     - intent
   instruction: |
     Loop for the intent <slug>. State lives on the tracker; you hold
-    none. Compile this instruction into the change's own
-    openspec/changes/<slug>/workflow.js and launch it as ONE run
-    (Workflow {scriptPath}); after answering a pane or folding a
-    correction, resume the same run ({scriptPath, resumeFromRunId}).
-    Editing this instruction is how the loop changes; recompile when
-    it does (instruction hash in the script header).
+    none. The loop runs as the plugin's own process -
+    <plugin-root>/bin/flywheel-intent-loop --slug <slug> - started by
+    the server when the milestone has a job, or by hand. This
+    instruction is the loop's contract: the process and its tests
+    implement it, and editing this instruction is how the loop
+    changes.
 
     INPUT, each cycle, read fresh from the tracker (fields as in
     <plugin-root>/workflows/fixtures/intent-tracker.json): the
@@ -172,23 +172,21 @@ apply:
     nothing to the tracker, and collect every would-be tracker write
     and pane event into a trace array in the run report.
 
-    Two hard rules on the run itself: parse the script's args
-    defensively - an args object that arrives as a JSON string is
-    parsed, never trusted as-is (#29) - and a cycle that cannot read
+    One hard rule on the run itself: a cycle that cannot read
     the tracker, mint its token, or resolve its parameters STOPS THE
     RUN with the failure in the report; a failing cycle never loops.
 
-    THE SCRIPT OWNS ALL WAITING. A session is driven by small agents
+    THE LOOP OWNS ALL WAITING. A session is driven by small steps
     that each return exactly once, with the loop's own arithmetic as
-    the clock: LAUNCH (idempotent - an agent already running under
+    the clock: LAUNCH (idempotent - a session already running under
     the name is reused, never duplicated; create pane, start, rename
     and confirm, deliver the one-prompt order, verify it went
-    working, return without waiting); WAIT, as a script loop - each
-    wait agent runs one bounded herdr agent wait (a single
+    working, return without waiting); WAIT - each
+    wait runs one bounded herdr agent wait (a single
     invocation, at most ~10 minutes) and reports settled, blocked,
-    or still working; the SCRIPT counts the chunks and applies the
+    or still working; the LOOP counts the chunks and applies the
     limits; then READ AND CLOSE (pane report out - ghost text is not
-    input - tab closed, outcome returned). No agent parks a monitor,
+    input - tab closed, outcome returned). No step parks a monitor,
     returns a placeholder, or counts time. A blocking operator round
     - plannotator, a lavish page - takes the same shape: launched
     once with a result file, waited on by the loop.
@@ -208,9 +206,8 @@ apply:
        it is born as bolt plan cards - the planner's or a session's -
        and released by the operator's approval.
 
-    MODELS - explicit in every call the compiled script makes;
-    nothing inherits silently. The workflow's own agents - query+
-    guards and every driver - run model sonnet, effort low. Sessions
+    MODELS - explicit in every session launch; nothing inherits
+    silently. Sessions
     take their type's model at agent start (--model): planning and
     interactive fable; research opus[1m]; prototype and writeback
     opus; the merge stage sonnet.

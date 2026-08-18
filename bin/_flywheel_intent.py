@@ -123,10 +123,9 @@ def type_of(item):
     """The item's `type:` label, without its prefix, or None.
 
     Invariant 4: "`type:*` is the session type that works the item." There is
-    NO default here, and that is deliberate — the compiled fixture
-    (`workflows/fixtures/flywheel-intent.compiled.js`) falls back to
-    `type:research`, which would hand any mistyped item to a research
-    session. An item the loop cannot type is reported, not guessed at.
+    NO default here, and that is deliberate — a fallback type would hand
+    any mistyped item to whatever session that type charges. An item the
+    loop cannot type is reported, not guessed at.
     """
     for label in sorted(item.labels):
         if label.startswith("type:"):
@@ -498,8 +497,8 @@ def session_order(batch, config):
     """One prompt, the summary line first.
 
     Design types have NO canonical slash-command invocation — the profile
-    loads the type skill the work order names — so the first line is the
-    repo's own compiled shape rather than an invented `/flywheel:<type>`.
+    loads the type skill the work order names — so the first line is a
+    plain summary rather than an invented `/flywheel:<type>`.
     """
     nums = ", ".join(f"#{n}" for n in batch.numbers)
     invocation = f"{batch.type} session for intent {config.slug} - items {nums}"

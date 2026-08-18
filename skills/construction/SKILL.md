@@ -94,9 +94,8 @@ faults queued to the source intent.
 **WHICH STAGES EXIST IS THE BOLT TYPE'S FACT, NOT THIS SKILL'S.** The
 loop — its stages, their order, whether any review runs — is defined
 solely by the change's schema (`openspec instructions` shows it), and
-is compiled from that instruction into the change's own
-`openspec/changes/<slug>/workflow.js`, mechanics taken verbatim from
-`workflows/reference-loop.js`. This skill never adds a stage the loop
+run by the plugin's own process, `flywheel-bolt-loop --slug <slug>`,
+which implements that instruction. This skill never adds a stage the loop
 did not schedule: no review, no re-review, no bounce round exists
 unless the bolt type's own instruction names it. What this skill holds
 is the practice shared by every stage the loop does run:
