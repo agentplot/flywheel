@@ -542,6 +542,26 @@ the only copy of 3,903 lines while looking like diligence. It is worse
 than a plain `discard` mistake, because `discard` invites an argument
 and `cite-only` sounds like the material is safe.
 
+**It was not a one-off.** Once the check existed, running it across
+the corpus found sole holders in three different directories, each of
+which a class-level judgement had already mis-laned:
+
+| artifact | what a class judgement said | what the check found |
+| --- | --- | --- |
+| `archive/SPIKE-01..04` (3,903 lines) | superseded; summary survives | `grep -n "SPIKE-0[1-4]\|archive/" SPIKE.md` → 5 hits, all pointers |
+| `reports/stations-workbench.html` (695) | a rendering of `SPIKE.md`, like its ten siblings | `sqlrooms` 0, `pmtiles` 0, `zuplo` 0 in `SPIKE.md` |
+| `docs/overture-tiles-eval.md` (68) | a dated eval, content folded into the design | `planetiler` 0, `pmtiles` 0 in `SPIKE.md` |
+| `packages/geoiq/docs/inbox-design.md` (222) | design body restating §6 | `contributions` 0, `gateway-side` 0 in `SPIKE.md` |
+
+**4,888 lines — 42% of the corpus** — sat in dispositions that would
+have let it die with the repo, and every one of those dispositions was
+reached by a reasonable-sounding inference from a summary, a directory
+name, or a sibling. (An upper bound: `inbox-design.md` is only partly
+unrestated, and its section-level read is still owed.) The point does
+not rest on the exact figure — it rests on the fact that no amount of
+care in the *inference* would have caught any of them, and one `grep`
+caught all four.
+
 **What the carrier needs:** *restated* is a claim to verify, never one
 to infer from the presence of a summary. The check is cheap — grep the
 live document for references to the artifact and read whether they
