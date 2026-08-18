@@ -57,6 +57,28 @@ Two levels, two different objects:
   book never describes, report that as a question for the operator
   instead: the book is silent, and silence is a design gap, not a
   license to invent.
+- **A unit is a proposal to a system, written from the user's
+  perspective.** Name it and open it as the feature or capability a
+  user of the system gains, not as the internal mechanism that
+  delivers it. The book's sentences justify the unit; the user's
+  story shapes it.
+- **Size change rows by implementation surface, never by how many
+  book sentences they serve.** Several assertions that land as one
+  coherent commit in one repo share ONE change row. Every row costs a
+  full loop cycle — a spec session, a review, a build session,
+  verify, a merge — so a row earns its separateness only on real
+  grounds: its own testable surface, a genuine dependency boundary,
+  or a different repo. Four rows for four lines of code is the
+  failure mode this rule exists to stop. Before delivering, reread
+  each unit's table and ask of every pair of rows: would these be one
+  commit in one repo? If yes, fold them.
+- **Repo boundaries do split rows.** A system's book may bind several
+  built repos; one unit — one user-facing proposal — then carries one
+  change per repo the work touches, because each repo runs its own
+  spec-driven change through its own gate. The unit stays whole (the
+  user's feature); the rows split where the trees split. A one-repo
+  system gets no such split: do not manufacture rows a single tree
+  would land as one commit.
 
 ## The plan documents
 
