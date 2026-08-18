@@ -7,6 +7,10 @@ next elaboration plan to the operator to approve, and upon approval
 direct bolt plans alongside book writebacks. The standalone writeback
 type's fate folds into this design.
 
+Annotated by the operator 2026-08-18: approved, with the
+supersession caveat folded in below. Closures recorded in
+`../../decisions/`.
+
 ## Today's flow costs the operator two gestures on two surfaces
 
 1. The session settles; the operator rules items done (word in the
@@ -74,6 +78,18 @@ approved remainder proceeds. Rejecting the plan outright is an ordinary
 round iteration — redraft, re-run. The gesture is only ever additive on
 explicit approval; nothing becomes Ready by silence.
 
+### Iteration supersedes — never a stranded batch
+
+The operator may keep iterating after a plan has composed real objects.
+The elaborations and bolt plan cards a design session defines carry the
+same staleness mechanic planned bolt units already have: when a later
+iteration replaces one wholesale, the replaced parent is marked stale
+and closed `closed:superseded`, its closing comment pointing at its
+successor; where the change is smaller, the open Backlog batch is
+amended in place (amend-not-rebirth). Nothing an abandoned plan
+composed stays live on the board, and nothing is deleted — the
+superseded parent is the history.
+
 ### The fallback path stays
 
 The chain is an option a session takes when it has a next round to
@@ -97,6 +113,9 @@ elaboration newcomers join.
    approval as one form of that word.
 3. `flywheel-board` grows (or already has) the flip-to-Ready invocation
    a session can run; `_reference/herdr.md` documents it.
+4. The stale/supersede mechanic for session-defined elaborations and
+   bolt cards: `closed:superseded` with a successor pointer, documented
+   beside the planned-bolt-unit staleness rules it mirrors.
 
 ## The writeback type's fate — the fold this design was gating
 
