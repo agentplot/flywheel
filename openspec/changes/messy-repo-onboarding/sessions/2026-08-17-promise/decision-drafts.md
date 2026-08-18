@@ -59,26 +59,32 @@ raw idea, dispatch opens an intent. No new intake surface.
 - **(c) Tiered: report always, tracker items from the live lane,
   index from the settled lane.**
 
-**Recommendation: (c).** Three tiers, in order of certainty:
+**Settled (operator's direction, round 1): (c) reshaped as
+artifact-by-artifact conversion, tracked and recoverable.**
 
-1. **The cut, always, durable.** A triage report at file-or-section
+1. **The cut, first, durable.** A triage report at file-or-section
    granularity assigning every piece to a lane — **discard**,
    **settled history**, **live work** — with a one-line reason and a
    pointer each, committed under the onboarding intent's change
-   directory. This is the unconditional deliverable: whatever else
-   happens, the user gets the corpus read once and the reading kept.
-2. **From the live lane: queued tracker work.** Intents and items
+   directory. The cut is the work-list the conversion then walks.
+2. **Per-artifact conversion with a processed ledger.** Each artifact
+   is thoroughly converted, then marked processed in a ledger — likely
+   in flywheel's local state — recording what was converted and where
+   it went, so the original is recoverable and the import can stop and
+   resume. Processed vs remaining is the progress measure; history is
+   never recreated wholesale.
+3. **Settled history becomes flywheel-native records.** Decisions,
+   design reports, and findings are captured as sessions under intents
+   — session directories and decision records, the same shape
+   flywheel's own design work leaves. Design material updates the
+   books, or at minimum records an explicit verdict on whether the
+   books should be updated — a per-artifact books-verdict, never a
+   silent discard.
+4. **From the live lane: queued tracker work.** Intents and items
    proposed onto the tracker, each carrying a provenance pointer into
    the corpus. Everything lands queued / Backlog. **Nothing arrives
    approved** — the operator's Ready flip stays the only release;
    an import fills the funnel, it never turns the crank.
-3. **From the settled lane: an index, not a book.** A map from
-   settled claim to source location. Rewriting settled history into a
-   design book is a separately priced writeback the operator orders
-   only when something will read it — the default presumption for the
-   reverse-engineer lane is *discard unless a named reader exists*
-   (the #198 successor tests this presumption; the promise only sets
-   the default).
 
 ## Clause 3 — How much reading a person must still do
 
@@ -128,12 +134,14 @@ sits on.
   when the corpus's org has no fleet. Gates the live-work lane's
   tracker tier for foreign corpora; until settled, the promise for a
   foreign corpus stops at the report.
-- **The carrier** (#197 successor): skill vs session type vs tool.
-- **The reverse-engineer lane's keep-test** (#198 successor): whether
-  any reader justifies OpenSpec-into-a-built-repo, or the lane
-  collapses into discard-with-index.
+- **The carrier and the ledger's home** (#197 successor): skill vs
+  session type vs tool, and where the processed ledger lives in local
+  state.
+- **OpenSpec into the built repo** (#198 successor): whether specs are
+  ever written into the source repo itself, beyond the flywheel-side
+  records clause 2 promises.
 - **Bulk triage mechanics** (#199 successor): dedupe, collision, and
   provenance at roadmap volume.
-- **First measurement** (#195 successor): run the cut over a real
-  corpus; a process designed without reading a corpus is fiction, and
-  the first run is the test of clauses 2 and 3.
+- **First measurement** (#195 successor): run the cut and a first
+  conversion over a real corpus; a process designed without reading a
+  corpus is fiction, and the first run is the test of clauses 2 and 3.
