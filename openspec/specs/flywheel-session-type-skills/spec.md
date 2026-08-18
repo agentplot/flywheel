@@ -17,7 +17,6 @@ The plugin SHALL carry one skill per session type under `skills/`:
 | `flywheel:proposal-review` | proposal-review | fable | a read across the batch, against the cited decisions |
 | `flywheel:prototype` | prototype | opus | a throwaway built in a spike-repo worktree |
 | `flywheel:writeback` | writeback | opus | `books/CLAUDE.md` and the destination voice |
-| `flywheel:handoff` | handoff | opus | the release request to a bolt conductor, and its receipt |
 | `flywheel:proposal-writing` | proposal-writing | opus | the exception path for unmineable assertions |
 | `flywheel:research` | research | `opus[1m]` | an investigation that reads rather than builds |
 | `flywheel:spec-writing` | spec-writing | `opus[1m]` | `/opsx:ff` in the built repo, from the assertion and its cited sources |

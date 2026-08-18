@@ -56,3 +56,29 @@ whose views need one-time hand configuration.
 - **THEN** setup creates a bare Project and prints the one-time
   hand-configuration warning
 
+
+### Requirement: A spent approval leaves the board
+
+A batch at board Status Ready whose sub-issues are all released or done
+is a spent approval, and the loop SHALL clear its board status on the
+pass after the release — the Ready column shows only approvals not yet
+consumed.
+
+#### Scenario: An approved elaboration is consumed
+
+- **WHEN** an elaboration at Ready has no `state:queued` sub-issue left
+- **THEN** the next pass clears its board status and writes nothing more
+
+### Requirement: The operator's Ready flip wakes a held loop
+
+The server's hold on a quiet loop SHALL release the moment a batch on
+that loop's milestone reaches board Status Ready: the approval is the
+job's reason, and a changed reason releases the hold. The operator's
+flip SHALL take effect within one server pass, never waiting out a
+backoff that predates it.
+
+#### Scenario: An approval lands mid-hold
+
+- **WHEN** a loop is held on a quiet-milestone reason and the operator
+  flips its elaboration to Ready
+- **THEN** the next server pass starts the loop

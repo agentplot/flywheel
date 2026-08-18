@@ -298,7 +298,7 @@ names the bolt, not items. It is the loop's own tracker surface for the
 stage, and four things ride on it — the launch marker the stall budget is
 recovered from across a restart, the stall notify, the failure pause that
 writes `needs-operator`, and the andon marker the landing session may raise
-and the loop reads back. On the handoff path the unit parent sits on the
+and the loop reads back. Where a unit parent sits on the
 intent milestone, so once the merge boundary has closed every assertion an
 open-items-only set is **empty** and all four write nowhere. The landing is
 the last boundary, with no session downstream to catch what it drops.

@@ -275,9 +275,9 @@ main, and that building directly on the bolt branch — legal only for a bolt
 with a single small proposal — is a branch-shape choice inside the bolt, not
 a way to skip having one.
 
-#### Scenario: A released handoff carries a single small proposal
+#### Scenario: A released unit carries a single small change
 
-- **WHEN** an intent conductor releases a handoff whose whole content is
+- **WHEN** the operator approves a unit whose whole content is
   one rename in one repo
 - **THEN** the skill has a bolt created with a bolt conductor and a one-row
   registry, with spec and build still two agents — not a branch cut off
@@ -355,7 +355,7 @@ goes back to dispatch, not into the bolt as an unrowed edit.
 
 No occurrence of `intake` as the name of the standing singleton SHALL
 remain in the file; the singleton is `dispatch` everywhere, including the
-opening paragraph's list of pushed work ("design handoffs, intake requests,
+opening paragraph's list of pushed work ("design releases, intake requests,
 testing findings") and step 4's routing rule ("**design-level findings
 route to intake**"). This change owns the file; no other proposal edits it,
 and the "route to dispatch" sentence this change adds elsewhere in the same

@@ -15,9 +15,8 @@ approval sits on the board, applied to the born-ready path.
 
 On a born-ready release the parent SHALL be at Status **Ready** from birth,
 because the operator's word at triage is the approval and there is nothing
-left to approve. On a handoff release the parent SHALL be at Status
-**Backlog** and the operator's flip to Ready SHALL remain the approval, as
-it is today.
+left to approve. On every other path the parent SHALL be at Status
+**Backlog** and the operator's flip to Ready SHALL remain the approval.
 
 The released items themselves SHALL NOT each be added to the board. One row
 per bolt is what this requirement buys, and it is lost if the sub-issues
@@ -29,11 +28,10 @@ appear beside their parent.
   four items
 - **THEN** there is one row for that bolt, at Ready, and not four
 
-#### Scenario: The handoff approval still gates
+#### Scenario: A Backlog-born parent still gates
 
-- **WHEN** a handoff's unit parent is created
-- **THEN** it is at Backlog, and construction does not start until the
-  operator moves it to Ready
+- **WHEN** a unit parent is born at Backlog
+- **THEN** construction does not start until the operator moves it to Ready
 
 #### Scenario: The reconciler's Ready query sees the release
 
@@ -73,17 +71,10 @@ being closed at merge-back with `closed:merged`, and by nothing else — no
 computed figure, no second store. The landing then upgrades the reason to
 `closed:done` with the SHA, which the bar cannot see and does not need to.
 
-The bar's denominator SHALL be read as the parent's sub-issue count on the
-path that created it, and the two paths differ. On the born-ready path the
-denominator is the number of released assertions, so a full bar and a fully
-merged release are the same event. On the handoff path the handoff item is
-among the sub-issues, so the denominator is one greater than the number of
-assertions — and the handoff item closes at its own design session's collect,
-before construction starts, so from the first construction cycle the bar
-already counts one closed sub-issue that is not an assertion. Neither the
-board nor any tool SHALL correct for this by computing a second figure; the
-native bar is the only one, and what it counts is stated here so a reader is
-not misled by it.
+The bar's denominator SHALL be read as the parent's sub-issue count: the
+number of work items the expansion filed, so a full bar and a fully merged
+release are the same event. Neither the board nor any tool SHALL compute a
+second figure; the native bar is the only one.
 
 The board's Landed view SHALL keep filtering `closed:done`, so a
 merged-but-unlanded item advances the parent's bar without appearing as
@@ -94,13 +85,6 @@ landed.
 - **WHEN** two of a born-ready release's four items have merged back and the
   bolt has not landed
 - **THEN** the parent's native bar reads 2 of 4
-
-#### Scenario: Two of four handoff-released assertions have merged
-
-- **WHEN** two of a handoff release's four assertions have merged back, the
-  handoff item having closed at its design session's collect
-- **THEN** the parent's native bar reads 3 of 5, counting the closed handoff
-  item, and no tool reports a different figure
 
 #### Scenario: The bar is full before the bolt lands
 
@@ -148,9 +132,8 @@ of a unit whose work is done.
 A bolt milestone holds as many units as the operator has approved cards
 on it, and one landing serves them all. The close at the landing SHALL
 therefore reach **every** open unit on the bolt's milestone — not one —
-together with a unit parent that sits off the milestone and is reachable
-only through a landed item's own parentage, which is where the handoff
-release path puts it.
+together with any unit parent that sits off the milestone and is
+reachable only through a landed item's own parentage.
 
 Two things follow, and both are needed — the first alone leaves the
 filter wrong for any unit the closer has not reached yet, and the second
@@ -227,10 +210,9 @@ parent exists whose number was not first a plan card's. One card, one unit,
 however many items the expansion files; an item joins exactly one unit,
 ever.
 
-The intent loop's handoff birth is the one other unit birth and it happens
-on the `intent/<slug>` milestone: the handoff item and its unit are born
-together, and the release produces exactly one unit parent carrying the
-whole release.
+The intent loop births no units: a settled assertion sits on its
+milestone until the planner cards its work, and the operator's approval
+expands the card.
 
 #### Scenario: An approved card becomes the unit
 
@@ -245,23 +227,9 @@ whole release.
 - **THEN** no `unit`-labeled issue is created on any `bolt/*` milestone by
   any of them
 
-#### Scenario: A handoff release names its own milestone and carries its handoff item
+#### Scenario: A settled assertion births nothing
 
-- **WHEN** the intent loop births a handoff and its unit for four assertions
-- **THEN** the unit parent is created on the `intent/<slug>` milestone, and
-  its sub-issues are the handoff item and the four assertions — five in all
-
-#### Scenario: A later wave joins an open handoff unit
-
-- **WHEN** a second settled assertion appears while the handoff's unit still
-  sits at Backlog
-- **THEN** the open unit is recovered through the handoff item's own parent
-  and the newcomer is attached to it, rather than a second unit being created
-
-#### Scenario: The assertions keep their parent across the custody move
-
-- **WHEN** the handoff session moves the released assertions from
-  `intent/<slug>` to `bolt/<slug>`
-- **THEN** each stays a sub-issue of the same unit parent, which does not
-  move with them
+- **WHEN** an assertion settles on an `intent/<slug>` milestone
+- **THEN** the intent loop creates no item and no unit for it, and it sits
+  queued until the planner's card for its work is approved and expanded
 

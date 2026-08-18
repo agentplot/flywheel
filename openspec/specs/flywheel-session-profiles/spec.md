@@ -51,17 +51,16 @@ and does the session build a lavish surface? Construction — all seven
 types — SHALL run under `flywheel-construction-session`. Design that
 builds a lavish surface is interactive design and SHALL run under
 `flywheel-interactive-session`; design that does not — planning,
-research, prototype, writeback, handoff — SHALL run under
+research, prototype, writeback — SHALL run under
 `flywheel-design-session`.
 
-Of the five types the default profile hosts, **only the planning type opens
-a plannotator round**. Prototype, research, writeback, and handoff sessions
+Of the four types the default profile hosts, **only the planning type opens
+a plannotator round**. Prototype, research, and writeback sessions
 open none: a prototype delivers a finding note, a research session delivers
-its report, a writeback session rewrites chapters, and a handoff session
-delivers the release request and its receipt — all of which the conductor
-promotes, and none of which the session puts in front of the operator for
-annotation. For those four the profile contributes identity and edit scope
-only. No further design profile SHALL be created for them.
+its report, and a writeback session rewrites chapters — none of which the
+session puts in front of the operator for annotation. For those three the
+profile contributes identity and edit scope only. No further design profile
+SHALL be created for them.
 
 This question is the assignment's only basis. No profile, skill, or schema
 instruction SHALL offer a second one — not the task type, not the surface
@@ -163,28 +162,29 @@ assigned session directory, the session's own task lines, the decision
 records for questions the work order charged it to close, and the books
 and the context map that its tasks name (for a construction session: the
 built repo and its own task lines) — and that every other file edit in
-any repo is construction that leaves through the phase gate as a handoff, **including edits to blueprints
-itself**. Each body SHALL also state that a session is never the way to
-make an agent build something: work that dispatches agent work is a
-proposal in a bolt, and a small one is a one-proposal bolt, never an
-untracked edit.
+any repo is construction, **including edits to the machinery's own
+repos**: construction work is born by the planner's cards and the
+operator's approval, and a session that finds such work queues the
+finding and makes no edit. Each body SHALL also state that a session is
+never the way to make an agent build something: it launches no other
+session and spawns no agents onto its work.
 
 #### Scenario: A task proposes editing machinery in blueprints
 
 - **WHEN** a session working in blueprints reaches a task that would edit a
   skill, an agent profile, a schema instruction, or a `CLAUDE.md`
 - **THEN** the profile it read tells it this is construction against
-  blueprints as a built repo, so it reports the work for handoff instead of
-  making the edit — reaching that conclusion from the profile alone,
-  without having loaded any skill
+  a built repo, so it queues the finding instead of making the edit —
+  reaching that conclusion from the profile alone, without having loaded
+  any skill
 
 #### Scenario: A session's batch would be finished by dispatching agents
 
 - **WHEN** a session working its batch concludes the remaining work is best
   done by spawning agents to do it
-- **THEN** it spawns none, and reports the work to its conductor as a
-  handoff for a bolt — naming a one-proposal bolt when the work is small —
-  reaching that from the profile alone, without having loaded any skill
+- **THEN** it spawns none, and queues the work as a finding for the
+  loop that charged it — reaching that from the profile alone, without
+  having loaded any skill
 
 ### Requirement: A session owns a worktree and a branch, not only a directory
 
@@ -220,19 +220,13 @@ pathspec-less `git commit`.
   then removes the worktree and the branch — the session is not done until
   both are gone
 
-### Requirement: The gate is Handoff's alone, and a session never idles on it
+### Requirement: A session never idles waiting to be asked
 
-Both profile bodies SHALL state that the phase gate belongs to Handoff
-tasks and to nothing else. A Writeback task is the conductor's own scope —
-books and the map — so a writeback session is spawned and proceeds on its
-charge without seeking an approval that does not exist for it. A session
-that has unblocked work in its batch and is waiting for the operator to
-raise the subject SHALL be treated as malfunctioning, not as being careful.
-
-The gate authorizes release. It is not a meeting, a status report, or a
-reason to stop. `decisions/the-gate-is-inline.md` names both profiles as
-carriers of this line, because the failure it records was committed by an
-agent reasoning from the skill it had read.
+A session with unblocked work in its charge SHALL proceed on it without
+seeking an approval that does not exist for it: the operator's approval
+was spent releasing the batch. A session that has unblocked work and is
+waiting for the operator to raise the subject SHALL be treated as
+malfunctioning, not as being careful.
 
 #### Scenario: A writeback session waits to be told to start
 
@@ -245,9 +239,9 @@ agent reasoning from the skill it had read.
 
 - **WHEN** a session's batch turns up a settled slice ready for
   construction
-- **THEN** it reports it for a Handoff task rather than seeking release
-  itself — the gate is one inline approval the conductor batches, and the
-  session neither asks for it nor waits on it
+- **THEN** it queues the finding rather than seeking a release itself —
+  released construction arrives through the planner's cards, and the
+  session neither asks for that release nor waits on it
 
 ### Requirement: Session edit scope is stated per profile
 
@@ -269,7 +263,7 @@ happens to say.
   file, an agent profile, or a `CLAUDE.md`
 - **THEN** the profile's own sentence settles it against the task line: the
   target is not a book chapter or the map, so the session refuses it as
-  construction and reports it for a handoff
+  construction and queues the finding
 
 #### Scenario: A session checks off its own task lines and no others
 

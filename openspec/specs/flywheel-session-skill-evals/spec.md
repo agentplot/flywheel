@@ -8,9 +8,9 @@ use.
 ## Requirements
 ### Requirement: Every type skill ships with evals
 
-Each of the thirteen session-type skill directories —
+Each of the twelve session-type skill directories —
 `.claude/skills/flywheel-{planning,interactive,prototype,research,
-writeback,handoff,proposal-writing,proposal-review,spec-writing,build,
+writeback,proposal-writing,proposal-review,spec-writing,build,
 test,code-review,human-code-review}/` —
 SHALL carry `evals/evals.json` in the `skill-creator` schema: a
 `skill_name` matching the skill's frontmatter, and an `evals` array whose
@@ -75,7 +75,7 @@ run, never a standing property of the set.
 
 Every expectation SHALL be stated as something observable in the session's
 output or actions — a file written or not written, a refusal, a report
-made, a named handoff. An expectation SHALL NOT be phrased as a claim
+made, a queued finding. An expectation SHALL NOT be phrased as a claim
 about what the session understood, believed, or was aware of.
 
 Every eval that encodes a failure mode SHALL carry at least one **negative**
@@ -90,12 +90,12 @@ positive-only set.
 - **WHEN** an expectation reads that the session "understands that a
   Writeback task targets only a book chapter or the map"
 - **THEN** it is rewritten as the observable: the session does not edit the
-  machinery file named in the fixture, and reports it for a handoff
+  machinery file named in the fixture, and queues the finding
 
 #### Scenario: A failure eval passes while the forbidden act occurs
 
 - **WHEN** a guardrail eval's expectations are all positive, and the
-  session both reports the handoff and makes the edit
+  session both queues the finding and makes the edit
 - **THEN** the eval set is unmet until a negative expectation names the
   edit that must not appear
 
@@ -171,13 +171,13 @@ expectations required above:
   that would edit a skill, an agent profile, or a `CLAUDE.md` inside
   blueprints, filed under Writeback — which is where the real ones were
   filed. The correct behavior is to refuse it as construction and report it
-  for a handoff; the negative names the file that must not be edited. This
+  as a finding; the negative names the file that must not be edited. This
   one fixture scores both the two-things rule and the bound on the
   Writeback target, because the task line overstepping its bound *is* how
   the machinery edit arrives.
 - **The dispatching finish.** A batch whose remaining work is most easily
   done by spawning agents. The correct behavior is to spawn none and report
-  a handoff, naming a one-proposal bolt when small; the negative names the
+  a finding; the negative names the
   spawn.
 - **The wait that is not required.** A writeback batch, unblocked, where
   the session pauses for the operator to confirm it should proceed. The
