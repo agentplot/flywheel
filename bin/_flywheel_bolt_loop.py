@@ -1533,7 +1533,8 @@ class BoltLoop:
         if inbox.UNIT not in blocker.labels:
             return False
         # Its work items, by the parentage `backfill_parentage` derives from
-        # the batches' sub-issues — the same field `guard_route` keys on.
+        # the batches' sub-issues — the field the API does not carry and the
+        # guards key on.
         work = [i for i in snapshot.items if i.parent_batch == number]
         return bool(work) and all(not i.is_open for i in work)
 
@@ -2802,8 +2803,18 @@ class BoltLoop:
         if land != "force" and any(
                 i.milestone_state == "open" for i in unlanded):
             # The landing is the operator's: their milestone close releases
-            # it. Every item merged and every card ruled is necessary,
-            # never sufficient.
+            # it, and merged work never reaches main on the machinery's own
+            # initiative. Every item merged and every card ruled is necessary,
+            # never sufficient. A FORCED landing passes this condition — the
+            # `land != "force"` guard above — because a force is a claim by
+            # the operator landing deliberately, or by the server resuming a
+            # run that died between its last merge and its landing, and the
+            # close it stands in for is being made by that same hand. The
+            # open-card hold `holding_cards` carries is a SEPARATE condition
+            # that a force does not pass; neither subsumes the other.
+            # Specified by `flywheel-construction-stages`, "The operator's
+            # milestone close releases the landing, and the card hold is
+            # asked first".
             return False
         if land == "force" or self._merged > 0 or self._resume_landing:
             return True
@@ -2839,6 +2850,18 @@ class BoltLoop:
         does. A card whose own milestone is not this one — including a card
         naming no `bolt/*` milestone, which `PlanCard.bolt` answers `None`
         for — is no bolt's card to hold here.
+
+        **This hold is not the whole of the operator's release.** The
+        milestone-close condition in `landing_wanted` survives beside it and
+        is enforced too: an open card means the bolt is still being
+        *planned*, an open milestone means the operator has not *released*
+        what is built, and the two answer different questions. The card hold
+        is asked FIRST, and its answer is final — so when both are
+        outstanding the landing line names the card, the gesture the
+        operator can act on next, rather than the milestone. Both conditions
+        are specified by `flywheel-construction-stages`, "The operator's
+        milestone close releases the landing, and the card hold is asked
+        first".
 
         **Asked before `landing_wanted`, and blind to `land`.** Two reasons,
         and both are about what the run can then say. Folding the card test

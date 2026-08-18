@@ -1721,17 +1721,33 @@ class LandingHoldTest(unittest.TestCase):
                               status=status, milestone=milestone, stale=stale,
                               team="build")
 
-    def merged(self, number, parent=None):
+    def merged(self, number, parent=None, milestone_state="closed"):
         """An assertion that has reached the bolt branch — the state at the
-        landing, once the merge boundary has closed every item."""
+        landing, once the merge boundary has closed every item.
+
+        `milestone_state="closed"`, matching the fixtures elsewhere in this
+        file: the operator's close is the landing's other release condition,
+        and leaving it at the `"open"` default would make every test here
+        decline the landing for the milestone rather than for the card.
+        """
         return Item(number=number, milestone="bolt/x", title=f"item {number}",
                     state="closed", parent_batch=parent,
+                    milestone_state=milestone_state,
                     labels=frozenset({inbox.TYPE_ASSERTION, inbox.CLOSED_MERGED}))
 
     def at_the_landing(self, cards=(), batches=()):
-        """Every assertion `closed:merged`: the landing is otherwise wanted,
-        so anything that declines it here is the hold and nothing else."""
+        """Every assertion `closed:merged` and the operator's close made: the
+        landing is otherwise wanted, so anything that declines it here is the
+        card hold and nothing else."""
         return Snapshot(items=[self.merged(1), self.merged(2)],
+                        batches=list(batches), plan_cards=list(cards),
+                        milestone="bolt/x")
+
+    def milestone_still_open(self, cards=(), batches=()):
+        """The same tree, with the operator's close NOT yet made: every
+        assertion merged, and the milestone the items carry still open."""
+        return Snapshot(items=[self.merged(1, milestone_state="open"),
+                               self.merged(2, milestone_state="open")],
                         batches=list(batches), plan_cards=list(cards),
                         milestone="bolt/x")
 
@@ -1899,6 +1915,62 @@ class LandingHoldTest(unittest.TestCase):
         self.assertTrue(report.landing.startswith("done"), report.landing)
         self.assertEqual([w[1] for w in tracker.writes if w[0] == "close"], [9])
 
+    # -- the operator's close ----------------------------------------------
+    #
+    # The landing's OTHER release condition, specified alongside the card
+    # hold by `flywheel-construction-stages`, "The operator's milestone
+    # close releases the landing, and the card hold is asked first".
+    # Neither condition subsumes the other, and every other fixture in this
+    # class carries the close made — so without these three the branch that
+    # reads the milestone state has no positive coverage at all.
+
+    def test_an_open_milestone_declines_an_automatic_landing(self):
+        # Every assertion merged and every card ruled: necessary, never
+        # sufficient. Merged work does not reach main on the machinery's own
+        # initiative — the operator's close is the release gesture.
+        snapshot = self.milestone_still_open()
+        program, tracker, runner = self.program(snapshot)
+        box = inbox.bolt_inbox(snapshot, "x")
+        unlanded = [i for i in snapshot.items if i.is_open or i.merge_closed]
+        self.assertEqual(program.holding_cards(snapshot), [],
+                         "no card holds: the milestone is the only condition left")
+        self.assertFalse(program.landing_wanted("auto", box, unlanded),
+                         "the milestone is open; the landing is not released")
+        report = program.run(max_cycles=1, land="auto")
+        self.assertEqual(runner.launched, [], "no landing session runs")
+        self.assertEqual([w for w in tracker.writes
+                          if w[0] in ("close", "reclose")], [],
+                         "nothing reaches main and nothing is upgraded")
+        self.assertFalse(report.landing.startswith("done"), report.landing)
+
+    def test_a_forced_landing_passes_the_open_milestone(self):
+        # The asymmetry between the two conditions: a force is a claim about
+        # what this process knows — the operator landing deliberately, or the
+        # server resuming a run that died before its landing — so the close it
+        # stands in for is being made by that same hand. Its other half, that
+        # a force does NOT pass the card hold, is
+        # `test_a_forced_landing_is_held_by_the_same_card` above.
+        snapshot = self.milestone_still_open(
+            batches=[Batch(number=9, kind=inbox.UNIT, status=inbox.STATUS_READY,
+                           sub_issues=(1, 2), milestone="bolt/x")])
+        program, tracker, _ = self.program(snapshot)
+        report = program.run(max_cycles=1, land="force")
+        self.assertTrue(report.landing.startswith("done"), report.landing)
+        self.assertEqual([w[1] for w in tracker.writes if w[0] == "close"], [9])
+
+    def test_both_conditions_outstanding_reports_the_card_not_the_milestone(self):
+        # The card hold is asked first and its answer is final: the card is
+        # the gesture the operator can act on next, and the more specific
+        # fact. So the line names the card — never the milestone, and never
+        # `not attempted`, which would send them to watch work that is done.
+        snapshot = self.milestone_still_open(cards=[self.card()])
+        program, tracker, runner = self.program(snapshot)
+        report = program.run(max_cycles=1, land="auto")
+        self.assertTrue(report.landing.startswith("held"), report.landing)
+        self.assertIn("#12", report.landing)
+        self.assertNotIn("milestone", report.landing)
+        self.assertEqual(runner.launched, [])
+
     # -- the boundary ------------------------------------------------------
 
     def test_a_second_unit_expanded_later_does_not_buy_a_second_landing(self):
@@ -1910,8 +1982,10 @@ class LandingHoldTest(unittest.TestCase):
         """
         running = Snapshot(
             items=[self.merged(1, parent=9), self.merged(2, parent=9),
-                   item(3, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=10),
-                   item(4, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=10)],
+                   item(3, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=10,
+                        milestone_state="closed"),
+                   item(4, inbox.TYPE_ASSERTION, inbox.READY, parent_batch=10,
+                        milestone_state="closed")],
             batches=[Batch(number=9, kind=inbox.UNIT, status=inbox.STATUS_READY,
                            sub_issues=(1, 2), milestone="bolt/x"),
                      Batch(number=10, kind=inbox.UNIT, status=inbox.STATUS_READY,

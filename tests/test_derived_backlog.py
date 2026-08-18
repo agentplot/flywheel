@@ -902,7 +902,7 @@ class CharterTest(unittest.TestCase):
                 setattr(loop, name, call)
 
             for name in ("guard_expand", "guard_scaffold", "guard_topology",
-                         "guard_charter", "guard_flip_consume", "guard_route",
+                         "guard_charter", "guard_flip_consume",
                          "guard_stages"):
                 watch(name)
             loop.guards(snap)
