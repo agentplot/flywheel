@@ -533,6 +533,17 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
             add(card.bolt, "run",
                 f"plan card #{card.number} at Ready, awaiting expansion")
 
+    # Before the per-item loop, so the operator's approval is the reason a
+    # held loop sees. `add` is setdefault and the backoff releases a hold
+    # only when a job's reason CHANGES — with the item loop first, a
+    # milestone held on "#N queued and unbatched" kept that reason through
+    # a Ready flip, and the operator's approval waited out the full hold
+    # (observed live: three elaborations approved, sessions ~11 minutes
+    # late).
+    for milestone in ready_batch_milestones:
+        if milestone_slug(milestone) is not None:
+            add(milestone, "run", "a batch at board Status Ready")
+
     for item in snapshot.items:
         if item.milestone_state != "open":
             # The operator's close on a bolt milestone RELEASES the landing:
@@ -577,10 +588,6 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
             # either keeps a job open forever (compose_plan skips both for
             # the same reason).
             add(item.milestone, "run", f"#{item.number} queued and unbatched")
-
-    for milestone in ready_batch_milestones:
-        if milestone_slug(milestone) is not None:
-            add(milestone, "run", "a batch at board Status Ready")
 
     for milestone in snapshot.closed_milestones:
         slug = milestone_slug(milestone)

@@ -696,5 +696,28 @@ class SetStageTest(unittest.TestCase):
         self.assertIn(inbox.CLOSED_MERGED, tracker.labels)
 
 
+class ApprovalWakesTheLoopTest(unittest.TestCase):
+    """The operator's Ready flip must change the job's reason.
+
+    The backoff releases a hold only when a job's reason changes. With the
+    item sweep claiming the job first, a milestone held on "#N queued and
+    unbatched" kept that reason through a Ready flip, and the approval
+    waited out the full hold.
+    """
+
+    def test_a_ready_batch_claims_the_jobs_reason_over_the_sweep(self):
+        snap = Snapshot(
+            items=[item(1, "type:planning", inbox.QUEUED,
+                        milestone="intent/a", parent_batch=None)],
+            batches=[Batch(number=9, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_READY, sub_issues=(1,),
+                           milestone="intent/a")])
+        jobs = inbox.server_inbox(snap)
+        self.assertEqual([j.milestone for j in jobs], ["intent/a"])
+        self.assertEqual(jobs[0].why, "a batch at board Status Ready",
+                         "the approval, not the sweep, is the reason — "
+                         "a changed reason is what releases a held loop")
+
+
 if __name__ == "__main__":
     unittest.main()
