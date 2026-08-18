@@ -1,3 +1,49 @@
+# Bolt: loop-boundaries
+
+## Scope
+
+Finishes the loop's boundaries: the bolt's record in git. A planner-born
+charter opens with the bolt-level sections the schema names, a change
+directory without a `bolt.md` gets one from a guard instead of no guard,
+a unit title that parses no slug pauses with its reason instead of
+vanishing, and the defer predicate reads a unit closed off the happy
+path as settled. One unit approved and built: `the-bolt-charter`,
+four changes.
+
+## Sources
+
+Derived from `books/flywheel` at book a6a25026 · specs 5ea5413. The
+chapters the unit cites: `schemas.md`, `bolt-planning.md`,
+`lifecycles.md`, `construction-loop.md`, `observation.md`.
+
+## Repos
+
+agentplot/flywheel · `bolt/loop-boundaries` · `.bare.bolt-loop-boundaries`
+
+## Merge criteria
+
+The four changes of `the-bolt-charter` are on the branch, archived, and
+proven by the tree:
+
+- a planner-born charter opens with scope, sources, repos and merge
+  criteria, written from the milestone description
+  (`the-charter-carries-the-bolt-sections`);
+- a change directory that exists without a `bolt.md` is a guard's case,
+  and the charter is written rather than assumed present
+  (`a-charterless-change-directory-gets-one`);
+- a unit title that parses no slug is reported with its reason and
+  pauses the loop rather than being dropped in silence
+  (`an-unparseable-unit-title-says-so`);
+- a unit closed off the happy path is read as settled, so a dependent
+  card defers on the predecessor's real state
+  (`the-defer-predicate-reads-a-closed-unit`).
+
+The test suite is green on the bolt branch as it would land: rebased
+onto (or merged with) current main, not only in isolation. The merge
+gate's own hooks run unweakened.
+
+Landing: merge
+
 # Unit: the-bolt-charter
 
 System: flywheel
