@@ -128,15 +128,17 @@ tooling inside it. Which carrier exactly is the #197 successor's
 decision; this clause only fixes which side of the line each part
 sits on.
 
-## What the promise explicitly does not cover (deferred, each a successor item)
+## What this intent queues next (each a successor item, constrained by the promise)
 
+- **Write the carrier** (#197 successor): clause 4 settles its kind —
+  a skill that structures the judgment, run by design sessions that do
+  the reading. The item writes the skill and fixes its details,
+  including the processed ledger's home in local state.
 - **Cross-org landing** (#196 successor): where imported work lands
   when the corpus's org has no fleet. Gates the live-work lane's
   tracker tier for foreign corpora; until settled, the promise for a
-  foreign corpus stops at the report.
-- **The carrier and the ledger's home** (#197 successor): skill vs
-  session type vs tool, and where the processed ledger lives in local
-  state.
+  foreign corpus stops at the report — a promise boundary, not an
+  open design.
 - **OpenSpec into the built repo** (#198 successor): whether specs are
   ever written into the source repo itself, beyond the flywheel-side
   records clause 2 promises.

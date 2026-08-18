@@ -1,0 +1,1 @@
+{"decision":"annotated","feedback":"# File Feedback\n\nI've reviewed this file and have 1 piece of feedback:\n\n## 1. (line 73) Feedback on: \"5. Deferred — named non-promises, each a successor item on this intent\"\n> I don't understand what it means to defer these. How could we defer picking the implementation method, whether or not it's a skill? \n\n---\n"}

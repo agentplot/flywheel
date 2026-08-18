@@ -70,16 +70,28 @@ corpus. So the durable carrier will be instructions that structure
 judgment (skill or session type), never a tool that replaces it; which
 carrier exactly is a deferred successor decision.
 
-## 5. Deferred — named non-promises, each a successor item on this intent
+## 5. What this intent queues next
 
-- **Cross-org landing** (was #196): until settled, the promise for a
-  corpus in a fleet-less org stops at the report tier.
-- **The carrier and the ledger's home** (was #197): skill vs session
-  type vs tool, and where the processed ledger lives in local state.
+Nothing here is left open-ended. These are the successor items this
+round queues on `intent/messy-repo-onboarding`, each already
+constrained by the promise above:
+
+- **Write the carrier.** Clause 4 already picks its kind: a **skill**
+  that writes down the process shape (inventory → cut → convert →
+  mark processed), run by design sessions that do the reading — not a
+  program that replaces the reading. The successor item writes that
+  skill and fixes its details, including where the processed ledger
+  lives in local state.
+- **Cross-org landing** (was #196): where imported work lands when the
+  corpus's org has no fleet. Until it's settled, an import of a
+  foreign-org corpus stops at the report tier — that is a promise
+  boundary, not an open design.
 - **OpenSpec into the built repo** (was #198): whether specs are ever
   written into the source repo itself, beyond the flywheel-side
   records clause 2 promises.
-- **Bulk triage mechanics** (was #199): dedupe, collision, provenance
-  at roadmap volume.
+- **Bulk triage mechanics** (was #199): how the live lane's volume
+  meets a live tracker — dedupe, collision, provenance at roadmap
+  scale.
 - **First measurement** (was #195): run the cut and a first conversion
-  over a real corpus — the test of clauses 2 and 3.
+  over a real corpus — the test of clauses 2 and 3 before the skill
+  hardens.
