@@ -63,6 +63,13 @@ artifacts:
       a machinery tweak however small and self-evident: each is a GitHub
       issue like all other work. There is no direct-edit route.
 
+      **Input:** the bolt milestone's description - the delivery in three
+      sentences, the unit sequence, the price. The planner authored it and
+      it is this charter's source; write the four sections from it. Where
+      the milestone carries no description, write them from what the
+      milestone and its items say: an absent description is a thinner
+      charter, never a missing one.
+
       **Output:** bolt.md with exactly these sections:
       1. **Scope** - what this bolt builds, in one paragraph.
       2. **Sources** - the intents whose released assertions this bolt
@@ -75,7 +82,9 @@ artifacts:
          for this bolt: the acceptance suites that must be green on the
          bolt branch, review requirements, and any repo-specific gates.
          The merge gate (wt merge, the repo's hooks) is always
-         implied and never weakened.
+         implied and never weakened. A "Landing:" line sets how the
+         bolt reaches main - "merge" (default, direct through the
+         gate) or "pr" (a pull request opened from the bolt branch).
 
 
       EXACTLY these four sections, and nothing else, in the bolt's OWN
@@ -84,15 +93,10 @@ artifacts:
       question for the operator goes on an item with needs-operator,
       never into this record.
 
-      What follows those four sections is not narrative and is not
-      yours to compose: one `# Unit: <slug>` section per unit expanded
-      on this bolt's milestone, each carrying that unit's plan document
-      verbatim from the body of the card the operator approved. You copy
-      the lowest-numbered unit's document when you scaffold; the loop
-      appends every later one as each approval expands. Never fold a
-      unit's prose up into the four sections above, and never rewrite a
-      `# Unit:` section already on disk - it is durable prose in git and
-      outranks the tracker state it came from.
+      A unit's plan document does not live here. Each unit the operator
+      approves is its own artifact at `units/<slug>.md`, written by the
+      loop at expansion: bolt.md is the bolt's statement and a unit file
+      is the approval's, and neither is appended to the other.
 
       Two rules bind every section here. State a constraint only as
       strongly as you verified it, naming the tree and the check behind
@@ -102,6 +106,32 @@ artifacts:
       And where a section names something that constrains order, coupling
       or membership, state the fact that makes the constraint CORRECT, not
       the mechanism that makes it stick.
+    requires: []
+  - id: unit
+    generates: units/<slug>.md
+    description: One approved unit's plan document, copied verbatim by the loop at expansion
+    template: units/unit.md
+    instruction: |
+      This artifact is not yours to compose, and not yours to edit.
+
+      `openspec/changes/<slug>/units/<unit-slug>.md` holds one approved
+      unit's plan document. The bolt loop writes it at expansion - verbatim
+      from the body of the card the operator approved, one file per
+      approved unit, named by the slug that card's title carries - and
+      commits it by pathspec on the branch carrying the bolt's record.
+
+      A plan document is mutable state on the tracker while its card is
+      unapproved. The operator's approval freezes it, and expansion is what
+      makes it durable prose in git. That is why the copy is verbatim and
+      why a file already on disk is never rewritten, by the loop or by any
+      session: durable prose in git outranks the tracker state it came
+      from. A unit's plan that turns out wrong is corrected by an item on
+      the bolt, never by an edit here.
+
+      Nor does a unit's prose belong in bolt.md. That record is the bolt's
+      charter - scope, sources, repos, merge criteria - and it carries no
+      unit's document; this file is the approval's and carries no charter
+      section.
     requires: []
 apply:
   requires:

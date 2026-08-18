@@ -1649,15 +1649,16 @@ class BoltLoop:
         sections, written from what the milestone and its items say: an
         absent description is a thinner charter, never a missing one.
 
-        The unit copy still happens, BELOW the bolt's sections. The session
-        copies exactly ONE unit's plan document — the lowest-numbered, the
-        unit this bolt was born around. A milestone carries as many units
-        as the operator approves, and "the milestone's unit parent" stopped
-        being a unique referent when it did; `guard_charter` appends the
-        rest, on the pass that sees them, also below. The fallback branch
-        stays: a quick bolt born at triage carries no unit card at all, and
-        that session is still what writes its charter — its four sections
-        and nothing under them.
+        **No unit's plan document is asked for, ever.** The order used to
+        end by telling the session to copy the lowest-numbered unit's body
+        into `bolt.md` under a `# Unit: <slug>` heading, with the rest
+        appended there later. The record splits now: `bolt.md` is the
+        bolt's statement and each approved unit's document is its own
+        artifact at `units/<slug>.md`, which `guard_charter` writes at
+        expansion. So the four sections are the whole charter whether or
+        not the milestone carries unit cards, and the order says so —
+        a milestone carrying cards is not a reason to write a unit and
+        skip the bolt.
 
         **The charter is then checked, not assumed.** A settle used to be
         the whole post-condition. It is now the settle plus the reader:
@@ -1681,11 +1682,10 @@ class BoltLoop:
         order = sessions.work_order(f"/opsx:new {self.params.slug}", (
             f"Scaffold the bolt record for bolt/{self.params.slug} and bind the "
             f"{self.params.type_name} schema.\n\n"
-            f"bolt.md is the BOLT'S CHARTER. It opens with the bolt's own "
-            f"sections — {sections} — before any unit's plan document, and its "
-            f"merge criteria section states the landing mode on a `Landing: "
-            f"merge` or `Landing: pr` line. State that line even if the "
-            f"rendered template does not show one: a landing mode that was "
+            f"bolt.md is the BOLT'S CHARTER, and it is {sections} and nothing "
+            f"else. Its merge criteria section states the landing mode on a "
+            f"`Landing: merge` or `Landing: pr` line. State that line even if "
+            f"the rendered template does not show one: a landing mode that was "
             f"defaulted is not a mode that was declared. Run `openspec "
             f"instructions bolt --change {self.params.slug}` for what belongs "
             f"under each heading — that template is the authority for their "
@@ -1697,14 +1697,10 @@ class BoltLoop:
                f"sections from what the milestone and its items say. A thinner "
                f"charter, never a missing one — all four sections are still "
                f"written.\n\n")
-            + f"BELOW them: if the milestone carries any `unit`-labeled issue, "
-            f"copy the LOWEST-NUMBERED one's body into bolt.md verbatim, under "
-            f"a `# Unit: <slug>` heading naming that unit — that one and no "
-            f"other, because the loop appends every later unit's document "
-            f"itself. If the milestone carries no unit card, the sections above "
-            f"are the whole charter. Either way the bolt's own `## Merge "
-            f"criteria` stays the FIRST such heading in the file — a unit's own "
-            f"`##` subsections must never shadow it.\n\n"
+            + f"No unit's plan document goes into bolt.md, whether or not the "
+            f"milestone carries unit cards. Each approved unit is its own "
+            f"artifact at units/<slug>.md, and the loop writes those itself at "
+            f"expansion — write none of them.\n\n"
             f"Commit by pathspec, in THIS worktree on the "
             f"branch already checked out — never create a branch or worktree; "
             f"the loop cuts the bolt branch after you settle. Do not start any other work, "
@@ -1754,93 +1750,104 @@ class BoltLoop:
             actions.append(f"cut {self.params.bolt_branch} and its worktree")
         return None
 
-    #: A charter's per-unit heading. The scaffold session writes the first
-    #: one and this guard writes the rest, so the form is pinned here.
-    #: Case-insensitive to match `PlanCard.slug`, which parses the card
-    #: title the same way: this heading is the guard's ONLY idempotency
-    #: test, so a section a session wrote `# unit: foo` would otherwise go
-    #: unrecognized and be appended again on every pass, forever.
-    UNIT_HEADING = re.compile(r"^#\s+Unit:\s*(\S+?)\s*$",
-                              re.MULTILINE | re.IGNORECASE)
+    def units_dir(self):
+        """`openspec/changes/<slug>/units` — one file per approved unit."""
+        return self.params.change_dir / "units"
+
+    def _committed_units(self, rel_dir):
+        """The unit file NAMES this record carries at HEAD, as a set.
+
+        `git ls-tree -r`, never a directory listing: the question is what
+        the record COMMITTED. A file the working tree holds and HEAD does
+        not is precisely the torn write this guard exists to repair, and a
+        listing cannot tell the two apart.
+        """
+        listed = self.git("ls-tree", "-r", "--name-only", "HEAD", "--", rel_dir)
+        if listed.returncode != 0:
+            return set()
+        return {line.rsplit("/", 1)[-1]
+                for line in (listed.stdout or "").splitlines() if line.strip()}
 
     def guard_charter(self, snapshot, actions):
-        """0.6 — every expanded unit's plan document, durable in git.
+        """0.6 — every approved unit's plan document, durable in git.
 
-        A plan document is mutable tracker state until expansion; expansion
-        is what makes it prose in git. The scaffold's session copies the
-        FIRST unit's document when it writes `bolt.md`, and that used to be
-        the whole story, because a bolt saw expansion once in its life. A
-        bolt of units sees it once per approval, and `guard_scaffold`'s
-        only test is that the change directory is absent — so a second
-        unit's document would reach nothing at all.
+        A plan document is mutable tracker state while its card is
+        unapproved. The operator's approval freezes it and expansion is
+        what makes it prose in git, so this guard writes one file per
+        expanded unit: `openspec/changes/<slug>/units/<unit-slug>.md`, the
+        card's body verbatim, named by the slug the card's title carries.
+
+        **A unit file is not written into the charter.** `bolt.md` is the
+        bolt's statement — scope, sources, repos, merge criteria — and a
+        unit file is the approval's; neither is appended to the other. The
+        append this guard used to make is what put a unit's `##`
+        subsections in the same file as the bolt's, where the criteria
+        reader could find the wrong one.
 
         **Ordered after `guard_topology`, not folded into `_expand_card`.**
         Expansion runs at -1, before the bolt branch or its worktree exist
         on a fresh process, so a git write from there would land on
         whatever branch `repo_dir` has checked out. By 0.6
         `params.bolt_worktree` names the bolt branch's worktree and the
-        append lands where the bolt's record lives. It also keeps
+        write lands where the bolt's record lives. It also keeps
         expansion's failure modes to one — the tracker's — rather than two.
 
-        **The test is the charter's COMMITTED content, not a stored flag
-        and not the working tree.** The loop is stateless by construction
-        and re-derives what it can from the tracker and the tree, as
-        `guard_stages` does for `stage:*`. So this compares the
-        `# Unit: <slug>` headings `bolt.md` carries AT HEAD against the
-        `unit`-labeled issues on the milestone and appends only what is
-        missing. Reading the working tree instead would hide a torn write
-        forever — the section is on disk the moment `write_text` returns,
-        so a pass after a failed or interrupted commit would find it
-        "present", report a clean dry cycle, and never retry the commit the
-        requirement actually asks for. Against HEAD, a killed process
-        leaves nothing to repair: the next pass sees the section still
-        uncommitted, skips the append (the working tree already holds it)
-        and re-runs the half that did not happen.
+        **The test is the record's COMMITTED state, not a stored flag and
+        not the working tree.** The loop is stateless by construction and
+        re-derives what it can from the tracker and the tree, as
+        `guard_stages` does for `stage:*`. So this compares the file names
+        under `units/` AT HEAD against the `unit`-labeled issues on the
+        milestone, and writes only what is missing. Reading the working
+        tree instead would hide a torn write forever — the file is on disk
+        the moment `write_text` returns, so a pass after a failed or
+        interrupted commit would find it "present", report a clean dry
+        cycle, and never retry the commit the requirement asks for.
 
-        A hand-edited section is still never overwritten (durable prose in
-        git outranks mutable tracker state), and a pass with nothing newly
-        expanded makes no commit — the dry-cycle property every other guard
-        has.
+        **A torn write is repaired, not read as done, and never rewritten.**
+        A file on disk that HEAD does not carry keeps its content exactly
+        as it stands — durable prose in git outranks the tracker state it
+        came from, and the body on the card may have moved since — and only
+        the add and the commit are re-run. A file already at HEAD is
+        skipped entirely, whether this guard or a hand wrote it.
 
-        **Appended after whatever the charter already holds**, in card-number
-        order, which is expansion order. `merge_criteria()` reads the FIRST
-        `^## Merge criteria` in the file, and a unit document's own
-        subsections are `##`; prepending would shadow the bolt's criteria.
+        **A record in the older shape needs no migration.** Its unit prose
+        sits in a `# Unit: <slug>` section of `bolt.md`, so it has no unit
+        file, so this same path writes one. The stale section is left
+        exactly where it is: rewriting committed prose is what the rule
+        above forbids, and `merge_criteria()` bounds itself to the
+        charter's region so the section cannot masquerade as the bolt's.
+
+        A pass with nothing newly expanded writes nothing and commits
+        nothing — the dry-cycle property every other guard has.
         """
-        record = self.params.change_dir / "bolt.md"
-        if not record.exists():
-            return None      # the scaffold owes the charter its first unit
-        rel = f"openspec/changes/{self.params.slug}/bolt.md"
-        text = record.read_text()
-        # The requirement's clause is "SHALL be committed", so the test is
-        # what HEAD carries, never what the working tree does. Reading the
-        # working tree here hides a torn write permanently: the section is
-        # on disk, so the next pass finds it "present", reports a clean dry
-        # cycle, and the commit is never retried.
-        sealed = self._committed(rel)
-        present = {s.lower() for s in
-                   self.UNIT_HEADING.findall(text if sealed is None else sealed)}
-        missing = []
+        if not self.params.change_dir.exists():
+            return None      # nothing to write into; the scaffold owes it
+        rel_dir = f"openspec/changes/{self.params.slug}/units"
+        sealed = self._committed_units(rel_dir)
+        wanted = []
         for item in sorted(snapshot.on(self.params.milestone),
                            key=lambda i: i.number):
             if inbox.UNIT not in item.labels:
                 continue
             # The unit IS the card that was expanded, so the card's own
-            # title grammar is what names its slug.
+            # title grammar is what names its slug — and `PlanCard.slug`
+            # yields `[a-z0-9][a-z0-9-]*`, which needs no sanitising to be
+            # a file name. A title that parses no slug is the subject of a
+            # sibling change and is left alone here.
             slug = inbox.PlanCard(number=item.number, title=item.title).slug
-            if not slug or slug.lower() in present:
+            if not slug or f"{slug}.md" in sealed:
                 continue
             if not (item.body or "").strip():
                 self._log(f"charter: unit #{item.number} has an empty body; "
-                          f"nothing to copy into {rel}")
+                          f"nothing to write to {rel_dir}/{slug}.md")
                 continue
-            present.add(slug.lower())
-            missing.append((slug, item.body))
-        if not missing:
+            sealed.add(f"{slug}.md")
+            wanted.append((slug, item.body))
+        if not wanted:
             return None
-        named = ", ".join(slug for slug, _ in missing)
+        named = ", ".join(f"{slug}.md" for slug, _ in wanted)
         if self.dry_run:
-            actions.append(f"would append unit section(s) {named} to {rel}")
+            actions.append(f"would write unit file(s) {named} under {rel_dir}")
             return None
         if isinstance(self.tracker, FixtureTracker):
             # `guard_topology` skips itself under a fixture too, so
@@ -1849,45 +1856,32 @@ class BoltLoop:
             # the tracker's filters; it never writes anyone's tree.
             return None
         self.ledger.expect(f"charter:{self.params.slug}",
-                           f"{rel} missing {named}",
-                           f"one commit adding # Unit: {named}")
-        # Only what the working tree does not already hold. A pass retrying
-        # a torn commit finds its section already written and appends
-        # nothing — it re-runs the add and the commit, which is the half
-        # that did not happen.
-        in_tree = {s.lower() for s in self.UNIT_HEADING.findall(text)}
-        pending = [(s, b) for s, b in missing if s.lower() not in in_tree]
-        if pending:
-            chunks = [text.rstrip("\n")]
-            chunks += [f"# Unit: {s}\n\n{b.strip()}" for s, b in pending]
-            record.write_text("\n\n".join(chunks) + "\n")
+                           f"{rel_dir} missing {named}",
+                           f"one commit adding {named}")
+        paths = []
+        for slug, body in wanted:
+            path = self.units_dir() / f"{slug}.md"
+            paths.append(f"{rel_dir}/{slug}.md")
+            if path.exists():
+                continue     # a torn write: the content stays, the commit re-runs
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body.strip() + "\n")
         # By pathspec, on the branch the bolt's record lives on. Never `-a`
         # and never `add -A`: a session's uncommitted work may share this
         # worktree, and a tree-wide stage would sweep it into this commit.
-        self.git("add", "--", rel)
+        self.git("add", "--", *paths)
         committed = self.git("commit", "-m",
-                             f"charter: {named} on {self.params.bolt_branch}",
-                             "--", rel)
+                             f"charter: unit {named} on {self.params.bolt_branch}",
+                             "--", *paths)
         if committed.returncode != 0:
             tail = " ".join((committed.stderr or committed.stdout or "").split())
-            return (f"charter: {rel} gained {named} but the commit failed; "
+            return (f"charter: {rel_dir} gained {named} but the commit failed; "
                     f"the next pass retries it"
                     + (f" — {tail[-300:]}" if tail else ""))
         self.ledger.actual(f"charter:{self.params.slug}",
-                           f"# Unit: {named} committed to {rel}")
-        actions.append(f"charter gained unit section(s) {named} in {rel}")
+                           f"{named} committed under {rel_dir}")
+        actions.append(f"charter gained unit file(s) {named} in {rel_dir}")
         return None
-
-    def _committed(self, rel):
-        """This path's content at HEAD, or None when HEAD does not carry it.
-
-        `None` is "no committed version to compare against" — a charter the
-        scaffold session wrote but did not commit, or a fresh repo — and the
-        caller falls back to the working tree for that one case, because
-        there is nothing else to read.
-        """
-        shown = self.git("show", f"HEAD:{rel}")
-        return shown.stdout if shown.returncode == 0 else None
 
     def guard_flip_consume(self, snapshot, actions):
         """1 — the sub-issues a Ready unit releases.
@@ -1908,22 +1902,47 @@ class BoltLoop:
             flipped.append(number)
         return flipped
 
-    def merge_criteria(self):
-        """The Merge criteria section of this bolt's bolt.md, from disk.
+    #: Where the charter's region ends: the first `# `-level heading that
+    #: opens a unit section. Nothing writes one any more — an approved
+    #: unit's document is its own file under `units/` — but records
+    #: written under the older shape still carry them. Case-insensitive,
+    #: matching how `PlanCard.slug` parses the title these were named from.
+    UNIT_SECTION = re.compile(r"^#\s+Unit:\s*\S+\s*$",
+                              re.MULTILINE | re.IGNORECASE)
 
-        The section ends at the next heading of EITHER level. `#` matters
-        as much as `##` now that `guard_charter` appends each unit's plan
-        document under a `# Unit: <slug>` heading: a lookahead for `##`
-        alone reads straight through that heading and hands the routing
-        session a unit's prose as this bolt's criteria.
+    def charter_region(self, text):
+        """The charter's own text: everything before the first `# Unit:`
+        heading, and the whole file when there is none."""
+        opened = self.UNIT_SECTION.search(text)
+        return text[:opened.start()] if opened else text
+
+    def merge_criteria(self):
+        """This bolt's Merge criteria, read from the charter's region.
+
+        **The region, not the whole file.** `bolt.md` is the bolt's
+        statement and carries no unit's document — but records written
+        under the older shape carry `# Unit: <slug>` sections whose plan
+        documents have `##` subsections of their own, and one of those can
+        be a `## Merge criteria`. Searching the whole file returns the
+        first such section anywhere in it, so a charter with none of its
+        own hands back a UNIT'S criteria as the bolt's, and
+        `landing_mode()` then takes a `Landing:` line from prose that
+        never spoke for this bolt. Bounding the read first makes "the
+        bolt's criteria" mean the charter's, and makes the absent case
+        genuinely absent — so the scaffold's check and the landing's
+        refusal both fire on such a record instead of passing it.
+
+        Within the region the section still ends at the next heading of
+        either level, so a charter whose criteria are followed by another
+        `##` section stops where it should.
         """
         record = self.params.change_dir / "bolt.md"
         if not record.exists():
             return ""
-        text = record.read_text()
         match = re.search(
             r"^##\s+Merge criteria\s*$(?P<body>.*?)(?=^#{1,2}\s|\Z)",
-            text, re.MULTILINE | re.DOTALL)
+            self.charter_region(record.read_text()),
+            re.MULTILINE | re.DOTALL)
         return (match.group("body").strip() if match else "")
 
     def landing_mode(self):

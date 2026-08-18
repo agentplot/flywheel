@@ -2389,8 +2389,8 @@ class ScaffoldCharterTest(unittest.TestCase):
                           "the template stays the authority for the content")
             self.assertIn("Carve the loop's boundaries. Three units, ~9 items.",
                           order, "the description is the charter's stated source")
-            self.assertIn("# Unit: <slug>", order,
-                          "the first unit's document is still copied, below them")
+            self.assertIn("units/<slug>.md", order,
+                          "and the unit files are named as the loop's own")
 
     def test_a_milestone_with_no_description_still_gets_all_four_sections(self):
         # An absent description is a thinner charter, never a missing one.
@@ -2403,6 +2403,23 @@ class ScaffoldCharterTest(unittest.TestCase):
                 self.assertIn(heading, order, heading)
             self.assertIn("carries no description", order)
             self.assertIn("what the milestone and its items say", order)
+
+    def test_no_order_asks_for_a_unit_document_in_the_charter(self):
+        # 4.1: the record splits, so the four sections are the whole
+        # charter whether or not the milestone carries unit cards. An
+        # order that still asked for the copy would put a unit's `##`
+        # subsections back in the file the criteria reader reads.
+        with tempfile.TemporaryDirectory() as tmp:
+            for description in ("Three units, ~9 items.", ""):
+                runner = ScriptedRunner()
+                self.loop_over(tmp, runner=runner,
+                               description=description).guard_scaffold([])
+                order = runner.launched[0].order
+                self.assertNotIn("# Unit:", order, description or "(none)")
+                self.assertNotIn("LOWEST-NUMBERED", order)
+                self.assertNotIn("verbatim", order)
+                self.assertIn("No unit's plan document goes into bolt.md",
+                              order)
 
     def test_the_order_never_inlines_the_schema_template(self):
         # `design.md`: a second copy of the template in the loop program
@@ -2728,14 +2745,109 @@ class LandingCharterTest(unittest.TestCase):
             self.assertNotIn("not attempted", printed)
 
 
-class CharterOrderingTest(unittest.TestCase):
-    """A unit's own `##` subsections never shadow the bolt's criteria."""
+class BoltSchemaArtifactTest(unittest.TestCase):
+    """The four `bolt-*` schemas declare the record's two artifacts.
 
+    The record's shape is not a function of the type, so all four members
+    say the same thing about it: `bolt` → the charter, `unit` →
+    `units/<slug>.md`. And the `bolt` instruction stops at the charter's
+    four sections — it used to say "EXACTLY these four sections, and
+    nothing else" and then name a fifth thing to append, which teaches the
+    opposite of what it states.
+
+    Read as text: the repo ships no YAML parser and the loop's own reader
+    takes the `loop:` block alone, so these assert the file rather than a
+    parse of it.
+    """
+
+    MEMBERS = ("bolt-default", "bolt-quick", "bolt-adversarial", "bolt-direct")
+
+    def schema(self, member):
+        return (ROOT / "schemas" / member / "schema.yaml").read_text()
+
+    def instruction(self, member, artifact):
+        """One artifact's block, from its `- id:` to the next one."""
+        text = self.schema(member)
+        start = text.index(f"  - id: {artifact}\n")
+        rest = text[start + 1:]
+        after = rest.find("\n  - id: ")
+        tail = rest.find("\napply:\n")
+        end = min(x for x in (after, tail, len(rest)) if x >= 0)
+        return rest[:end]
+
+    def test_every_member_declares_both_artifacts(self):
+        for member in self.MEMBERS:
+            text = self.schema(member)
+            self.assertIn("  - id: bolt\n", text, member)
+            self.assertIn("    generates: bolt.md\n", text, member)
+            self.assertIn("  - id: unit\n", text, member)
+            self.assertIn("    generates: units/<slug>.md\n", text, member)
+
+    def test_every_member_ships_the_unit_template(self):
+        # openspec requires a `template:` per artifact and refuses the
+        # schema without one, so the declaration is not complete until the
+        # file it names is on disk in that member.
+        for member in self.MEMBERS:
+            self.assertIn("    template: units/unit.md\n",
+                          self.instruction(member, "unit"), member)
+            self.assertTrue(
+                (ROOT / "schemas" / member / "templates" / "units"
+                 / "unit.md").is_file(), member)
+
+    def test_the_unit_instruction_says_copied_not_composed(self):
+        for member in self.MEMBERS:
+            unit = self.instruction(member, "unit")
+            self.assertIn("verbatim", unit, member)
+            self.assertIn("expansion", unit, member)
+            self.assertIn("not yours to compose", unit, member)
+            self.assertIn("not yours to edit", unit, member)
+
+    def test_no_bolt_instruction_directs_a_unit_document_into_the_charter(self):
+        # The scenario is literally "no member contradicts itself".
+        for member in self.MEMBERS:
+            bolt_block = self.instruction(member, "bolt")
+            self.assertIn("EXACTLY these four sections", bolt_block, member)
+            for forbidden in ("What follows those four sections",
+                              "# Unit:", "lowest-numbered unit"):
+                self.assertNotIn(forbidden, bolt_block, f"{member}: {forbidden}")
+
+    def test_every_bolt_instruction_names_the_description_and_the_landing_line(self):
+        for member in self.MEMBERS:
+            bolt_block = self.instruction(member, "bolt")
+            self.assertIn("**Input:** the bolt milestone's description",
+                          bolt_block, member)
+            self.assertIn('A "Landing:" line', bolt_block, member)
+
+    def test_the_bolt_templates_are_not_edited_by_this_change(self):
+        # Task 1.2's non-goal: the template already carries the four
+        # sections and nothing else.
+        for member in self.MEMBERS:
+            template = (ROOT / "schemas" / member / "templates"
+                        / "bolt.md").read_text()
+            self.assertNotIn("Unit:", template, member)
+            for heading in loop.BoltLoop.CHARTER_SECTIONS:
+                self.assertIn(heading, template, f"{member}: {heading}")
+
+
+class CharterRegionTest(unittest.TestCase):
+    """`merge_criteria()` reads the charter's region, not the whole file.
+
+    A record written under the older shape carries the unit's plan
+    document in `bolt.md` under a `# Unit: <slug>` heading, and that
+    document can have a `## Merge criteria` of its own. Searching the
+    whole file returns the first such section anywhere in it, so a charter
+    with none of its own hands back a UNIT'S criteria as the bolt's, and
+    `landing_mode()` takes a `Landing:` line from prose that never spoke
+    for this bolt.
+    """
+
+    #: A charter that states its own criteria, with a stale unit section
+    #: still below it stating different ones.
     LAYERED = """# Bolt: x
 
 ## Merge criteria
 Acceptance suites green on the bolt branch.
-Landing: pr
+Landing: merge
 
 # Unit: u1
 
@@ -2743,61 +2855,82 @@ The unit's plan document.
 
 ## Merge criteria
 The unit's own bar, which is not the bolt's.
+Landing: pr
 
 ## Left out
 Something this unit does not do.
 """
 
-    def change_dir(self, tmp, text):
+    #: The older shape with NO charter above the unit section — the state
+    #: both records on disk are in, minus the coincidence that neither of
+    #: their unit bodies happens to carry a criteria subsection.
+    OLDER = """# Unit: the-bolt-charter
+
+Some unit plan prose.
+
+## Merge criteria
+THE UNIT'S OWN CRITERIA — not the bolt's.
+Landing: pr
+"""
+
+    def charter(self, tmp, text):
         change = Path(tmp) / "openspec" / "changes" / "x"
         change.mkdir(parents=True, exist_ok=True)
         (change / "bolt.md").write_text(text)
-        return change
+        return a_loop(FakeTracker(), bolt_worktree=str(tmp))
 
-    def test_the_bolts_criteria_are_read_past_a_units_subsections(self):
+    def test_a_charter_that_states_its_own_criteria_is_read_from_disk(self):
+        # 7.5: its own charter, written here, rather than a repo path that
+        # has since been archived and takes a skip branch.
         with tempfile.TemporaryDirectory() as tmp:
-            self.change_dir(tmp, self.LAYERED)
-            program = a_loop(FakeTracker(), bolt_worktree=str(tmp))
+            program = self.charter(tmp, CHARTER)
+            self.assertIn("Acceptance suites green", program.merge_criteria())
+            self.assertIn("Landing: merge", program.merge_criteria())
+            self.assertEqual(program.landing_mode(), "merge")
+
+    def test_a_stale_unit_section_below_the_charter_is_not_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program = self.charter(tmp, self.LAYERED)
             criteria = program.merge_criteria()
             self.assertIn("Acceptance suites green", criteria)
             self.assertNotIn("The unit's own bar", criteria)
             self.assertNotIn("Left out", criteria)
-            self.assertEqual(program.landing_mode(), "pr",
-                             "the declared mode, not the reader's default")
+            self.assertEqual(program.landing_mode(), "merge",
+                             "the charter's declaration, not the unit's")
 
-    def test_the_append_lands_below_the_bolts_sections(self):
+    def test_a_stale_unit_section_cannot_supply_the_criteria(self):
+        # The live defect: with no charter above it, the whole-file search
+        # returned the UNIT'S text and `landing_mode()` read `pr` out of it.
         with tempfile.TemporaryDirectory() as tmp:
-            change = self.change_dir(tmp, CHARTER)
-            unit = Item(number=9, milestone="bolt/x", title="Unit: u2",
-                        body="The second unit's plan.\n\n## Its own heading\n\nx",
-                        labels=frozenset({inbox.UNIT}))
-            snapshot = Snapshot(items=[unit], milestone="bolt/x")
-            program = a_loop(FakeTracker(snapshot), bolt_worktree=str(tmp))
-            actions = []
-            self.assertIsNone(program.guard_charter(snapshot, actions))
-            text = (change / "bolt.md").read_text()
-            self.assertLess(text.index("## Merge criteria"), text.index("# Unit: u2"),
-                            "the bolt's criteria stay the first such heading")
-            self.assertIn("u2", actions[0])
-            after = a_loop(FakeTracker(snapshot), bolt_worktree=str(tmp))
-            self.assertIn("Acceptance suites green", after.merge_criteria())
-            self.assertNotIn("Its own heading", after.merge_criteria())
+            program = self.charter(tmp, self.OLDER)
+            self.assertEqual(program.merge_criteria(), "",
+                             "this bolt's criteria read as absent")
+            self.assertNotEqual(program.landing_mode(), "pr",
+                                "and no mode is taken from the unit's prose")
 
+    def test_the_older_shape_reaches_the_guards_check_and_the_refusal(self):
+        # 7.3: the absent case has to be genuinely absent, or neither the
+        # scaffold's post-settle check nor the landing's refusal fires.
+        with tempfile.TemporaryDirectory() as tmp:
+            change = Path(tmp) / "openspec" / "changes" / "x"
+            change.mkdir(parents=True)
+            (change / "bolt.md").write_text(self.OLDER)
+            shell = FakeShell({("git", "merge-base"): Result(0),
+                               ("git", "rev-parse"): Result(0, "abc1234\n"),
+                               ("git", "rev-list"): Result(0, "1\n")})
+            snapshot = Snapshot(
+                items=[item(1, inbox.TYPE_ASSERTION, inbox.IN_PROGRESS)],
+                milestone="bolt/x")
+            program = a_loop(FakeTracker(snapshot), shell=shell,
+                             repo_dir=str(tmp), bolt_worktree=str(tmp))
+            outcome = program.land_stage(snapshot)
+            self.assertEqual(outcome.status, "failed", outcome.detail)
+            self.assertIn("merge criteria could not be read", outcome.detail)
 
-# ---------------------------------------------------------------------------
-# Small readings
-# ---------------------------------------------------------------------------
-
-class ReadingTest(unittest.TestCase):
-
-    def test_the_merge_criteria_section_is_read_from_the_record_on_disk(self):
-        record = ROOT / "openspec" / "changes" / "loop-server" / "bolt.md"
-        if not record.exists():                      # a fresh worktree may lack it
-            self.skipTest("this bolt's record is not in this tree")
-        program = a_loop(FakeTracker(), slug="loop-server",
-                         bolt_worktree=str(ROOT))
-        self.assertIn("Landing: merge", program.merge_criteria())
-        self.assertEqual(program.landing_mode(), "merge")
+    def test_a_charter_with_no_unit_heading_is_its_own_region_entire(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            program = self.charter(tmp, CHARTER)
+            self.assertEqual(program.charter_region(CHARTER), CHARTER)
 
 
 class TrackerWriteTest(unittest.TestCase):

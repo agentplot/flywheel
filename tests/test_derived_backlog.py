@@ -6,6 +6,7 @@ network, no model, and a fake clock.
 """
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -650,6 +651,14 @@ class FakeGit:
             if rel not in self.head:
                 return result(128, stderr=f"path '{rel}' does not exist in HEAD")
             return result(0, stdout=self.head[rel])
+        if argv[:2] == ("git", "ls-tree"):
+            # `guard_charter` asks HEAD which unit files the record
+            # carries. A listing of the working tree would answer "yes" to
+            # a torn write forever, which is the hole this seam exists to
+            # keep open to the tests.
+            prefix = argv[-1].rstrip("/") + "/"
+            listed = [rel for rel in sorted(self.head) if rel.startswith(prefix)]
+            return result(0, stdout="".join(f"{rel}\n" for rel in listed))
         if argv[:2] == ("git", "add"):
             self.staged += [a for a in argv[2:] if a != "--"]
             return result(0)
@@ -678,20 +687,43 @@ class NotTheFixtureTracker:
 
 
 class CharterTest(unittest.TestCase):
-    """`guard_charter` — every expanded unit's plan document, in git.
+    """`guard_charter` — every approved unit's plan document, in git.
 
-    The scaffold session copies the first unit's document; a bolt of units
-    sees expansion once per approval, and this guard is what carries the
-    rest. Its test is what the charter carries AT HEAD, so it is
-    idempotent without storing anything and a torn commit is retried.
+    The record splits in two: `bolt.md` is the bolt's charter and each
+    approved unit's document is its own file at `units/<slug>.md`. This
+    guard writes the unit files, one per expansion, and never touches the
+    charter. Its idempotency test is which of those files the record
+    carries AT HEAD, so it stores nothing and a torn commit is retried
+    rather than read as done.
     """
 
     MILESTONE = "bolt/observer-rework"
     REL = "openspec/changes/observer-rework/bolt.md"
-    CHARTER = "# Unit: observer-rework\n\nthe first unit's document\n"
+    UNITS = "openspec/changes/observer-rework/units"
+    #: A charter of the shape the book asks for: the bolt's sections and
+    #: no unit's document anywhere in it.
+    CHARTER = ("# Bolt: observer-rework\n\n"
+               "## Scope\n\nwhat this bolt builds\n\n"
+               "## Merge criteria\n\nthe bolt's own criteria\nLanding: merge\n")
+    #: A record written under the OLDER shape: the unit's plan document
+    #: appended into `bolt.md`, carrying a `## Merge criteria` of its own
+    #: and no charter above it.
+    OLDER = ("# Unit: observer-rework\n\n"
+             "the first unit's document\n\n"
+             "## Merge criteria\n\nTHE UNIT'S OWN — not the bolt's.\n"
+             "Landing: pr\n")
 
-    def setup(self, tmp, items, charter=CHARTER, committed=True,
+    def rel(self, slug):
+        return f"{self.UNITS}/{slug}.md"
+
+    def setup(self, tmp, items, charter=CHARTER, units=(), at_head=None,
               tracker=None, fail_commit=False):
+        """A bolt worktree, a fake git, and a snapshot of `items`.
+
+        `units` are `(slug, body)` files on disk. `at_head` names which of
+        them HEAD also carries — defaulting to all of them, and set
+        explicitly where a test wants the torn-write case.
+        """
         # The bolt's worktree is NOT the main one — `repo_dir` is where a
         # fresh process starts and `guard_topology` is what moves it. Two
         # distinct paths, or "the commit ran in the bolt's worktree" is a
@@ -703,9 +735,14 @@ class CharterTest(unittest.TestCase):
         record = tree / self.REL
         if charter is not None:
             record.write_text(charter)
-        # HEAD carries the charter the scaffold session committed, unless a
-        # test wants the un-committed case.
-        head = {self.REL: charter} if (charter and committed) else {}
+        head = {self.REL: charter} if charter else {}
+        sealed = {s for s, _ in units} if at_head is None else set(at_head)
+        for slug, body in units:
+            path = tree / self.rel(slug)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body)
+            if slug in sealed:
+                head[self.rel(slug)] = body
         git = FakeGit(tree, head=head, fail_commit=fail_commit)
         snapshot = bolt.FixtureTracker(fixture(tmp, items)).snapshot(
             self.MILESTONE)
@@ -713,38 +750,69 @@ class CharterTest(unittest.TestCase):
                                  bolt_worktree=str(tree))
         loop = bolt.BoltLoop(params, tracker or NotTheFixtureTracker(),
                              run=git)
-        return loop, git, record, snapshot
+        return loop, git, record, snapshot, tree
 
     def two_units(self):
         return [unit_item(11, "observer-rework"),
                 unit_item(12, "second-unit", body=SECOND_BODY)]
 
-    def test_a_missing_unit_section_is_appended_and_committed(self):
+    # -- the unit file is written, and it is not the charter --------------
+
+    def test_the_first_unit_is_written_and_committed(self):
         with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(tmp, self.two_units())
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework")])
             actions = []
             self.assertIsNone(loop.guard_charter(snap, actions))
-            text = record.read_text()
-            self.assertIn("# Unit: second-unit", text)
-            self.assertIn("The second unit, approved later.", text)
-            self.assertLess(text.index("# Unit: observer-rework"),
-                            text.index("# Unit: second-unit"),
-                            "appended after what the charter already held")
-            self.assertIn("the first unit's document", text)
+            written = tree / self.rel("observer-rework")
+            self.assertTrue(written.exists(), "the unit file is the artifact")
+            self.assertIn(PLAN_BODY.strip(), written.read_text(),
+                          "verbatim from the approved card's body")
             self.assertEqual([a for a, _ in git.of("add")],
-                             [("git", "add", "--", self.REL)])
+                             [("git", "add", "--", self.rel("observer-rework"))])
             commits = git.of("commit")
             self.assertEqual(len(commits), 1, "one commit, one path")
-            self.assertEqual(commits[0][0][-2:], ("--", self.REL),
+            self.assertEqual(commits[0][0][-2:],
+                             ("--", self.rel("observer-rework")),
                              "by pathspec — never -a, never add -A")
-            self.assertEqual(git.head[self.REL], text, "and it reached HEAD")
+            self.assertEqual(git.head[self.rel("observer-rework")],
+                             written.read_text(), "and it reached HEAD")
+            self.assertEqual(len(actions), 1)
+
+    def test_the_charter_is_never_appended_to(self):
+        # The append this guard used to make is what put a unit's `##`
+        # subsections in the same file as the bolt's.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(tmp, self.two_units())
+            loop.guard_charter(snap, [])
+            self.assertEqual(record.read_text(), self.CHARTER)
+            self.assertNotIn("Unit:", record.read_text())
+            self.assertEqual(loop.merge_criteria(),
+                             "the bolt's own criteria\nLanding: merge")
+
+    def test_a_second_unit_lands_beside_the_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            first = "the first unit's document\n"
+            loop, git, record, snap, tree = self.setup(
+                tmp, self.two_units(), units=[("observer-rework", first)])
+            actions = []
+            self.assertIsNone(loop.guard_charter(snap, actions))
+            self.assertEqual((tree / self.rel("observer-rework")).read_text(),
+                             first, "the first unit's file is untouched")
+            second = tree / self.rel("second-unit")
+            self.assertIn("The second unit, approved later.", second.read_text())
+            self.assertEqual(record.read_text(), self.CHARTER,
+                             "and the charter with it")
+            self.assertEqual([a for a, _ in git.of("add")],
+                             [("git", "add", "--", self.rel("second-unit"))],
+                             "only the file this pass wrote")
             self.assertEqual(len(actions), 1)
 
     def test_every_git_call_runs_in_the_bolts_worktree(self):
         # "committed to the branch that carries the bolt's record" is a
         # statement about WHERE, and nothing else here observes it.
         with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(tmp, self.two_units())
+            loop, git, record, snap, tree = self.setup(tmp, self.two_units())
             loop.guard_charter(snap, [])
             self.assertTrue(git.calls)
             self.assertNotEqual(loop.params.bolt_worktree,
@@ -753,135 +821,143 @@ class CharterTest(unittest.TestCase):
             for argv, cwd in git.calls:
                 self.assertEqual(cwd, loop.params.bolt_worktree, str(argv))
 
-    def test_a_second_pass_writes_nothing(self):
+    # -- idempotency, keyed on HEAD ---------------------------------------
+
+    def test_a_pass_with_every_unit_file_at_head_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(tmp, self.two_units())
+            loop, git, record, snap, tree = self.setup(tmp, self.two_units())
             loop.guard_charter(snap, [])
-            before = record.read_text()
+            before = {s: (tree / self.rel(s)).read_text()
+                      for s in ("observer-rework", "second-unit")}
             actions = []
             self.assertIsNone(loop.guard_charter(snap, actions))
-            self.assertEqual(record.read_text(), before)
+            self.assertEqual({s: (tree / self.rel(s)).read_text()
+                              for s in before}, before)
             self.assertEqual(len(git.of("commit")), 1, "no second commit")
             self.assertEqual(len(git.of("add")), 1)
             self.assertEqual(actions, [], "a dry cycle records nothing")
 
-    def test_a_hand_edited_section_is_never_overwritten(self):
-        # Durable prose in git outranks mutable tracker state: the heading
-        # is the test, so an edited section is left exactly as it stands.
+    def test_a_unit_file_at_head_is_never_rewritten(self):
+        # Durable prose in git outranks the mutable tracker state it came
+        # from, whether the loop or a hand wrote it.
         with tempfile.TemporaryDirectory() as tmp:
-            edited = "# Unit: observer-rework\n\nrewritten by hand\n"
-            loop, git, record, snap = self.setup(
-                tmp, [unit_item(11, "observer-rework")], charter=edited)
-            self.assertIsNone(loop.guard_charter(snap, []))
-            self.assertEqual(record.read_text(), edited)
-            self.assertEqual(git.of("commit"), [])
-
-    def test_a_heading_in_another_case_is_still_the_same_unit(self):
-        # The heading is the ONLY idempotency test the guard has, so a
-        # section a session wrote `# unit:` must not be appended again —
-        # once per pass, forever.
-        with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(
+            edited = "rewritten by hand, and nothing like the card\n"
+            loop, git, record, snap, tree = self.setup(
                 tmp, [unit_item(11, "observer-rework")],
-                charter="# unit: Observer-Rework\n\nlower-case heading\n")
+                units=[("observer-rework", edited)])
             self.assertIsNone(loop.guard_charter(snap, []))
-            self.assertEqual(record.read_text().count("nit:"), 1)
+            self.assertEqual((tree / self.rel("observer-rework")).read_text(),
+                             edited)
             self.assertEqual(git.of("commit"), [])
 
-    def test_a_bolt_with_no_unit_cards_leaves_the_charter_alone(self):
+    def test_a_torn_write_is_recommitted_without_being_rewritten(self):
+        # THE failure mode the committed-state test exists for. The file is
+        # on disk the moment write_text returns; a guard that asked the
+        # working tree "is it there?" would answer yes forever and the
+        # commit would never be retried.
         with tempfile.TemporaryDirectory() as tmp:
-            plain = "## Scope\n\na quick bolt born at triage\n"
-            loop, git, record, snap = self.setup(
-                tmp, [work_item(9, parent=None)], charter=plain)
-            self.assertIsNone(loop.guard_charter(snap, []))
-            self.assertEqual(record.read_text(), plain)
-            self.assertEqual(git.of("commit"), [])
-
-    def test_no_charter_yet_is_the_scaffolds_to_write(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(
-                tmp, [unit_item(11, "observer-rework")], charter=None)
-            self.assertIsNone(loop.guard_charter(snap, []))
-            self.assertFalse(record.exists())
-            self.assertEqual(git.calls, [])
-
-    def test_a_charter_not_yet_in_head_falls_back_to_the_working_tree(self):
-        # The scaffold session wrote bolt.md but its commit has not landed
-        # in HEAD yet: there is nothing else to compare against, and the
-        # first unit's section must not be duplicated on top of itself.
-        with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(
-                tmp, [unit_item(11, "observer-rework")], committed=False)
-            self.assertIsNone(loop.guard_charter(snap, []))
-            self.assertEqual(record.read_text(), self.CHARTER)
-            self.assertEqual(git.of("commit"), [])
-
-    def test_the_bolts_merge_criteria_survive_an_appended_unit(self):
-        # `merge_criteria()` reads the FIRST `## Merge criteria`, and a unit
-        # document's own subsections are `##`. Appending keeps the bolt's.
-        with tempfile.TemporaryDirectory() as tmp:
-            charter = ("## Scope\n\nthe bolt\n\n"
-                       "## Merge criteria\n\nthe bolt's own criteria\n")
-            loop, git, record, snap = self.setup(
-                tmp, [unit_item(11, "later", body="## Merge criteria\n\nthe "
-                                                  "unit's\n")], charter=charter)
-            self.assertIsNone(loop.guard_charter(snap, []))
-            self.assertIn("# Unit: later", record.read_text())
-            self.assertEqual(loop.merge_criteria(), "the bolt's own criteria")
-
-    def test_a_torn_commit_is_named_and_retried_on_the_next_pass(self):
-        # THE failure mode the committed-content test exists for. The
-        # section is on disk the moment write_text returns; if the guard
-        # asked the working tree "is it there?" it would answer yes
-        # forever and the commit would never be retried.
-        with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(tmp, self.two_units(),
-                                                 fail_commit=True)
+            loop, git, record, snap, tree = self.setup(
+                tmp, self.two_units(), fail_commit=True)
             failure = loop.guard_charter(snap, [])
             self.assertIn("commit failed", failure)
-            self.assertIn("# Unit: second-unit", record.read_text(),
-                          "the working tree has it")
-            self.assertNotIn("second-unit", git.head[self.REL],
+            second = tree / self.rel("second-unit")
+            self.assertTrue(second.exists(), "the working tree has it")
+            self.assertNotIn(self.rel("second-unit"), git.head,
                              "and HEAD does not")
 
             # ...the operator clears whatever refused the commit.
             git.fail_commit = False
-            torn = record.read_text()
+            torn = second.read_text()
             actions = []
             self.assertIsNone(loop.guard_charter(snap, actions))
-            self.assertEqual(record.read_text(), torn,
-                             "appended once, not twice")
-            self.assertIn("# Unit: second-unit", git.head[self.REL],
+            self.assertEqual(second.read_text(), torn,
+                             "the content stays exactly as it stands")
+            self.assertIn(self.rel("second-unit"), git.head,
                           "the retry is what committed it")
             self.assertEqual(len(actions), 1)
+
+    def test_a_file_on_disk_but_not_at_head_keeps_its_content(self):
+        # The torn-write repair is a re-commit, never a re-copy: the card's
+        # body may have moved since, and the file is already durable prose.
+        with tempfile.TemporaryDirectory() as tmp:
+            stale = "what the previous pass wrote, before the card moved\n"
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework")],
+                units=[("observer-rework", stale)], at_head=())
+            self.assertIsNone(loop.guard_charter(snap, []))
+            self.assertEqual((tree / self.rel("observer-rework")).read_text(),
+                             stale)
+            self.assertEqual(len(git.of("commit")), 1, "but the commit re-runs")
+
+    # -- records in the older shape ---------------------------------------
+
+    def test_an_older_shape_record_gets_its_unit_file_and_keeps_its_prose(self):
+        # No migration step: the test is whether `units/<slug>.md` exists,
+        # so a record whose unit prose sits in `bolt.md` simply has none
+        # and this same path writes one. The stale section stays put.
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework")], charter=self.OLDER)
+            self.assertIsNone(loop.guard_charter(snap, []))
+            self.assertTrue((tree / self.rel("observer-rework")).exists())
+            self.assertEqual(record.read_text(), self.OLDER,
+                             "committed prose is not rewritten")
+            self.assertEqual(loop.merge_criteria(), "",
+                             "and the unit's section cannot supply criteria")
+
+    # -- the guard writes nothing where it should -------------------------
+
+    def test_a_bolt_with_no_unit_cards_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [work_item(9, parent=None)])
+            self.assertIsNone(loop.guard_charter(snap, []))
+            self.assertFalse((tree / self.UNITS).exists())
+            self.assertEqual(record.read_text(), self.CHARTER)
+            self.assertEqual(git.of("commit"), [])
+
+    def test_no_change_directory_yet_is_the_scaffolds_to_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework")], charter=None)
+            shutil.rmtree(loop.params.change_dir)
+            self.assertIsNone(loop.guard_charter(snap, []))
+            self.assertEqual(git.calls, [])
+
+    def test_a_unit_with_an_empty_body_is_logged_and_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11, "observer-rework", body="   ")])
+            self.assertIsNone(loop.guard_charter(snap, []))
+            self.assertFalse((tree / self.rel("observer-rework")).exists())
+            self.assertEqual(git.of("commit"), [])
 
     def test_a_fixture_run_never_writes_the_operators_checkout(self):
         # `guard_topology` skips itself under a fixture tracker, so
         # `bolt_worktree` is still `repo_dir` — the operator's own tree, on
-        # whatever branch is out. Latent today only because no fixture
-        # carries a unit card.
+        # whatever branch is out.
         with tempfile.TemporaryDirectory() as tmp:
             tracker = bolt.FixtureTracker(fixture(tmp, self.two_units()))
-            loop, git, record, snap = self.setup(tmp, self.two_units(),
-                                                 tracker=tracker)
+            loop, git, record, snap, tree = self.setup(
+                tmp, self.two_units(), tracker=tracker)
             actions = []
             self.assertIsNone(loop.guard_charter(snap, actions))
-            self.assertEqual(record.read_text(), self.CHARTER)
+            self.assertFalse((tree / self.UNITS).exists())
             self.assertEqual(git.of("commit"), [])
             self.assertEqual(git.of("add"), [])
             self.assertEqual(actions, [])
 
-    def test_a_dry_run_says_what_it_would_append_and_writes_nothing(self):
+    def test_a_dry_run_says_what_it_would_write_and_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            loop, git, record, snap = self.setup(tmp, self.two_units())
+            loop, git, record, snap, tree = self.setup(tmp, self.two_units())
             loop.dry_run = True
             actions = []
             self.assertIsNone(loop.guard_charter(snap, actions))
-            self.assertEqual(record.read_text(), self.CHARTER)
+            self.assertFalse((tree / self.UNITS).exists())
             self.assertEqual(git.of("commit"), [])
             self.assertEqual(len(actions), 1)
-            self.assertIn("would append", actions[0])
-            self.assertIn("second-unit", actions[0])
+            self.assertIn("would write", actions[0])
+            self.assertIn("second-unit.md", actions[0])
 
     def test_the_charter_guard_runs_after_topology_names_the_worktree(self):
         # design.md makes this a Decision, and every other test here calls
@@ -889,8 +965,8 @@ class CharterTest(unittest.TestCase):
         # reorder would commit into the MAIN worktree with the suite green.
         with tempfile.TemporaryDirectory() as tmp:
             tracker = bolt.FixtureTracker(fixture(tmp, [unit_item(11)]))
-            loop, git, record, snap = self.setup(tmp, [unit_item(11)],
-                                                 tracker=tracker)
+            loop, git, record, snap, tree = self.setup(
+                tmp, [unit_item(11)], tracker=tracker)
             seen = []
 
             def watch(name):
