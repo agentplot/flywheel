@@ -48,5 +48,5 @@
 - [x] 8.1 `node scripts/check-site.mjs` green — every reference resolves and every remaining mermaid block parses with all-or-nothing `classDef` coverage. Done when it exits 0.
 - [x] 8.2 `node scripts/check-paths.mjs` and `sh scripts/validate-manifests.sh` green. Done when both exit 0.
 - [x] 8.3 Open the page in a browser at desktop and narrow widths and read it as a stranger would. Done when the five beats read in order and nothing overflows.
-- [ ] 8.4 Commit by pathspec — `git add -- site/index.html` then `git commit -- site/index.html` — with a `Refs: #331` footer. Never `-a`, never `add -A`. Done when the commit carries only the paths this change wrote.
-- [ ] 8.5 Report in the item comment: which path and commit `coupling-word.md` was read from, and the fact that `page-teaching-order.md` on this branch still carries the pre-amendment beat 4. Done when both are stated rather than left for a reader to infer.
+- [x] 8.4 Commit by pathspec — `git add -- site/index.html` then `git commit -- site/index.html` — with a `Refs: #331` footer. Never `-a`, never `add -A`. Done when the commit carries only the paths this change wrote.
+- [x] 8.5 Report in the item comment: which path and commit `coupling-word.md` was read from, and the fact that `page-teaching-order.md` on this branch still carries the pre-amendment beat 4. Done when both are stated rather than left for a reader to infer.
