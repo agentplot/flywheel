@@ -755,8 +755,12 @@ def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
     not touch the server), and its home is not necessarily this machine —
     the block's optional `host:` pins it, and its long arc is a cloud
     service the fleet reaches only through the dispatch MCP server. cwd
-    is the org folder root: dispatch holds no repo checkout, and its one
-    file write lands under `<org>/.flywheel/`.
+    is `loops_cwd:` — not because dispatch owns that checkout (it edits
+    no file; its one write lands under `<org>/.flywheel/`) but because a
+    bare `--agent flywheel-dispatch` resolves only where the flywheel
+    plugin is enabled, and that is the coordination repo (measured: from
+    the org folder root, claude exits with "agent not found" and the
+    start times out with nothing in the pane).
     """
     block = manifest.get("dispatch") or {}
     if not block:
@@ -772,6 +776,14 @@ def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
         print(f"dispatch: already running "
               f"({alive.get('agent_status', 'alive')})")
         return 0
+    cwd_rel = manifest["top"].get("loops_cwd")
+    if not cwd_rel:
+        sys.exit("dispatch needs `loops_cwd:` in fleet.yaml — the checkout "
+                 "whose enabled plugin carries the flywheel profiles")
+    cwd = (manifest["root"] / cwd_rel).resolve()
+    if not cwd.is_dir():
+        sys.exit(f"loops_cwd: {cwd_rel} does not resolve under "
+                 f"{manifest['root']}")
     env_map = dict(block.get("env") or {})
     if block.get("channels") or "DISCORD_STATE_DIR" in env_map:
         # The org-scoped Discord state — bot token and allowlist — kept
@@ -785,7 +797,7 @@ def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
     claude_args = (("--channels", block["channels"])
                    if block.get("channels") else ())
     ok = launch_agent("dispatch", "flywheel-dispatch", block.get("model"),
-                      manifest["root"], block.get("prompt"), env,
+                      cwd, block.get("prompt"), env,
                       tab_env=tuple(f"{k}={v}" for k, v in env_map.items()),
                       claude_args=claude_args)
     return 0 if ok else 1
