@@ -410,6 +410,16 @@ The parent is the board row. The released items are NOT added to the
 board beside it — one row per bolt is what the parent buys, and it is
 lost if the sub-issues appear too.
 
+A design session applying an approved round-close plan
+(`round-close.md` beside this file) runs the same Ready move — on the
+elaboration parent it composed and on each approved plan card — as the
+protocol's step 5, after `stage:done` and never before:
+
+```bash
+<plugin-root>/bin/flywheel-board --org <org> --repo <tracker> \
+  --status Ready <elaboration parent> <approved card> ...
+```
+
 Finding the batches the operator has released:
 
 ```bash

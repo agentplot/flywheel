@@ -66,8 +66,10 @@ queue a question — never invent tracker structure.**
    discoveries become new items.
 5. **The state ladder is `queued → ready → in-progress → closed:*`**,
    and each move has an owner: anyone queues; only the operator's word
-   makes ready — the flip to Ready on the board for a batch, or
-   born-ready at triage when the work IS the operator's word; the
+   makes ready — the flip to Ready on the board for a batch, born-ready
+   at triage when the work IS the operator's word, or the approval of a
+   round-close plan, applied by the session that ran the round
+   (`round-close.md` beside this file); the
    loop flips `in-progress` as a session starts; whoever holds
    the evidence closes, always with one `closed:*` reason.
    **`stage:*` refines `in-progress` and never replaces a `state:*`
@@ -100,8 +102,9 @@ queue a question — never invent tracker structure.**
 6. **Construction work is born as a plan card, never as an intent
    item.** A design session records what must be built in its
    decisions and the book; the demand reaches the tracker one way —
-   the bolt planner cards it from the book, a session composes the
-   card directly, or the operator dictates one; the operator approves
+   the bolt planner cards it from the book, a session cards it in its
+   round-close plan (`round-close.md` beside this file), or the
+   operator dictates one; the operator approves
    the card, and expansion births the work items on the bolt
    milestone.
 7. **Blocked on the operator's word**: comment the one-line question
