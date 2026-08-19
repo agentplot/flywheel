@@ -71,7 +71,6 @@ value.
 
 import json
 import os
-import re
 import shutil
 import signal
 import socket
@@ -83,168 +82,34 @@ from pathlib import Path
 from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _flywheel_herdr as herdr    # noqa: E402
 import _flywheel_inbox as inbox    # noqa: E402
 import _flywheel_ledger as ledger_mod  # noqa: E402
 import _flywheel_server as server  # noqa: E402
 from _flywheel_gh import GraphqlError, resolve_token  # noqa: E402
-
-STATES = {"running", "parked"}
-
-# Two manifest keys retired with the agent fleet they configured: one named
-# the directory those agents started in, the other the model they launched
-# on. The server starts loop PROCESSES, which have a working directory and no
-# model. A manifest still carrying either key is stale in a way that would
-# otherwise be silent — the server would look for `loops_cwd:`, find nothing
-# and start nothing — so these are named, matched, and refused with the fix.
-# `fleet.yaml` is machine-local and no commit can migrate it; only a message
-# can. The strings below are that matcher, not a live reference.
-RETIRED_KEYS = {
-    "conductors_cwd": "loops_cwd",
-    "conductor_model": None,
-}
-
-
-def find_manifest(override: str | None) -> Path:
-    if override:
-        p = Path(override).expanduser().resolve()
-        if not p.is_file():
-            sys.exit(f"--fleet {override}: no such file")
-        return p
-    cur = Path.cwd().resolve()
-    for d in [cur, *cur.parents]:
-        candidate = d / "fleet.yaml"
-        if candidate.is_file():
-            return candidate
-    sys.exit("no fleet.yaml found walking up from here — the manifest lives "
-             "at the org folder root; pass --fleet to name one explicitly")
-
-
-def parse_manifest(path: Path) -> dict:
-    hosts: dict[str, dict] = {}
-    actors: list[dict] = []
-    teams: dict[str, str] = {}
-    books: dict[str, dict] = {}
-    top: dict[str, str] = {}
-    section = None
-    current: dict | None = None
-    current_host = None
-    current_book = None
-    for raw in path.read_text().splitlines():
-        if raw.lstrip().startswith("#") or not raw.strip():
-            continue
-        line = raw.rstrip()
-        if line == "hosts:":
-            section, current = "hosts", None
-        elif line == "actors:":
-            section, current = "actors", None
-        elif line == "teams:":
-            section, current = "teams", None
-        elif line == "books:":
-            section, current, current_book = "books", None, None
-        elif not line.startswith(" ") and ":" in line:
-            # a top-level key anywhere ends the current section — never
-            # silently absorbed into the last actor or host
-            section, current, current_host = None, None, None
-            k, _, v = line.partition(":")
-            top[k.strip()] = v.strip().strip('"')
-        elif section == "hosts" and line.startswith("  ") and not line.startswith("    "):
-            current_host = line.strip().rstrip(":")
-            hosts[current_host] = {}
-        elif section == "hosts" and line.startswith("    ") and current_host:
-            k, _, v = line.strip().partition(":")
-            hosts[current_host][k] = v.strip().strip('"')
-        elif section == "actors" and line.lstrip().startswith("- "):
-            current = {}
-            actors.append(current)
-            k, _, v = line.lstrip()[2:].partition(":")
-            current[k.strip()] = v.strip().strip('"')
-        elif section == "actors" and current is not None:
-            k, _, v = line.strip().partition(":")
-            current[k.strip()] = v.strip().strip('"')
-        elif section == "teams" and line.startswith("  "):
-            k, _, v = line.strip().partition(":")
-            teams[k.strip()] = v.strip().strip('"')
-        elif section == "books" and line.startswith("  ") and not line.startswith("    "):
-            current_book = line.strip().rstrip(":")
-            books[current_book] = {}
-        elif section == "books" and line.startswith("    ") and current_book:
-            k, _, v = line.strip().partition(":")
-            books[current_book][k.strip()] = v.strip().strip('"')
-    manifest = {"top": top, "hosts": hosts, "actors": actors,
-                "teams": teams, "books": books, "root": path.parent}
-    validate(manifest)
-    return manifest
-
-
-def validate(manifest: dict) -> None:
-    problems = []
-    for key, replacement in RETIRED_KEYS.items():
-        if key in manifest["top"]:
-            problems.append(
-                f"`{key}:` retired with the agent fleet — "
-                + (f"rename it to `{replacement}:`" if replacement
-                   else "drop it; a loop process has no model"))
-    for a in manifest["actors"]:
-        name = a.get("name", "<unnamed>")
-        for field in ("name", "profile", "host", "state", "cwd"):
-            if not a.get(field):
-                problems.append(f"{name}: missing {field}")
-        if a.get("state") and a["state"] not in STATES:
-            problems.append(f"{name}: state '{a['state']}' is not one of {sorted(STATES)}")
-        if a.get("host") and a["host"] not in manifest["hosts"]:
-            problems.append(f"{name}: host '{a['host']}' is not in hosts:")
-        if a.get("cwd", "").startswith("/"):
-            problems.append(f"{name}: cwd is absolute — cwd: entries are "
-                            "relative to the manifest's directory")
-    for team, host in manifest["teams"].items():
-        if host not in manifest["hosts"]:
-            problems.append(f"teams: {team} → '{host}' is not in hosts:")
-    if problems:
-        sys.exit("manifest invalid:\n  " + "\n  ".join(problems))
+from _flywheel_manifest import find_manifest, parse_manifest  # noqa: E402
 
 
 def session_env(manifest: dict) -> tuple[str, dict]:
-    name = manifest["top"].get("session") or manifest["root"].name
-    # normalize an org folder like github_willdan to its plain org name
-    name = re.sub(r"^github_", "", name)
-    if shutil.which("herdr") is None:
-        sys.exit("herdr not on PATH — the fleet is not addressable from here")
-    out = subprocess.run(["herdr", "session", "list"], capture_output=True, text=True)
-    if out.returncode != 0:
-        sys.exit(f"herdr session list failed: {out.stderr.strip()}")
-    sock = None
-    for line in out.stdout.splitlines()[1:]:
-        cols = line.split()
-        if len(cols) >= 4 and cols[0] == name and cols[1] == "running":
-            sock = cols[-1]
+    name = herdr.session_name(manifest)
+    try:
+        sock = herdr.session_socket(name)
+    except RuntimeError as e:
+        sys.exit(str(e))
     if not sock:
         sys.exit(f"the fleet's herdr session '{name}' is not running — start "
                  f"it with:  herdr --session {name}\nthen re-run this command")
-    env = dict(os.environ, HERDR_SOCKET_PATH=sock)
-    return name, env
+    return name, herdr.session_environ(sock)
 
 
-def herdr_json(argv: list[str], env: dict) -> dict:
-    out = subprocess.run(argv, capture_output=True, text=True, env=env)
-    if out.returncode != 0:
-        raise RuntimeError(f"{' '.join(argv)} failed: {out.stderr.strip()}")
-    try:
-        return json.loads(out.stdout or "{}")
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"{' '.join(argv)} returned unparseable output: {e}")
+herdr_json = herdr.herdr_json
 
 
 def herdr_agents(env: dict) -> dict[str, dict]:
     try:
-        data = herdr_json(["herdr", "agent", "list"], env)
+        return herdr.herdr_agents(env)
     except RuntimeError as e:
         sys.exit(str(e))
-    rows = data.get("result", {}).get("agents", [])
-    return {
-        (a.get("name") or a.get("terminal_title_stripped", "")): a
-        for a in rows
-        if isinstance(a, dict)
-    }
 
 
 def this_host(manifest: dict, override: str | None) -> str:
@@ -791,26 +656,10 @@ def status(manifest: dict, host: str, session: str, env: dict) -> int:
 
 
 def send_prompt(name: str, text: str, env: dict) -> bool:
-    sent = subprocess.run(["herdr", "agent", "prompt", name, text],
-                          capture_output=True, text=True, env=env)
-    if sent.returncode != 0:
-        print(f"  prompt to {name} failed: {sent.stderr.strip()}")
-        return False
-    # A multi-line or slow-composer prompt can land unsubmitted — the
-    # agent stays idle with the text sitting at its prompt. Verify it
-    # went to work; one Enter submits a stuck composer. A fresh session
-    # initializes for tens of seconds (plugin load), so the window is
-    # generous — a first prompt regularly submits near the 30s mark.
-    for _attempt in range(8):
-        time.sleep(4)
-        agent = herdr_agents(env).get(name, {})
-        if agent.get("agent_status") == "working":
-            return True
-        subprocess.run(["herdr", "agent", "send-keys", name, "enter"],
-                       capture_output=True, text=True, env=env)
-    print(f"  {name} never went to work on the prompt — read its pane "
-          "and prompt it by hand")
-    return False
+    delivered, reason = herdr.send_prompt(name, text, env)
+    if not delivered:
+        print(f"  {reason}")
+    return delivered
 
 
 def start_actor(name: str, profile: str, model: str | None, cwd: Path,
