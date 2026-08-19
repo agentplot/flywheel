@@ -155,29 +155,38 @@ code{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
 .rl.approval .dot{border-radius:3px}
 
 /* ----------------------------------------------------------------- steps --
-   One tall page: each step is a full section the reader scrolls through, what
-   happens on the left, the artifact it leaves on the right. */
+   One tall page, one step at a time: each section takes most of a screen, so
+   the step you are on is the only thing at full size and full strength. The
+   script dims the others and lights the rail; with JS off every step reads at
+   full strength and the page is a plain document. */
 .stepbox{
   border:1px solid var(--line);border-radius:12px;background:rgba(13,37,40,.75);
-  overflow:hidden;margin:0 0 26px;scroll-margin-top:132px;
+  overflow:hidden;margin:0 0 30px;scroll-margin-top:132px;
+  min-height:72vh;display:grid;
+  transition:opacity .25s ease,border-color .25s ease;
 }
+@media(max-width:760px){.stepbox{min-height:0}}
+@media (prefers-reduced-motion:reduce){.stepbox{transition:none}}
+body.scrolly .stepbox{opacity:.35}
+body.scrolly .stepbox.on{opacity:1;border-color:rgba(201,162,39,.55)}
 .stage2{display:grid;gap:0;grid-template-columns:minmax(0,5fr) minmax(0,6fr)}
 @media(max-width:760px){.stage2{grid-template-columns:1fr}}
-.happens{padding:22px 22px 16px}
-.happens .k{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--mint);margin:0 0 8px}
+.happens{padding:34px 30px 26px;display:flex;flex-direction:column;justify-content:center}
+.happens .k{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--mint);margin:0 0 10px}
 .happens h2{
   font-family:"Space Grotesk",system-ui,sans-serif;
-  margin:0 0 10px;font-size:20px;line-height:1.3;letter-spacing:-.015em;font-weight:700;color:var(--bone);
+  margin:0 0 12px;font-size:clamp(21px,2.6vw,27px);line-height:1.25;letter-spacing:-.02em;font-weight:700;color:var(--bone);
 }
-.happens p{font-size:13px;margin:0 0 12px}
+.happens p{font-size:14px;margin:0 0 14px;line-height:1.75}
 .who{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
 .who i{font-style:normal;color:var(--brass)}
-.artifact{padding:22px 22px 16px;border-left:1px solid var(--line-soft);background:rgba(9,28,31,.5)}
+.artifact{padding:34px 30px 26px;border-left:1px solid var(--line-soft);background:rgba(9,28,31,.5);
+  display:flex;flex-direction:column;justify-content:center}
 @media(max-width:760px){.artifact{border-left:none;border-top:1px solid var(--line-soft)}}
-.artifact .k{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);margin:0 0 10px}
+.artifact .k{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--brass);margin:0 0 12px}
 
 /* artifact cards */
-.art{border:1px solid var(--line);border-radius:8px;background:var(--ground-2);overflow:hidden;font-size:12px}
+.art{border:1px solid var(--line);border-radius:8px;background:var(--ground-2);overflow:hidden;font-size:12.5px}
 .art .ahead{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line-soft);
   font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
 .art .abody{padding:12px 14px;line-height:1.65;color:var(--ink2);overflow-x:auto}
@@ -187,7 +196,7 @@ code{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
 .art .abody .yes{color:var(--mint)}
 .art .abody ins{background:rgba(143,185,174,.16);color:#c9e4dc;text-decoration:none;display:block;padding:0 4px}
 .art .abody del{background:rgba(180,85,45,.18);color:#e8b09a;text-decoration:none;display:block;padding:0 4px}
-.art .abody pre{margin:0;font-family:inherit;white-space:pre;font-size:11.5px}
+.art .abody pre{margin:0;font-family:inherit;white-space:pre;font-size:12px}
 .chip{display:inline-block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
   padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--ink3);white-space:nowrap}
 .chip.mint{color:var(--mint);border-color:rgba(143,185,174,.45);background:rgba(143,185,174,.08)}
@@ -228,7 +237,7 @@ footer a:hover{color:var(--brass)}
   <div class="wrap">
     <a class="mark" href="index.html">Fly<span>wheel</span></a>
     <nav aria-label="Elsewhere">
-      <a href="index.html#walk">One idea, walked</a>
+      <a href="index.html#walk">From idea to merged</a>
       <a href="overview.html">Overview</a>
       <a href="https://github.com/agentplot/flywheel">GitHub</a>
     </nav>
@@ -237,12 +246,12 @@ footer a:hover{color:var(--brass)}
 
 <div class="lede">
   <div class="wrap">
-    <p class="eyebrow">Concept tour · one idea, walked end to end</p>
+    <p class="eyebrow">Concept tour · from idea to merged</p>
     <h1>“<i>Exports fail when the API rate-limits us.</i>”</h1>
     <p>One raw sentence — the kind that arrives in a chat window on a Tuesday —
-      walked through all seven steps of the flywheel, with the artifact each step
-      leaves behind. The steps never change; that constancy is the lesson. Only
-      the idea does.</p>
+      followed through all seven steps of the flywheel, with the artifact each
+      step leaves behind. The steps never change; that constancy is the lesson.
+      Only the idea does.</p>
     <p class="sibs">the same journey, other ideas:
       <a href="tour-onboarding-email.html">onboarding emails arrive out of order</a> ·
       <a href="tour-dashboard-dark-theme.html">give the dashboard a dark theme</a></p>
@@ -444,6 +453,7 @@ surfacing it. <span class="cm">Closed by the operator, 2026-08-12.</span></pre><
   const links = [...document.querySelectorAll(".rl")];
   const steps = links.map(l => document.querySelector(l.getAttribute("href")));
   if (!links.length || steps.some(s => !s) || !("IntersectionObserver" in window)) return;
+  document.body.classList.add("scrolly");
   let current = -1;
   const paint = (i) => {
     if (i === current) return;
@@ -452,6 +462,7 @@ surfacing it. <span class="cm">Closed by the operator, 2026-08-12.</span></pre><
       l.classList.toggle("on", n === i);
       l.classList.toggle("seen", n < i);
     });
+    steps.forEach((s, n) => s.classList.toggle("on", n === i));
   };
   const observer = new IntersectionObserver((entries) => {
     for (const e of entries) {
