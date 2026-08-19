@@ -113,6 +113,34 @@ class FakeTracker:
         self.writes.append(("comment", number, body))
 
 
+class FakeDispatch:
+    """The dispatch MCP surface, as the daemon sees it: a factory yielding
+    one per-pass session with relay/triage. Records calls and sessions."""
+
+    def __init__(self, result=None):
+        self.result = result or {"delivered": True}
+        self.calls = []
+        self.sessions = 0
+
+    def __call__(self):
+        self.sessions += 1
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def relay(self, items):
+        self.calls.append(("relay", items))
+        return self.result
+
+    def triage(self, items):
+        self.calls.append(("triage", items))
+        return self.result
+
+
 def a_server(tracker=None, run=None, popen=None, clock=None, **kw):
     config = server.ServerConfig(
         org="agentplot", repo="flywheel", host="workstation",
@@ -121,7 +149,7 @@ def a_server(tracker=None, run=None, popen=None, clock=None, **kw):
     box = server.Server(
         config, tracker=tracker or FakeTracker(), run=run or FakeRun(),
         popen=popen or FakePopen(), clock=clock or FakeClock(),
-        sleep=lambda _s: None, log=lambda _m: None,
+        sleep=lambda _s: None, log=kw.pop("log", None) or (lambda _m: None),
         opener=lambda path: None, **kw)
     return box
 
@@ -301,18 +329,44 @@ class PassTest(unittest.TestCase):
         self.assertIn(("bolt/a", "run"), box.processes,
                       "one bad read must not tear the fleet down")
 
-    def test_dispatch_is_nudged_for_relay_and_triage_together(self):
+    def test_relay_and_triage_are_each_called_once_in_one_pass(self):
         snap = Snapshot(items=[
             item(1, inbox.NEEDS_OPERATOR),
             item(2, milestone=None),
         ])
-        sent = []
-        box = a_server(tracker=FakeTracker(snap))
-        box.nudge = lambda text: sent.append(text) or True
+        dispatch = FakeDispatch()
+        box = a_server(tracker=FakeTracker(snap), dispatch=dispatch)
         box.pass_once()
-        self.assertEqual(len(sent), 1, "one prompt, both queues")
-        self.assertIn("#1", sent[0])
-        self.assertIn("#2", sent[0])
+        kinds = [kind for kind, _items in dispatch.calls]
+        self.assertEqual(kinds, ["relay", "triage"],
+                         "both queues in one pass, escalations first")
+        relay_items = dispatch.calls[0][1]
+        self.assertEqual(relay_items[0]["number"], 1)
+        self.assertEqual(relay_items[0]["url"],
+                         "https://github.com/agentplot/flywheel/issues/1")
+        self.assertIn("title", relay_items[0])
+        self.assertEqual(dispatch.calls[1][1][0]["number"], 2)
+
+    def test_one_pass_opens_one_dispatch_session_for_both_calls(self):
+        snap = Snapshot(items=[
+            item(1, inbox.NEEDS_OPERATOR),
+            item(2, milestone=None),
+        ])
+        dispatch = FakeDispatch()
+        box = a_server(tracker=FakeTracker(snap), dispatch=dispatch)
+        box.pass_once()
+        self.assertEqual(dispatch.sessions, 1,
+                         "the proxy's own-busy rule needs one shared session")
+
+    def test_a_dry_pass_logs_the_queues_and_opens_no_session(self):
+        snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR)])
+        dispatch = FakeDispatch()
+        lines = []
+        box = a_server(tracker=FakeTracker(snap), dispatch=dispatch,
+                       dry_run=True, log=lines.append)
+        box.pass_once()
+        self.assertEqual(dispatch.sessions, 0)
+        self.assertTrue(any("would relay: #1" in line for line in lines))
 
 
 # ---- 5 · stopping -------------------------------------------------------
@@ -439,35 +493,39 @@ class StateTest(unittest.TestCase):
                                                 environ=env), 4242)
 
 
-class NudgeLedgerTest(unittest.TestCase):
-    """#4.1 — dispatch activity is observable through the same surface."""
+class DispatchLedgerTest(unittest.TestCase):
+    """#4.1 — dispatch activity is observable through the same surface,
+    one ledger step per tool call, with the non-delivery's reason."""
 
     def snap(self):
         return Snapshot(items=[item(1, inbox.NEEDS_OPERATOR)])
 
-    def test_a_delivered_nudge_writes_expect_and_actual(self):
+    def test_a_delivered_relay_writes_expect_and_actual(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             led = obs.RunLedger(tmp, "dispatch", gate_mode="courtesy")
-            box = a_server(tracker=FakeTracker(self.snap()), ledger=led)
-            box.nudge = lambda text: True
+            box = a_server(tracker=FakeTracker(self.snap()), ledger=led,
+                           dispatch=FakeDispatch())
             box.pass_once()
             kinds = [e["kind"] for e in led.entries]
             self.assertIn("expect", kinds)
             self.assertIn("actual", kinds)
             actual = next(e for e in led.entries if e["kind"] == "actual")
             self.assertTrue(actual["ok"])
-            self.assertEqual(actual["step"], "nudge:1")
+            self.assertEqual(actual["step"], "relay:1")
 
-    def test_a_failed_delivery_is_a_recorded_divergence(self):
+    def test_a_failed_delivery_is_a_recorded_divergence_with_its_reason(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
             led = obs.RunLedger(tmp, "dispatch", gate_mode="courtesy")
-            box = a_server(tracker=FakeTracker(self.snap()), ledger=led)
-            box.nudge = lambda text: False
-            box.pass_once()
+            refusing = FakeDispatch(
+                {"delivered": False, "reason": "dispatch is busy (working)"})
+            box = a_server(tracker=FakeTracker(self.snap()), ledger=led,
+                           dispatch=refusing)
+            self.assertEqual(box.pass_once(), 1)
             actual = next(e for e in led.entries if e["kind"] == "actual")
             self.assertFalse(actual["ok"])
+            self.assertIn("dispatch is busy (working)", actual["outcome"])
             text = led.write_report().read_text()
             self.assertIn("diverged", text)
 

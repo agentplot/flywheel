@@ -91,6 +91,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _flywheel_herdr as herdr    # noqa: E402
 import _flywheel_inbox as inbox    # noqa: E402
 import _flywheel_ledger as ledger_mod  # noqa: E402
+import _flywheel_mcp_client as mcp_client  # noqa: E402
 import _flywheel_server as server  # noqa: E402
 from _flywheel_gh import GraphqlError, resolve_token  # noqa: E402
 from _flywheel_manifest import find_manifest, parse_manifest  # noqa: E402
@@ -877,23 +878,6 @@ def planner_charge(env: dict, fallback_cwd: Path):
     return charge
 
 
-def dispatch_nudge(env: dict):
-    """The only prompt the server ever sends.
-
-    Dispatch survives as the one standing agent — triage and relay need a
-    mind and a Discord channel — so it is still an agent in a pane, and this
-    is still a herdr prompt. Everything else the server touches is a process.
-    """
-    def nudge(text: str) -> bool:
-        agent = herdr_agents(env).get("dispatch")
-        if not agent or agent.get("agent_status") not in SETTLED:
-            print("dispatch work waiting; dispatch is "
-                  + ("busy" if agent else "absent"))
-            return True
-        return send_prompt("dispatch", text, env)
-    return nudge
-
-
 def serve(manifest: dict, host: str, session: str, env: dict,
           interval: int, once: bool, dry_run: bool) -> int:
     # The loops this daemon spawns inherit ITS environment, and their herdr
@@ -907,8 +891,17 @@ def serve(manifest: dict, host: str, session: str, env: dict,
     dispatch_ledger = ledger_mod.RunLedger(
         ledger_mod.observations_root(config.org), "dispatch",
         gate_mode="courtesy")
+    # The daemon reaches dispatch only through the plugin's dispatch MCP
+    # server — the same tools any plugin-bearing session holds. The proxy
+    # inherits this environment, so HERDR_SOCKET_PATH (exported above)
+    # addresses the fleet's session; --fleet pins the manifest regardless
+    # of the proxy's working directory. Its stderr inherits the daemon's,
+    # which is the log.
+    dispatch = mcp_client.DispatchOverMcp(
+        [config.commands / "flywheel-dispatch-mcp",
+         "--fleet", manifest["path"]])
     daemon = server.Server(
-        config, tracker=tracker, gate=fresh_gate, nudge=dispatch_nudge(env),
+        config, tracker=tracker, gate=fresh_gate, dispatch=dispatch,
         dry_run=dry_run, ledger=dispatch_ledger,
         planner=planner_charge(env, config.loops_cwd))
 

@@ -335,19 +335,22 @@ class LoopProcess:
 class Server:
     """The reconcile pass, and the daemon that repeats it."""
 
-    def __init__(self, config, tracker=None, gate=None, nudge=None,
+    def __init__(self, config, tracker=None, gate=None, dispatch=None,
                  run=_run, popen=subprocess.Popen, clock=time.time,
                  sleep=time.sleep, log=None, dry_run=False, opener=None,
                  ledger=None, planner=None, heads=None):
         self.config = config
         self.tracker = tracker
         self.gate = gate            # injected: bin/flywheel's gate_readiness
-        self.nudge = nudge          # injected: dispatch's herdr prompt
+        # injected: a factory yielding one per-pass session with
+        # .relay(items)/.triage(items), each returning {"delivered", "reason"?}
+        # — the dispatch MCP server, in production.
+        self.dispatch = dispatch
         self.ledger = ledger or obs.NullLedger()
         self.planner = planner      # injected: charge one planning run
-        self.heads = heads or git_heads
-        self._nudges = 0
+        self._deliveries = {}
         self._plan_charges = 0
+        self.heads = heads or git_heads
         self.run = run
         self.popen = popen
         self.clock = clock
@@ -510,33 +513,49 @@ class Server:
             pass
 
     def relay(self, snapshot):
-        """Dispatch's nudge — the one standing agent, and the only prompt
-        this server ever sends. Triage and relay need a mind and a Discord
-        channel; everything else here is a process."""
+        """Dispatch's queues, handed over as tool calls — the one standing
+        agent, reached only through the dispatch MCP server. Triage and
+        relay need a mind and a Discord channel; everything else here is a
+        process.
+
+        Both queues are serviced in one pass, one tool call each, relay
+        first — escalations outrank intake. The composition of what
+        dispatch actually reads is the proxy's; this pass owes it items,
+        not prose. A non-delivery is a ledgered divergence with its
+        reason and a pass failure — dispatch absent is a fact now, never
+        a silent success."""
         box = inbox.dispatch_inbox(snapshot)
-        if box.empty or not self.nudge:
+        if box.empty or not self.dispatch:
             return 0
-        parts = []
-        if box.relay:
-            # `dispatch_inbox` hands back Items, not numbers.
-            nums = ", ".join(f"#{i.number}" for i in box.relay)
-            parts.append(f"needs-operator items await relay: {nums} — DM each "
-                         "item's assignee with the question and the link")
-        if box.triage:
-            nums = ", ".join(f"#{i.number}" for i in box.triage)
-            parts.append(f"unmilestoned open items await triage: {nums} — "
-                         "route each (milestone, type, assignee)")
         if self.dry_run:
-            self.log(f"would nudge dispatch: {'; '.join(parts)}")
+            for kind, items in (("relay", box.relay), ("triage", box.triage)):
+                if items:
+                    self.log(f"would {kind}: "
+                             + ", ".join(f"#{i.number}" for i in items))
             return 0
-        self._nudges += 1
-        step = f"nudge:{self._nudges}"
-        summary = "; ".join(parts)
-        self.ledger.expect(step, "dispatch inbox non-empty",
-                           f"nudge delivered — {summary}")
-        delivered = bool(self.nudge(". ".join(parts) + "."))
-        self.ledger.actual(step, "delivered" if delivered else
-                           "delivery failed", ok=delivered)
+        failures = 0
+        with self.dispatch() as d:
+            if box.relay:
+                failures += self._deliver("relay", d.relay, box.relay)
+            if box.triage:
+                failures += self._deliver("triage", d.triage, box.triage)
+        return failures
+
+    def _deliver(self, kind, call, items):
+        payload = [{"number": i.number, "title": i.title or "",
+                    "url": (f"https://github.com/{self.config.org}/"
+                            f"{self.config.repo}/issues/{i.number}")}
+                   for i in items]
+        nums = ", ".join(f"#{i.number}" for i in items)
+        self._deliveries[kind] = self._deliveries.get(kind, 0) + 1
+        step = f"{kind}:{self._deliveries[kind]}"
+        self.ledger.expect(step, f"dispatch {kind} queue non-empty",
+                           f"{kind} delivered — {nums}")
+        result = call(payload) or {}
+        delivered = bool(result.get("delivered"))
+        reason = result.get("reason") or "no reason given"
+        self.ledger.actual(step, "delivered" if delivered
+                           else f"delivery failed — {reason}", ok=delivered)
         return 0 if delivered else 1
 
     # -- planning runs -----------------------------------------------------
