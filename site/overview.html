@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overview — the actors, a bolt's states, and working on the flywheel itself</title>
+<meta name="description" content="The flywheel's operator reference: the actors and the write scope each one owns, the states a bolt's work moves through, and how to point Claude Code at a checkout and work on the plugin itself.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%238FB9AE' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='7.5' fill='none' stroke='%23C9A227' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23B4552D'/%3E%3C/svg%3E">
+
+<!-- The two faces this page paints, preloaded. As on the home page these are
+     also the only font paths check-site.mjs can see: it resolves href and src,
+     never a CSS url(), so a typo inside @font-face would fail silently by
+     falling back. Preloading them puts them under the check. -->
+<link rel="preload" as="font" type="font/woff2" crossorigin href="fonts/space-grotesk-latin-700-normal.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="fonts/ibm-plex-mono-latin-400-normal.woff2">
+<style>
+/* The two blocks that follow — the @font-face rules and the :root custom
+   properties — are copied byte for byte out of index.html. There is no shared
+   stylesheet: site/ is plain static files with no build step. Keeping these two
+   regions identical is what makes palette drift between the pages show up as a
+   diff rather than as a colour that is subtly wrong. */
+/* ---------------------------------------------------------------- fonts --
+   Vendored, not linked. Nothing on this page loads from a CDN — what ships is
+   what is in the repository, which is why the mermaid bundle sits in vendor/
+   and these five faces sit in fonts/. Both families are SIL OFL 1.1; the
+   licences ship beside them as fonts/LICENSE-*.txt. Re-vendor with
+   `npm run vendor-fonts`, which copies them out of the two @fontsource
+   devDependencies so the bytes have a recorded origin. */
+@font-face{
+  font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;
+  src:url("fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;
+  src:url("fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Space Grotesk";font-style:normal;font-weight:500;font-display:swap;
+  src:url("fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Space Grotesk";font-style:normal;font-weight:700;font-display:swap;
+  src:url("fonts/space-grotesk-latin-700-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+:root{
+  --ground:#0D2528;
+  --ground-2:#123236;
+  --brass:#C9A227;
+  --brass-dim:#8A7326;
+  --mint:#8FB9AE;
+  --bone:#EDE7DA;
+  --rust:#B4552D;
+
+  --ink:var(--bone);
+  --ink2:rgba(237,231,218,.78);
+  --ink3:rgba(143,185,174,.66);
+  --line:rgba(143,185,174,.22);
+  --line-soft:rgba(143,185,174,.13);
+  --panel:#123236;
+  --code:rgba(9,28,31,.72);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+html,body{margin:0;padding:0;background:var(--ground);color:var(--bone);
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;}
+body{
+  background-image:
+    linear-gradient(rgba(143,185,174,.055) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(143,185,174,.055) 1px,transparent 1px);
+  background-size:28px 28px;
+  background-attachment:fixed;
+  min-height:100vh;
+}
+.wrap{width:100%;max-width:960px;margin:0 auto;padding:0 18px}
+
+a{color:var(--mint);text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--brass)}
+:focus-visible{outline:2px solid var(--brass);outline-offset:3px;border-radius:2px}
+
+/* --------------------------------------------------------------- topbar -- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  background:rgba(13,37,40,.92);
+  border-bottom:1px solid var(--line-soft);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.topbar .wrap{display:flex;align-items:center;gap:18px;height:46px}
+.mark{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:-.02em;color:var(--bone);text-decoration:none;margin-right:auto;
+}
+.mark span{color:var(--brass)}
+.topbar nav{display:flex;gap:16px}
+.topbar nav a{
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3);text-decoration:none;white-space:nowrap;
+}
+.topbar nav a:hover{color:var(--brass)}
+
+/* --------------------------------------------------------------- panels -- */
+.lede{padding:44px 0 0}
+.lede h1{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:clamp(26px,3.8vw,36px);line-height:1.12;margin:0 0 10px;
+  letter-spacing:-.025em;font-weight:700;color:var(--bone);
+}
+.panel{padding:44px 0 8px;scroll-margin-top:96px;border-bottom:1px solid var(--line-soft)}
+.panel:last-of-type{border-bottom:0}
+h2{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:clamp(24px,3.4vw,32px);line-height:1.15;margin:0 0 6px;
+  letter-spacing:-.025em;font-weight:700;color:var(--bone);
+}
+.sub{color:var(--ink3);margin:0 0 28px;font-size:12.5px;letter-spacing:.04em}
+h3{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:17px;margin:34px 0 8px;font-weight:700;letter-spacing:-.015em;color:var(--bone);
+}
+p{margin:0 0 15px;max-width:74ch;font-size:13.5px;line-height:1.7;color:var(--ink2)}
+ul{margin:0 0 15px;padding-left:20px;max-width:74ch;font-size:13.5px;line-height:1.7;color:var(--ink2)}
+li{margin:0 0 6px}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.93em}
+code{background:var(--code);padding:.12em .4em;border-radius:3px;color:var(--bone)}
+pre code{background:none;padding:0}
+
+.figure{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:22px 18px 14px;margin:0 0 8px;overflow-x:auto;
+}
+/* The flowchart lays out around 1700 units wide, so inside a 960px column it
+   scales to roughly half size and the <small> sublabels stop being readable.
+   Prose stays in the column where it belongs; only the figures step out of it,
+   and only once the viewport is wide enough to give them something. */
+@media (min-width:1060px){
+  .figure{
+    width:min(1240px,calc(100vw - 36px));
+    position:relative;left:50%;transform:translateX(-50%);
+  }
+}
+.figure pre.mermaid{margin:0;text-align:center;min-width:min-content}
+.figure svg{max-width:100%;height:auto}
+.caption{color:var(--ink3);font-size:12.5px;line-height:1.65;margin:0 0 28px;max-width:74ch}
+.caption ul{color:var(--ink3);font-size:12.5px;line-height:1.65;margin:0}
+
+pre.block{
+  background:var(--code);border:1px solid var(--line);border-radius:8px;
+  padding:14px 16px;overflow-x:auto;margin:0 0 15px;line-height:1.6;
+  font-size:13px;color:var(--bone);
+}
+
+table{border-collapse:collapse;width:100%;margin:0 0 18px;font-size:12.5px;display:block;overflow-x:auto}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line-soft);vertical-align:top;line-height:1.6;color:var(--ink2)}
+th{color:var(--mint);font-weight:500;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+
+.more{
+  margin:22px 0 0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink3);
+}
+.more a{color:var(--mint);text-decoration:none;border-bottom:1px solid rgba(143,185,174,.35)}
+.more a:hover{color:var(--brass);border-bottom-color:var(--brass)}
+
+/* Mermaid's classDef takes literal colours, which cannot follow a custom
+   property — so the classDef exists only to attach the class name, and the
+   colours come from here, where the palette already lives. */
+.mermaid g.node.d  rect,.mermaid g.node.d  polygon,.mermaid g.node.d  path{fill:rgba(201,162,39,.13)!important;stroke:var(--brass)!important}
+.mermaid g.node.b  rect,.mermaid g.node.b  polygon,.mermaid g.node.b  path{fill:rgba(180,85,45,.16)!important;stroke:var(--rust)!important}
+.mermaid g.node.w  rect,.mermaid g.node.w  polygon,.mermaid g.node.w  path{fill:none!important;stroke:rgba(143,185,174,.5)!important}
+.mermaid g.node.hu rect,.mermaid g.node.hu polygon,.mermaid g.node.hu path{fill:rgba(237,231,218,.14)!important;stroke:var(--bone)!important}
+.mermaid g.node small{color:var(--ink3);font-size:.86em;line-height:1.4}
+.mermaid g.node .nodeLabel,.mermaid g.node .nodeLabel *{color:var(--bone)!important;fill:var(--bone)!important}
+.mermaid .edgeLabel,.mermaid .edgeLabel *{color:var(--ink3)!important;fill:var(--ink3)!important;background:var(--panel)!important}
+.mermaid .edgeLabel p{background:var(--panel)!important}
+.mermaid .flowchart-link{stroke:rgba(143,185,174,.55)!important}
+.mermaid .marker{fill:rgba(143,185,174,.55)!important;stroke:rgba(143,185,174,.55)!important}
+/* stateDiagram carries no user classes, so it is styled wholesale. */
+.mermaid g.stateGroup rect,.mermaid .statediagram-state rect{fill:rgba(180,85,45,.16)!important;stroke:var(--rust)!important}
+.mermaid .statediagram-state .nodeLabel,.mermaid g.stateGroup text{fill:var(--bone)!important;color:var(--bone)!important}
+.mermaid .statediagram-state circle,.mermaid .node circle{fill:var(--mint)!important;stroke:var(--mint)!important}
+.mermaid .transition{stroke:rgba(143,185,174,.55)!important}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="mark" href="index.html">Fly<span>wheel</span></a>
+    <nav aria-label="Elsewhere">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/agentplot/flywheel">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="lede" id="top">
+  <div class="wrap">
+    <h1>Overview</h1>
+    <p>
+      The operator's reference. It assumes you have the plugin installed and
+      want to know what is running: which actors exist and what each one is
+      allowed to write, the states a bolt's work moves through, and how to work
+      on the flywheel itself. The home page teaches the shape of the thing;
+      this page is the map you keep open beside it.
+    </p>
+  </div>
+</section>
+
+<section class="panel" id="actors">
+  <div class="wrap">
+    <h2>The actors</h2>
+    <p class="sub">Two loop programs, four agent profiles, three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
+
+    <p>
+      The loops are programs, not agents: <code>flywheel server</code> is a
+      daemon you start on any host, and every 60 seconds it starts one
+      stateless loop process per milestone the tracker gives a job to, and
+      stops those without. A profile exists where a mind is needed and nowhere
+      else.
+    </p>
+
+    <div class="figure">
+<pre class="mermaid">
+flowchart TD
+  op(["you"])
+
+  srv["flywheel server<br/><small>one per host · every 60s</small>"]
+  disp["flywheel-dispatch<br/><small>always · one per fleet</small>"]
+  ic["flywheel-intent-loop<br/><small>one process, while its intent has a job</small>"]
+  bc["flywheel-bolt-loop<br/><small>one process, while its bolt has a job</small>"]
+  ds["flywheel-design-session<br/><small>one task batch</small>"]
+  is["flywheel-interactive-session<br/><small>one task batch · builds a page you work</small>"]
+  cs["flywheel-construction-session<br/><small>one task batch</small>"]
+
+  tracker["the tracker<br/><small>the only bus</small>"]
+
+  wIntake["new intent changes,<br/>at the moment of triage<br/>· inbox files"]
+  wIntent["that intent's records,<br/>on main"]
+  wBolt["the bolt's proposal registry<br/>and its tasks, on main"]
+  wSession["its session directory, its own task<br/>lines, its charged closures<br/>— in its worktree"]
+  wBooks["the design books<br/>and the context map"]
+  wCode["the built repositories, and its own<br/>task lines — in its worktree"]
+
+  op -- "your approval" --> tracker
+  op -- "a raw idea, or an answer" --> disp
+  disp -- "the answer, as an item comment" --> tracker
+  tracker --> srv
+  srv -- "a job" --> ic
+  srv -- "a job" --> bc
+  ic --> ds
+  ic --> is
+  bc --> cs
+
+  disp --> wIntake
+  ic --> wIntent
+  ic --> wBooks
+  bc --> wBolt
+  ds --> wSession
+  is --> wSession
+  ds --> wBooks
+  is --> wBooks
+  cs --> wCode
+
+  classDef hu stroke-width:2px
+  classDef d stroke-width:1.5px
+  classDef b stroke-width:1.5px
+  classDef w stroke-width:1.5px,stroke-dasharray:4 3
+  class op hu
+  class disp,ds,is,cs d
+  class srv,ic,bc b
+  class tracker,wIntake,wIntent,wSession,wBooks,wBolt,wCode w
+</pre>
+    </div>
+    <p class="caption">
+      Grey boxes are write scopes. The books and the context map are the one
+      scope more than one actor writes, and that is deliberate: they are the
+      destination, and every loop reads them. Nothing here messages anything
+      else — every arrow into a loop is a tracker query, and every arrow out of
+      a session is a commit, an item comment, or a label.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Actor</th><th>Lives as long as</th><th>Writes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>flywheel server</code></td><td>always — one per host in the fleet</td><td>nothing; it starts and stops loop processes</td></tr>
+        <tr><td><code>flywheel-dispatch</code></td><td>always — one per fleet</td><td>new intent changes, at the moment of triage; inbox files; nothing else</td></tr>
+        <tr><td><code>flywheel-intent-loop</code></td><td>one process, while its intent has a job</td><td>that intent's records on main; the books; the context map</td></tr>
+        <tr><td><code>flywheel-bolt-loop</code></td><td>one process, while its bolt has a job</td><td>the bolt's proposal registry and its tasks, on main</td></tr>
+        <tr><td><code>flywheel-design-session</code></td><td>one task batch</td><td>its session directory, its own task lines, its charged closures, the books and map — in its worktree</td></tr>
+        <tr><td><code>flywheel-interactive-session</code></td><td>one task batch</td><td>the same, and it builds a page you work</td></tr>
+        <tr><td><code>flywheel-construction-session</code></td><td>one task batch</td><td>the built repo and its own task lines — in its worktree</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      The <code>user-*</code> profiles — data scientist, DevOps engineer, app
+      developer — are personas: lenses a review session reads built work
+      through, never actors, never owners.
+    </p>
+
+    <h3>Three consequences worth stating outright</h3>
+    <ul>
+      <li>
+        <b>A session closes what it was charged with; the loop opens what it
+        discovered.</b> In its own worktree a session checks off exactly its
+        assigned task lines and writes the decision records for questions it
+        closed firsthand; the loop is sole writer on main, and its merge is
+        what admits a session's work. A loop, symmetrically, never edits inside
+        a session's directory.
+      </li>
+      <li>
+        <b>Dispatch is the only actor bridged to a human.</b> A question a
+        construction session cannot answer travels out through dispatch —
+        resolved change → owner → DM — and the answer comes back as a comment
+        on the item that raised it, never to a different actor, and never as an
+        edit to that bolt's change.
+      </li>
+      <li>
+        <b>Nothing messages anything else.</b> The tracker is the only bus: a
+        discovery is an issue, an escalation is a label, a completion is item
+        state, and each consumer — server, bolt loop, intent loop, dispatch —
+        reads one exact filter over it.
+      </li>
+    </ul>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#the-actors">Read this in full in the README</a></p>
+  </div>
+</section>
+
+<section class="panel" id="bolt">
+  <div class="wrap">
+    <h2>Inside a bolt</h2>
+    <p class="sub">Every row of the registry is in exactly one of these states.</p>
+
+    <p>
+      One bolt is one construction iteration, tracking a registry of proposals
+      across however many repositories the work touches. A bolt exists only
+      because you approved it, which is why it can run without you: the one
+      approval you gave covers everything inside it.
+    </p>
+
+    <div class="figure">
+<pre class="mermaid">
+stateDiagram-v2
+  direction TB
+  [*] --&gt; to_spec
+  to_spec : to-spec
+  in_review : in-review
+
+  to_spec --&gt; specced : spec agent, validated
+  specced --&gt; in_review : independent reviewer
+  in_review --&gt; approved : verdict
+  in_review --&gt; to_spec : bounced — one round only
+  approved --&gt; building : apply agent, nested worktree
+  building --&gt; built : commit stage, then the pre-merge checks
+  built --&gt; verified : batched acceptance on the bolt branch
+  verified --&gt; merged : the full run of checks before a bolt lands
+  merged --&gt; [*]
+</pre>
+    </div>
+    <p class="caption">
+      Spec review is bounded to one round. A bounced review returns the row to
+      <code>to-spec</code> — once. After that the row takes one binary call on
+      the evidence in hand (approve, or re-spec from the decision record that
+      settled it) and then builds, because further rounds converge on wording
+      rather than on whether the thing can actually be built. What is bounded
+      is <em>reading</em>: the commit stage, the pre-merge checks, the batched
+      acceptance run and the full run of checks before a bolt lands never
+      relax. Adversarial agent review plus automated testing is what earns the
+      loop its automated delivery, and weakening either of them is a design
+      decision, not a call the loop makes for itself.
+    </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#the-construction-loop--a-bolt">Read this in full in the README</a></p>
+  </div>
+</section>
+
+<section class="panel" id="plugin-dev">
+  <div class="wrap">
+    <h2>Working on the flywheel itself</h2>
+    <p class="sub">The install commands are bypassed while you are editing the plugin.</p>
+
+    <p>
+      Point Claude Code at a checkout and reload in place — no publish, no
+      reinstall, no version bump between an edit and trying it.
+    </p>
+<pre class="block"><code>claude --plugin-dir /path/to/flywheel/main
+/reload-plugins</code></pre>
+    <p>
+      The first command starts the session against your working tree; the
+      second, run inside that session, picks up an edit you have just made.
+    </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel#working-on-the-flywheel-itself">Read this in full in the README</a></p>
+  </div>
+</section>
+
+<section class="panel" id="elsewhere">
+  <div class="wrap">
+    <h2>Where the rest of it is written down</h2>
+    <p class="sub">Four places, and the first of them is the reference of record.</p>
+
+    <ul>
+      <li><a href="https://github.com/agentplot/flywheel#readme">The README</a> — the whole machinery in prose, and the source of every claim on this page.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/skills">skills/</a> — the two loop skills and the thirteen session-type skills.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/agents">agents/</a> — the agent profiles, one file each.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/schemas">schemas/</a> — the OpenSpec workflow schemas, published for consuming repositories to bind to.</li>
+    </ul>
+
+    <p>
+      <a href="https://github.com/agentplot/flywheel">Source on GitHub</a> ·
+      MIT licensed ·
+      <a href="index.html">back to the home page</a>
+    </p>
+  </div>
+</section>
+
+</main>
+
+<script src="vendor/mermaid.min.js"></script>
+<script>
+  /* Rendered client-side against the same bundle scripts/check-site.mjs parses
+     with, so a diagram that renders here parses in the check and vice versa.
+     The configuration is the home page's, verbatim — it is what makes the
+     diagram the reader sees the diagram the checker read.
+
+     startOnLoad stays off for one reason only: mermaid sizes a diagram by
+     measuring its container, and a diagram laid out before its container is
+     sized lands as a collapsed SVG. This page runs no tab layer, so nothing is
+     ever hidden — but an explicit run() after the document is parsed costs
+     three lines and removes the question. With scripting off the page keeps
+     the diagram source, which is a readable document rather than a blank. */
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: "base",
+    securityLevel: "strict",
+    fontFamily: '"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace',
+    flowchart: { nodeSpacing: 34, rankSpacing: 46, padding: 10, useMaxWidth: true },
+    themeVariables: {
+      background:"#123236", primaryColor:"#1b3a3a", primaryTextColor:"#EDE7DA",
+      primaryBorderColor:"#C9A227", lineColor:"#8FB9AE", textColor:"#EDE7DA",
+      mainBkg:"#1b3a3a", nodeBorder:"#C9A227",
+    },
+  });
+  mermaid.run({ querySelector: "pre.mermaid" });
+</script>
+
+</body>
+</html>
