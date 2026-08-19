@@ -1,6 +1,6 @@
 ---
 name: fleet
-description: Drive an org's flywheel fleet from its manifest — flywheel up starts dispatch and the server that runs the loops, flywheel server is that daemon, flywheel status reports every row against the live roster and every milestone with a job. Use when the operator asks to bring the fleet up, check on the fleet, join a host to the fleet, park or place an actor, or set up a new org's fleet.yaml.
+description: Drive an org's flywheel fleet from its manifest — flywheel up starts the server that runs the loops, flywheel dispatch starts the org's standing dispatch agent with its Discord channel, flywheel server is that daemon, flywheel status reports dispatch and every milestone with a job. Use when the operator asks to bring the fleet up, check on the fleet, start or place dispatch, join a host to the fleet, or set up a new org's fleet.yaml.
 ---
 
 # Fleet — the org's server, its loops, and dispatch
@@ -21,9 +21,10 @@ directory-marketplace install leaves it off), so invoke by the plugin
 root — `${CLAUDE_PLUGIN_ROOT}` is substituted into this skill at load:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel status  # rows vs the roster, and the tracker's jobs
-"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel up      # dispatch, then the server, detached
-"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel server  # the daemon itself, in the foreground
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel status    # dispatch vs the roster, and the tracker's jobs
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel up        # the server, detached
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel dispatch  # the standing dispatch agent
+"${CLAUDE_PLUGIN_ROOT}"/bin/flywheel server    # the daemon itself, in the foreground
 ```
 
 `server` takes `--interval SECONDS` (default 60), `--once` for a single
@@ -50,16 +51,23 @@ Starting the session is the operator's — attach it once and it persists.
 
 Copy `template-fleet.yaml` (beside this skill) to the org folder root as
 `fleet.yaml`, then fill in `tracker:`, `loops_cwd:`, the hosts'
-hostnames, and the dispatch row.
+hostnames, and the `dispatch:` block.
 
 `loops_cwd:` is the checkout the loop processes run in, relative to the
 org folder — the repo holding `openspec/changes/`. Without it the server
 has nowhere to start a loop and says so rather than starting nothing
 quietly.
 
-An actor row's `prompt:` is delivered as its own message rather than
-folded into a longer one, which is what makes a slash command in it
-load.
+The dispatch block's `prompt:` is delivered as its own message rather
+than folded into a longer one, which is what makes a slash command in it
+load. Its `host:` is optional — set, it pins dispatch to one host and
+the command run anywhere else refuses, naming the owner (reachable via
+herdr remote); absent, dispatch runs wherever `flywheel dispatch` is
+invoked. `channels:` and `env:` are what connect the Discord bridge: the
+channel plugin lands on claude as `--channels`, and `DISCORD_STATE_DIR`
+resolves to `<org folder>/.flywheel/discord` — the org's own bot token
+and allowlist, seeded by the operator, never shared with a personal
+machine-level bot.
 
 ### Grant each built repo's hook approvals
 
@@ -72,12 +80,13 @@ wt config approvals add
 
 `wt` runs a project hook only against a standing grant, so a repo whose
 `.config/wt.toml` hooks are ungranted is a repo whose merge gate its
-agents cannot run. `flywheel up` checks this before starting an actor
-and the server checks it before starting a loop process — both **refuse
-to start work into a repo that fails it**, naming the ungranted
-templates and this command;
-`flywheel status` reports it as a row per repo. Ungranted, the stoppage
-would otherwise land mid-merge, on an agent with no way to fix it.
+agents cannot run. The server checks it before starting a loop process
+and **refuses to start work into a repo that fails it**, naming the
+ungranted templates and this command; `flywheel status` reports it as a
+row for the loops' checkout. Ungranted, the stoppage would otherwise
+land mid-merge, on an agent with no way to fix it. Dispatch is exempt by
+shape — it holds no checkout and never merges — so `flywheel dispatch`
+runs on a host with no grants at all.
 
 It is deliberately the operator's step and deliberately interactive.
 Read the templates it lists before approving them — approving is saying
@@ -91,13 +100,30 @@ The fleet never writes the approvals store and never approves on your
 behalf. If a repo's hooks change and no one has re-granted them, the
 right outcome is the refusal you get — not a way around it.
 
-## What this command never does
+## What these commands never do
 
-It never decides ownership (the tracker items' assignee does), never
-stops a manifest row (dispatch and any hand-placed actor are the
-manifest's), and never starts a `parked` row — parked is a statement
-that requests wait as queued items and comments until the actor is next
-started. Rows on other hosts are reported, not driven.
+They never decide ownership (the tracker items' assignee does) and never
+stop an agent — teardown is the operator's, deliberate, never a sync
+step. `flywheel dispatch` is idempotent: a dispatch already alive is
+reported and left exactly as it is, so restarting it to pick up a new
+channel or env is the operator ending the pane first, then running the
+command again. A dispatch pinned to another host is reported, not
+driven.
+
+## Talking to dispatch
+
+The plugin ships a `dispatch` MCP server (`.mcp.json` →
+`bin/flywheel-dispatch-mcp`), so every plugin-bearing session holds the
+same three tools: `relay(items)` for needs-operator escalations,
+`triage(items)` for unmilestoned open items, `status()` for presence.
+That surface is the ONE way anything talks to dispatch — the fleet
+daemon consumes it too, one session per reconcile pass. Today the server
+proxies to the dispatch claude session in its herdr pane; when dispatch
+becomes a hosted service, the proxy's internals are what change, and
+consumers keep the tools. Undeliverability is always a tool result —
+`delivered: false` with the reason — never an error: an absent or busy
+dispatch is a fact the caller records, and the daemon ledgers every
+delivery under `observations/dispatch/`.
 
 ## The server
 
@@ -126,6 +152,3 @@ Operator visibility is the server's log, under
 for the pass, and one `loops/<kind>-<slug>.log` per loop process.
 `flywheel status` names both.
 
-After hand-starting an actor outside this command, record it in
-`fleet.yaml` — the manifest is placement's one record, and an actor it
-does not carry is invisible to `flywheel status`.
