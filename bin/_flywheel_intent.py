@@ -90,37 +90,30 @@ class DesignType:
     `model` is the default column of
     `openspec/specs/flywheel-session-type-skills/spec.md`.
 
-    `operator_round` is True across the board: any design session may end
-    with a round-close plan (`skills/_reference/round-close.md`), which the
-    operator takes as long as they like, so every type notifies at
-    90 minutes like everything else but never auto-stalls. The 4-hour
-    stall is deliberately traded away — the loop cannot know at launch
-    whether a session will run a close round, and the notify survives as
-    the hung-session signal.
-
-    `worktree` is True across the board too: any session may fold answers
-    into `decisions/` and write `close/` at its end, and an unchanged
-    worktree costs nothing at teardown. Most research batches still edit
-    nothing — the worktree is for the close.
-
     `alone` is the schema's "prototypes always alone" — each is its own
     experiment.
+
+    Two former fields are now properties of every design session and
+    carry no per-type information: each launches in its own worktree
+    (the close writes `decisions/` and `close/` files; an unchanged
+    worktree costs nothing at teardown) and each is an operator-round
+    session (any may end with a round-close plan the operator takes as
+    long as they like — the 4-hour auto-stall is traded for the
+    surviving 90-minute notify).
     """
 
     name: str
     profile: str
     model: str
-    operator_round: bool
-    worktree: bool
     alone: bool = False
 
 
 TYPES = {t.name: t for t in (
-    DesignType("planning", "flywheel-design-session", "fable", True, True),
-    DesignType("interactive", "flywheel-interactive-session", "fable", True, True),
-    DesignType("research", "flywheel-design-session", "opus[1m]", True, True),
-    DesignType("prototype", "flywheel-design-session", "opus", True, True, alone=True),
-    DesignType("writeback", "flywheel-design-session", "opus", True, True),
+    DesignType("planning", "flywheel-design-session", "fable"),
+    DesignType("interactive", "flywheel-interactive-session", "fable"),
+    DesignType("research", "flywheel-design-session", "opus[1m]"),
+    DesignType("prototype", "flywheel-design-session", "opus", alone=True),
+    DesignType("writeback", "flywheel-design-session", "opus"),
 )}
 
 
@@ -831,16 +824,18 @@ def dispatch_batch(batch, writer, runner, config, clock):
     filter consumes it or the operator's eye needs it.
     """
     name = session_name(batch, config.slug)
-    cwd = config.repo_dir
-    if TYPES[batch.type].worktree:
-        cwd = ensure_worktree(writer, config, name)
+    # Every design type carries a worktree and holds an operator round:
+    # any session may end with a round-close plan, whose close writes
+    # decisions/ and close/ files and whose round the operator takes as
+    # long as they like.
+    cwd = ensure_worktree(writer, config, name)
     spec = SessionSpec(
         name=name,
         cwd=str(cwd),
         order=session_order(batch, config),
         profile=TYPES[batch.type].profile,
         model=TYPES[batch.type].model,
-        operator_round=TYPES[batch.type].operator_round,
+        operator_round=True,
     )
     for item in batch.items:
         if READY in item.labels:
@@ -1095,20 +1090,18 @@ def merge_resumed(inbox, writer, runner, config, snapshot, report, collected):
                 + ", ".join(f"#{n}" for n in outstanding) + " still open.",)
             continue
         # The two session-scoped acts are INDEPENDENT, exactly as they are
-        # on the live path: the merge is conditional on the type having a
-        # worktree, the pane close never is. Gating both behind the
-        # worktree test left every `research` session's pane open forever —
-        # and because `session_name` is deterministic and `launch` reuses a
-        # running agent, the next research batch is dispatched into an
-        # orphaned, already-settled pane.
-        if TYPES[kind].worktree:
-            worktree = worktree_path(config.repo_dir, f"sess/{name}",
-                                     run=writer._run)
-            if worktree:
-                merge_session(writer, config, worktree)
-            else:
-                report.notes += (f"no worktree for `sess/{name}` — nothing to "
-                                 f"merge for the {kind} session.",)
+        # on the live path: the merge acts on the branch when it exists,
+        # the pane close is unconditional. Gating both behind one test
+        # left a session's pane open forever — and because `session_name`
+        # is deterministic and `launch` reuses a running agent, the next
+        # batch is dispatched into an orphaned, already-settled pane.
+        worktree = worktree_path(config.repo_dir, f"sess/{name}",
+                                 run=writer._run)
+        if worktree:
+            merge_session(writer, config, worktree)
+        else:
+            report.notes += (f"no worktree for `sess/{name}` — nothing to "
+                             f"merge for the {kind} session.",)
         if runner is not None:
             try:
                 runner.close(SessionHandle(name=name, runner="herdr"))
@@ -1219,6 +1212,5 @@ def land(batch, spec, handle, writer, runner, tracker, config, snapshot,
         return
 
     # Every item collected: the session's own resources may be torn down.
-    if TYPES[batch.type].worktree:
-        merge_session(writer, config, spec.cwd)
+    merge_session(writer, config, spec.cwd)
     runner.close(handle)

@@ -1,5 +1,5 @@
 name: bolt-plan
-version: 1
+version: 20260818  # calver YYYYMMDD
 description: Flywheel construction tracking, the plan bolt type - the plan the
   operator approves in the build session's pane stands as the spec; no
   spec artifact, no review step, no verify stage. Picked for work whose

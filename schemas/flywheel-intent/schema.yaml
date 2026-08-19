@@ -1,5 +1,5 @@
 name: flywheel-intent
-version: 4
+version: 20260818  # calver YYYYMMDD
 description: Flywheel outer loop - one change per intent; decisions, questions
   and session records in git; work items, their states and the
   release queue on the org's tracker
@@ -159,111 +159,20 @@ apply:
   requires:
     - intent
   instruction: |
-    Loop for the intent <slug>. State lives on the tracker; you hold
-    none. The loop runs as the plugin's own process -
-    <plugin-root>/bin/flywheel-intent-loop --slug <slug> - started by
-    the server when the milestone has a job, or by hand. This
-    instruction is the loop's contract: the process and its tests
-    implement it, and editing this instruction is how the loop
-    changes.
+    This change is an intent's record, and nothing here is applied by
+    hand. Design is driven by the flywheel server's intent loop -
+    `flywheel-intent-loop`, a program the server starts for the
+    `intent/<slug>` milestone (or run by hand:
+    <plugin-root>/bin/flywheel-intent-loop --slug <slug>). It reads
+    the tracker fresh each cycle, charges typed design sessions,
+    collects on the operator's `stage:done`, merges `sess/*` branches
+    through the gate, and stops honestly at the queue. Its contract
+    is the plugin's specs and tests - flywheel-design-session-
+    completion, flywheel-session-type-skills, flywheel-round-close -
+    not this instruction. The record grows as sessions write it:
+    decisions/, questions/, sessions/ (with each session's close/),
+    and prototypes/.
 
-    INPUT, each cycle, read fresh from the tracker (fields as in
-    <plugin-root>/workflows/fixtures/intent-tracker.json): the
-    milestone intent/<slug>'s open items - number, title, type label,
-    state label, blocked_by issue numbers (GitHub's dependency edges,
-    read from the API, never inferred), parent batch, record path -
-    and this milestone's units and elaborations with their board
-    Status. When launched with a fixture snapshot instead of the live
-    tracker (an isolated run): read state from the snapshot, write
-    nothing to the tracker, and collect every would-be tracker write
-    and pane event into a trace array in the run report.
-
-    One hard rule on the run itself: a cycle that cannot read
-    the tracker, mint its token, or resolve its parameters STOPS THE
-    RUN with the failure in the report; a failing cycle never loops.
-
-    THE LOOP OWNS ALL WAITING. A session is driven by small steps
-    that each return exactly once, with the loop's own arithmetic as
-    the clock: LAUNCH (idempotent - a session already running under
-    the name is reused, never duplicated; create pane, start, rename
-    and confirm, deliver the one-prompt order, verify it went
-    working, return without waiting); WAIT - each
-    wait runs one bounded herdr agent wait (a single
-    invocation, at most ~10 minutes) and reports settled, blocked,
-    or still working; the LOOP counts the chunks and applies the
-    limits; then READ AND CLOSE (pane report out - ghost text is not
-    input - tab closed, outcome returned). No step parks a monitor,
-    returns a placeholder, or counts time. A blocking operator round
-    - plannotator, a lavish page - takes the same shape: launched
-    once with a result file, waited on by the loop.
-
-    GUARDS - checked EVERY cycle, in this order; each is idempotent.
-    A guard records only the WRITES it makes - a check that changed
-    nothing records nothing, or the loop never quiets:
-
-    0. No change dir at openspec/changes/<slug>: scaffold it
-       (/opsx:new <slug>, bind flywheel-intent), commit, continue.
-    1. A batch at Ready with state:queued sub-issues: relabel them
-       state:ready. The flip is spent; the labels carry the release.
-    2. COMPOSE: any state:queued design item with no parent batch ->
-       group the orphans into proposed batches (flywheel-batch) at
-       Backlog, by thread. Composing is not releasing; batches wait
-       for the operator. Construction work is never an intent item:
-       it is born as bolt plan cards - the planner's or a session's -
-       and released by the operator's approval.
-
-    MODELS - explicit in every session launch; nothing inherits
-    silently. Sessions
-    take their type's model at agent start (--model): planning and
-    interactive fable; research opus[1m]; prototype and writeback
-    opus; the merge stage sonnet.
-
-    LIMITS, by session type, in 10-minute wait chunks: research,
-    prototype and writeback sessions - after 90 minutes of real
-    waiting (a chunk counts only when its wait ran the full 10
-    minutes) the driver comments the wait on the batch's first item and adds
-    needs-operator (a live wait; dispatch relays), then KEEPS
-    waiting; after 4 hours it returns stalled and leaves the pane
-    open. Planning and interactive sessions hold operator
-    rounds by design: the driver notifies at 90 minutes the same way
-    but never returns them stalled.
-
-    WORK - while any item is state:ready:
-
-      batch the ready items by their type label - one session type
-      per batch, prototypes always alone. A batch runs only when
-      every blocked_by of every item in it is closed - computed from
-      the field, not reasoned.
-
-      for each unblocked batch, in parallel: one session in a herdr
-      pane (a session that edits files or may need the operator
-      always gets a pane; pure read-and-report may run in-process).
-      The work order is ONE prompt: the type's invocation first line,
-      the item numbers and goal below. Flip its items
-      state:in-progress at start; wait; read the report; close the
-      pane.
-
-      on each finished session: merge its branch through the gate -
-      the merge driver runs in the repo's main checkout; a work
-      session gets a fresh sess/* worktree, a merge stage never
-      does.
-      The session wrote its own records (decisions, questions, its
-      session directory) and queued its own discoveries - whoever
-      finds queues; you create only batches. You merge, and you
-      close finished items closed:done on the evidence.
-
-      then re-run the guards and re-query.
-
-    STOP when no item is state:ready and the guards changed nothing:
-    report the queue - one line per batch and unbatched item - and
-    the run ID. An empty ready set with a full queue is the correct
-    resting state.
-
-    Tracker writes run as the app (GH_TOKEN via
-    <plugin-root>/bin/flywheel-token; if the token cannot mint, stop
-    - never ambient credentials). Invocations:
-    skills/_reference/herdr.md.
-
-    THE ANDON CORD - a session that finds the work has gone wrong in
-    a way no further round will fix stops, holds its batch, and asks
-    the operator. Stopping on a defect is expected behaviour.
+    If you are a session reading this, your work order - not this
+    instruction - names your batch. A session with no work order has
+    no business applying an intent record; report and settle.

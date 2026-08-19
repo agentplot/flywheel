@@ -1,5 +1,5 @@
 name: bolt-adversarial
-version: 2
+version: 20260818  # calver YYYYMMDD
 description: Flywheel construction tracking, the adversarial bolt type - one change per
   bolt; the approved plan's work items live on the org's tracker; per-repo
   bolt branches; the loop schedules a persona read before the build,

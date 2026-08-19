@@ -377,7 +377,6 @@ class ResumeMergeTest(unittest.TestCase):
         # fold answers into decisions/ and write close/ — so the resume
         # path merges a research session's branch exactly as it would a
         # writeback's, and closes its pane.
-        self.assertTrue(intent.TYPES["research"].worktree)
         run, report, runner = self.session_of(
             item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
             name="research-x")
@@ -616,15 +615,22 @@ class SessionSpecTest(unittest.TestCase):
             {"planning": "fable", "interactive": "fable",
              "research": "opus[1m]", "prototype": "opus", "writeback": "opus"})
 
-    def test_every_design_type_is_an_operator_round_session(self):
-        # Any session may end with a round-close plan, which the operator
-        # takes as long as they like — so no design type ever auto-stalls.
-        self.assertTrue(all(t.operator_round for t in intent.TYPES.values()))
-
-    def test_every_design_type_carries_a_worktree(self):
-        # The close writes decisions/ and close/ files; an unchanged
-        # worktree costs nothing at teardown.
-        self.assertTrue(all(t.worktree for t in intent.TYPES.values()))
+    def test_every_dispatch_is_an_operator_round_with_a_worktree(self):
+        # No per-type flags: any session may end with a round-close plan,
+        # so every dispatch supervises as an operator round and launches
+        # in a worktree. The spec carries what the type table no longer
+        # can.
+        items = [item(1, "type:research", inbox.READY)]
+        snap = Snapshot(items=items)
+        writer = intent.Writer(apply=False, snapshot=snap, run=FakeRun())
+        spec, _handle = intent.dispatch_batch(
+            intent.DesignBatch("research", tuple(items)),
+            writer, None, config(), Clock())
+        self.assertTrue(spec.operator_round)
+        self.assertTrue(any(w.kind == "command" and w.target == "wt switch"
+                            for w in writer.writes),
+                        [str(w) for w in writer.writes])
+        self.assertNotEqual(spec.cwd, str(config().repo_dir))
 
     def test_a_session_name_is_stable_and_fits_herdrs_cap(self):
         batch = intent.DesignBatch("planning", (item(1, "type:planning"),))

@@ -1,5 +1,5 @@
 name: bolt-direct
-version: 1
+version: 20260818  # calver YYYYMMDD
 description: Flywheel construction tracking, the direct bolt type - one change per
   bolt; the approved plan's work items live on the org's tracker; per-repo
   bolt branches; the loop schedules no review step AND no verify stage.
