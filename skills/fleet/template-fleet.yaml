@@ -18,24 +18,6 @@
 #               (default: Flywheel)
 #   loops_cwd — the checkout the loop processes run in, relative to this
 #               folder; the repo holding openspec/changes/
-#
-# States:
-#   running — `flywheel up` starts this actor if it is not alive
-#   parked  — deliberately not running; requests park in the change's
-#             queued items and comments until the actor is next started
-#
-# Every actor row:
-#   name    — the herdr agent name (the addressing scheme)
-#   profile — the agent profile loaded by --agent (bare names resolve to
-#             this plugin's copies)
-#   model   — the launch model: the session type's default, or a per-row
-#             override written here
-#   host    — a name from hosts: below
-#   state   — running | parked
-#   cwd     — working tree, relative to this folder
-#   prompt  — the first prompt, sent as its own message rather than
-#             folded into a longer one, which is what makes a slash
-#             command in it load
 
 session: myorg
 tracker: myorg/my-tracker-repo
@@ -53,11 +35,27 @@ hosts:
 # teams:
 #   Platform: workstation
 
-actors:
-  - name: dispatch
-    profile: flywheel-dispatch
-    model: opus[1m]
-    host: workstation
-    state: running
-    cwd: my-coordination-repo/main
-    prompt: "You are dispatch for the <org> org; the tracker is <org>/<tracker-repo>. Report your state, then wait for input."
+# Dispatch — the org's one standing agent, started by `flywheel dispatch`
+# (never by `flywheel up`; the server reaches it through the plugin's
+# dispatch MCP server). Keys:
+#   host     — optional; pins dispatch to one hosts: entry, so the
+#              command run elsewhere refuses and names the owner
+#              (reachable via herdr remote). Absent, dispatch runs
+#              wherever `flywheel dispatch` is invoked.
+#   model    — optional launch model override
+#   channels — optional; passed to claude as --channels, which is what
+#              connects the Discord bridge
+#   env      — optional environment for the launched session, passed
+#              verbatim. One key is special: DISCORD_STATE_DIR — absent
+#              or relative it resolves against this folder, defaulting
+#              to <this folder>/.flywheel/discord — the org-scoped bot
+#              token and allowlist, kept apart from any personal
+#              machine-level bot.
+#   prompt   — the first prompt, sent as its own message rather than
+#              folded into a longer one, which is what makes a slash
+#              command in it load
+
+dispatch:
+  model: opus[1m]
+  channels: plugin:discord@claude-plugins-official
+  prompt: "You are dispatch for the <org> org; the tracker is <org>/<tracker-repo>. Report your state, then wait for input."

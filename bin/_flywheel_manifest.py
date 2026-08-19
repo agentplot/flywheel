@@ -1,10 +1,10 @@
 """The fleet manifest — `fleet.yaml` at the org folder root.
 
 The manifest is a constrained YAML subset parsed here without a YAML
-dependency: two-space indentation, top-level scalars, `actors:` a list
-of flat maps, `hosts:` a map of flat maps, scalar values only. Only
-FULL-LINE comments are recognized — a `#` inside a value is part of the
-value.
+dependency: two-space indentation, top-level scalars, `hosts:` a map of
+flat maps, `dispatch:` one flat map whose `env:` value is itself a flat
+map, scalar values only. Only FULL-LINE comments are recognized — a `#`
+inside a value is part of the value.
 
 `fleet.yaml` is machine-local and never in git: placement is per-machine,
 and `cwd:` entries are relative to the manifest's directory. `validate`
@@ -15,19 +15,25 @@ only migration a file outside version control can have.
 import sys
 from pathlib import Path
 
-STATES = {"running", "parked"}
+# The dispatch block's whole vocabulary. A hand-rolled parser's failure
+# mode is silence, so a key outside this set is refused by name rather
+# than dropped — a typo must not vanish.
+DISPATCH_KEYS = {"host", "model", "channels", "env", "prompt"}
 
-# Two manifest keys retired with the agent fleet they configured: one named
-# the directory those agents started in, the other the model they launched
-# on. The server starts loop PROCESSES, which have a working directory and no
-# model. A manifest still carrying either key is stale in a way that would
-# otherwise be silent — the server would look for `loops_cwd:`, find nothing
-# and start nothing — so these are named, matched, and refused with the fix.
-# `fleet.yaml` is machine-local and no commit can migrate it; only a message
-# can. The strings below are that matcher, not a live reference.
+# Manifest keys retired as the fleet's shape settled, each matched and
+# refused with its fix. The server starts loop PROCESSES, which have a
+# working directory and no model, and dispatch — the one standing agent —
+# has its own `dispatch:` block and its own start command. A manifest
+# still carrying one of these keys is stale in a way that would otherwise
+# be silent. `fleet.yaml` is machine-local and no commit can migrate it;
+# only a message can. The strings below are that matcher, not a live
+# reference.
 RETIRED_KEYS = {
-    "conductors_cwd": "loops_cwd",
-    "conductor_model": None,
+    "conductors_cwd": "rename it to `loops_cwd:`",
+    "conductor_model": "drop it; a loop process has no model",
+    "actors": "replace it with a top-level `dispatch:` block — dispatch is "
+              "the only standing agent, started by `flywheel dispatch`; "
+              "the loops are processes the server starts",
 }
 
 
@@ -48,30 +54,30 @@ def find_manifest(override: str | None) -> Path:
 
 def parse_manifest(path: Path) -> dict:
     hosts: dict[str, dict] = {}
-    actors: list[dict] = []
+    dispatch: dict = {}
     teams: dict[str, str] = {}
     books: dict[str, dict] = {}
     top: dict[str, str] = {}
     section = None
-    current: dict | None = None
     current_host = None
     current_book = None
+    in_env = False
     for raw in path.read_text().splitlines():
         if raw.lstrip().startswith("#") or not raw.strip():
             continue
         line = raw.rstrip()
         if line == "hosts:":
-            section, current = "hosts", None
-        elif line == "actors:":
-            section, current = "actors", None
+            section = "hosts"
+        elif line == "dispatch:":
+            section, in_env = "dispatch", False
         elif line == "teams:":
-            section, current = "teams", None
+            section = "teams"
         elif line == "books:":
-            section, current, current_book = "books", None, None
+            section, current_book = "books", None
         elif not line.startswith(" ") and ":" in line:
             # a top-level key anywhere ends the current section — never
-            # silently absorbed into the last actor or host
-            section, current, current_host = None, None, None
+            # silently absorbed into the last open map
+            section, current_host = None, None
             k, _, v = line.partition(":")
             top[k.strip()] = v.strip().strip('"')
         elif section == "hosts" and line.startswith("  ") and not line.startswith("    "):
@@ -80,14 +86,16 @@ def parse_manifest(path: Path) -> dict:
         elif section == "hosts" and line.startswith("    ") and current_host:
             k, _, v = line.strip().partition(":")
             hosts[current_host][k] = v.strip().strip('"')
-        elif section == "actors" and line.lstrip().startswith("- "):
-            current = {}
-            actors.append(current)
-            k, _, v = line.lstrip()[2:].partition(":")
-            current[k.strip()] = v.strip().strip('"')
-        elif section == "actors" and current is not None:
+        elif section == "dispatch" and line == "  env:":
+            in_env = True
+            dispatch.setdefault("env", {})
+        elif section == "dispatch" and in_env and line.startswith("    "):
             k, _, v = line.strip().partition(":")
-            current[k.strip()] = v.strip().strip('"')
+            dispatch["env"][k.strip()] = v.strip().strip('"')
+        elif section == "dispatch" and line.startswith("  ") and not line.startswith("    "):
+            in_env = False
+            k, _, v = line.strip().partition(":")
+            dispatch[k.strip()] = v.strip().strip('"')
         elif section == "teams" and line.startswith("  "):
             k, _, v = line.strip().partition(":")
             teams[k.strip()] = v.strip().strip('"')
@@ -97,33 +105,29 @@ def parse_manifest(path: Path) -> dict:
         elif section == "books" and line.startswith("    ") and current_book:
             k, _, v = line.strip().partition(":")
             books[current_book][k.strip()] = v.strip().strip('"')
-    manifest = {"top": top, "hosts": hosts, "actors": actors,
-                "teams": teams, "books": books, "root": path.parent,
-                "path": path}
+    # "actors" is a bridge: the row grammar is retired, but `up`/`status`
+    # still iterate the (now always empty) list until their rewrite lands.
+    manifest = {"top": top, "hosts": hosts, "dispatch": dispatch,
+                "actors": [], "teams": teams, "books": books,
+                "root": path.parent, "path": path}
     validate(manifest)
     return manifest
 
 
 def validate(manifest: dict) -> None:
     problems = []
-    for key, replacement in RETIRED_KEYS.items():
+    for key, fix in RETIRED_KEYS.items():
         if key in manifest["top"]:
-            problems.append(
-                f"`{key}:` retired with the agent fleet — "
-                + (f"rename it to `{replacement}:`" if replacement
-                   else "drop it; a loop process has no model"))
-    for a in manifest["actors"]:
-        name = a.get("name", "<unnamed>")
-        for field in ("name", "profile", "host", "state", "cwd"):
-            if not a.get(field):
-                problems.append(f"{name}: missing {field}")
-        if a.get("state") and a["state"] not in STATES:
-            problems.append(f"{name}: state '{a['state']}' is not one of {sorted(STATES)}")
-        if a.get("host") and a["host"] not in manifest["hosts"]:
-            problems.append(f"{name}: host '{a['host']}' is not in hosts:")
-        if a.get("cwd", "").startswith("/"):
-            problems.append(f"{name}: cwd is absolute — cwd: entries are "
-                            "relative to the manifest's directory")
+            problems.append(f"`{key}:` retired — {fix}")
+    dispatch = manifest.get("dispatch") or {}
+    for key in dispatch:
+        if key not in DISPATCH_KEYS:
+            problems.append(f"dispatch: unknown key `{key}:` — the block "
+                            f"takes {', '.join(sorted(DISPATCH_KEYS))}")
+    if dispatch and not dispatch.get("prompt"):
+        problems.append("dispatch: missing prompt")
+    if dispatch.get("host") and dispatch["host"] not in manifest["hosts"]:
+        problems.append(f"dispatch: host '{dispatch['host']}' is not in hosts:")
     for team, host in manifest["teams"].items():
         if host not in manifest["hosts"]:
             problems.append(f"teams: {team} → '{host}' is not in hosts:")
