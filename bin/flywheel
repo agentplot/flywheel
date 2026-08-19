@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """flywheel — drive an org fleet from its manifest and its tracker.
 
-  flywheel status [--host H] [--fleet PATH]
-  flywheel up     [--host H] [--fleet PATH]
-  flywheel server [--host H] [--fleet PATH] [--interval SECONDS]
-                  [--once] [--dry-run]
-  flywheel down   [--fleet PATH]
+  flywheel status   [--host H] [--fleet PATH]
+  flywheel up       [--host H] [--fleet PATH]
+  flywheel dispatch [--host H] [--fleet PATH]
+  flywheel server   [--host H] [--fleet PATH] [--interval SECONDS]
+                    [--once] [--dry-run]
+  flywheel down     [--fleet PATH]
   flywheel approve <bolt/slug | intent/slug | dispatch>  [--fleet PATH]
   flywheel version
 
@@ -31,9 +32,14 @@ inbox filter (`_flywheel_inbox.server_inbox`), the arithmetic over it is
 a pure function of manifest + tracker + the live registry, and the
 judgment lives in the sessions the loops launch.
 
-`up` converges the manifest's standing rows — dispatch, the one standing
-agent, whose triage and relay need a mind and a Discord channel — and
-then starts the server, detached, if none is running here for this org.
+`up` starts the server, detached, if none is running here for this org —
+and nothing else. `dispatch` starts the org's one standing agent from the
+manifest's `dispatch:` block: its triage and relay need a mind and a
+Discord channel, so its launch carries the block's `--channels` and env
+(the org-scoped `DISCORD_STATE_DIR`), and its lifecycle is deliberately
+its own command — a restart to pick up a new channel must not touch the
+server, and its long arc is a cloud service this CLI only reaches through
+the plugin's dispatch MCP server.
 
 The fleet's agents run in their own named herdr session — the org's — so
 the roster, workspaces, and teardown are isolated from other work. The
@@ -43,18 +49,19 @@ session `willdan`). When that session is not running, this command says so
 and names the start command rather than starting agents into the wrong
 session.
 
-Placement only: this command starts and reports actors; it never decides
-what they own (the tracker items' assignee does) and never tears a
-manifest row down (teardown is deliberate, not a sync step). Rows on
-other hosts are reported, not driven.
+Placement only: these commands start and report agents; they never decide
+what one owns (the tracker items' assignee does) and never tear one down
+(teardown is deliberate, not a sync step). A dispatch pinned to another
+host is reported, not driven.
 
-Before starting any actor, the repo it would sit in must have its
-worktrunk hook approvals granted — every project hook template worktrunk
-resolves for that repo present verbatim in the operator's
+Before starting any repo-holding actor, the repo it would sit in must
+have its worktrunk hook approvals granted — every project hook template
+worktrunk resolves for that repo present verbatim in the operator's
 `~/.config/worktrunk/approvals.toml`. Ungranted, an agent cannot run the
 merge gate and would stop mid-merge with no way to fix it, so no actor
 is started there and `wt config approvals add` is printed instead. The
-grant is the operator's, taken once per repo, interactively.
+grant is the operator's, taken once per repo, interactively. Dispatch is
+exempt by shape: it holds no checkout and never merges.
 
 Worktrunk is asked, read-only, which hooks a repo configures — its own
 grammar, not ours to parse. The store is read here and compared. Nothing
@@ -62,11 +69,10 @@ asks worktrunk whether a template is approved, nothing writes the store,
 and no hook is ever run. `status` reports a row per repo it can inspect,
 names what it could not inspect and why, and starts nothing.
 
-The manifest is a constrained YAML subset parsed here without a YAML
-dependency: two-space indentation, top-level scalars, `actors:` a list
-of flat maps, `hosts:` a map of flat maps, scalar values only. Only
-FULL-LINE comments are recognized — a `#` inside a value is part of the
-value.
+The manifest grammar lives in `_flywheel_manifest`: a constrained YAML
+subset — top-level scalars, `hosts:` a map of flat maps, one `dispatch:`
+block — parsed without a YAML dependency. Only FULL-LINE comments are
+recognized; a `#` inside a value is part of the value.
 """
 
 import json
@@ -572,37 +578,29 @@ def begin_pass() -> None:
 
 def start_targets(manifest: dict, host: str
                   ) -> tuple[list[Path], list[tuple[str, str]]]:
-    """What this host can inspect, and what it cannot — `(targets, skipped)`.
+    """The repos this host's loop starts would run a merge gate in, and
+    what could not be inspected — `(targets, skipped)`.
 
-    A gate row may only be printed for a repo actually looked at. Another
-    host's repo and a working directory absent from this machine have no
-    config to read, and claiming either is gate-ready would be a statement
-    about a gate nobody checked. So they are skipped — and every skip is
-    returned with its reason, because a gate report covering fewer repos
-    than the actor rows imply, with nothing saying why, reads as a clean
-    bill of health for repos nobody checked. That silence is the disease
-    this whole check exists to cure; it does not get to reappear in the
-    report.
+    A gate row may only be printed for a repo actually looked at. A
+    working directory absent from this machine has no config to read, and
+    claiming it gate-ready would be a statement about a gate nobody
+    checked — so it is skipped WITH its reason, never silently. That
+    silence is the disease this whole check exists to cure; it does not
+    get to reappear in the report. Dispatch is deliberately not a target:
+    it holds no repo checkout and never merges, so there is no gate it
+    could be unable to run.
     """
     targets: list[Path] = []
     skipped: list[tuple[str, str]] = []
-    rows = [(a.get("name", "?"), a.get("host"), a.get("cwd"))
-            for a in manifest["actors"]]
     cwd_rel = manifest["top"].get("loops_cwd")
-    if cwd_rel:
-        rows.append(("(loops)", host, cwd_rel))
-    for name, a_host, rel in rows:
-        if a_host != host:
-            skipped.append((name, f"placed on {a_host or '?'}, not this host"))
-            continue
-        if not rel:
-            skipped.append((name, "no cwd: in the manifest"))
-            continue
-        cwd = (manifest["root"] / rel).resolve()
-        if not cwd.is_dir():
-            skipped.append((name, f"{rel} is not present on this machine"))
-            continue
-        targets.append(cwd)
+    if not cwd_rel:
+        skipped.append(("(loops)", "no loops_cwd: in the manifest"))
+        return targets, skipped
+    cwd = (manifest["root"] / cwd_rel).resolve()
+    if not cwd.is_dir():
+        skipped.append(("(loops)", f"{cwd_rel} is not present on this machine"))
+        return targets, skipped
+    targets.append(cwd)
     return targets, skipped
 
 
@@ -624,23 +622,31 @@ def gate_rows(repos: list[Path], indent: str = "") -> None:
 
 def status(manifest: dict, host: str, session: str, env: dict) -> int:
     alive = herdr_agents(env)
-    width = max((len(a.get("name", "")) for a in manifest["actors"]), default=4)
     print(f"fleet: {manifest['root']}  ·  session: {session}  ·  this host: {host}")
-    print(f"{'actor':<{width}}  {'host':<12} {'state':<8} observed")
     drift = 0
-    for a in manifest["actors"]:
-        name = a.get("name", "?")
-        observed = alive[name].get("agent_status", "alive") if name in alive else "absent"
-        want = a.get("state", "?")
+    block = manifest.get("dispatch") or {}
+    if not block:
+        print("dispatch: no dispatch: block in fleet.yaml")
+    else:
+        observed = (alive["dispatch"].get("agent_status", "alive")
+                    if "dispatch" in alive else "absent")
+        wanted = [w for w in (
+            f"pinned to {block['host']}" if block.get("host") else "",
+            block.get("model", ""),
+            f"channels {block['channels']}" if block.get("channels") else "",
+        ) if w]
         mark = ""
-        if want == "running" and name not in alive:
-            mark, drift = "  ← wanted running", drift + 1
-        if want == "parked" and name in alive:
-            mark = "  ← running while parked"
-        print(f"{name:<{width}}  {a.get('host','?'):<12} {want:<8} {observed}{mark}")
-    # The merge gate its agents would have to run, per repo this host
-    # places actors into. Reported, never acted on: status starts nothing,
-    # and an ungranted repo is not drift.
+        pinned = block.get("host")
+        if observed == "absent":
+            if not pinned or pinned == host:
+                mark, drift = "  ← `flywheel dispatch` starts it", 1
+            else:
+                mark = f"  — its host is {pinned}, not this one"
+        print(f"dispatch: {observed}"
+              + (f"  ·  {', '.join(wanted)}" if wanted else "") + mark)
+    # The merge gate the loops would have to run in their checkout.
+    # Reported, never acted on: status starts nothing, and an ungranted
+    # repo is not drift.
     targets, skipped = start_targets(manifest, host)
     print()
     print("repo hook approvals")
@@ -649,8 +655,6 @@ def status(manifest: dict, host: str, session: str, env: dict) -> int:
     if skipped:
         for name, why in skipped:
             print(f"{name}: not checked from here — {why}")
-    if not targets and not skipped:
-        print("no actors on this host")
     server_rows(manifest)
     return 1 if drift else 0
 
@@ -664,19 +668,30 @@ def send_prompt(name: str, text: str, env: dict) -> bool:
 
 def start_actor(name: str, profile: str, model: str | None, cwd: Path,
                 prompt: str | None, env: dict) -> bool:
-    # The hook-approval precondition, bound at the seam every actor start
-    # goes through rather than at each of the commands that start one. An
-    # agent whose repo's merge gate it cannot run is an agent that will
-    # stop mid-merge with no way to fix it, so it is not placed there.
+    # The hook-approval precondition, bound at the seam every repo-holding
+    # actor start goes through rather than at each of the commands that
+    # start one. An agent whose repo's merge gate it cannot run is an agent
+    # that will stop mid-merge with no way to fix it, so it is not placed
+    # there. Dispatch starts through `launch_agent` directly — it holds no
+    # checkout and never merges, so there is no gate to refuse it on.
     check = gate_readiness(cwd, GATE_CACHE)
     if not check.ok:
         print(f"{name}: not started — its repo's merge gate is not runnable")
         report_gate(check, GATE_REPORTED, "  ")
         return False
+    return launch_agent(name, profile, model, cwd, prompt, env)
+
+
+def launch_agent(name: str, profile: str, model: str | None, cwd: Path,
+                 prompt: str | None, env: dict,
+                 tab_env: tuple = (), claude_args: tuple = ()) -> bool:
     print(f"starting {name} ({profile}, {model or 'default'})")
+    tab_argv = ["herdr", "tab", "create", "--cwd", str(cwd),
+                "--label", name, "--no-focus"]
+    for pair in tab_env:
+        tab_argv += ["--env", pair]
     try:
-        tab = herdr_json(["herdr", "tab", "create", "--cwd", str(cwd),
-                          "--label", name, "--no-focus"], env)
+        tab = herdr_json(tab_argv, env)
     except RuntimeError as e:
         print(f"  {e}")
         return False
@@ -704,7 +719,7 @@ def start_actor(name: str, profile: str, model: str | None, cwd: Path,
     argv = ["herdr", "agent", "start", name, "--kind", "claude",
             "--pane", str(pane), "--timeout", "120000",
             "--", "--agent", profile, "-n", name,
-            "--dangerously-skip-permissions"]
+            "--dangerously-skip-permissions", *claude_args]
     if model:
         argv += ["--model", model]
     start = None
@@ -731,26 +746,48 @@ def start_actor(name: str, profile: str, model: str | None, cwd: Path,
     return True
 
 
-def up(manifest: dict, host: str, session: str, env: dict) -> int:
-    alive = herdr_agents(env)
-    failures = 0
-    for a in manifest["actors"]:
-        name = a["name"]
-        if a.get("state") != "running" or name in alive:
-            continue
-        if a.get("host") != host:
-            print(f"{name}: on {a.get('host')} — not this host, reach it via "
-                  "herdr remote / ssh")
-            continue
-        cwd = (manifest["root"] / a["cwd"]).resolve()
-        if not cwd.is_dir():
-            print(f"{name}: cwd {a['cwd']} does not resolve under "
-                  f"{manifest['root']}"); failures += 1
-            continue
-        if not start_actor(name, a["profile"], a.get("model"), cwd,
-                           a.get("prompt"), env):
-            failures += 1
-    return 1 if failures else 0
+def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
+    """Start the org's dispatch agent from the manifest's `dispatch:` block.
+
+    Deliberately its own command, never a step of `up`: dispatch's
+    lifecycle is the operator's (a restart to pick up a new channel must
+    not touch the server), and its home is not necessarily this machine —
+    the block's optional `host:` pins it, and its long arc is a cloud
+    service the fleet reaches only through the dispatch MCP server. cwd
+    is the org folder root: dispatch holds no repo checkout, and its one
+    file write lands under `<org>/.flywheel/`.
+    """
+    block = manifest.get("dispatch") or {}
+    if not block:
+        sys.exit("no `dispatch:` block in fleet.yaml — see the fleet "
+                 "skill's template-fleet.yaml for the shape")
+    pinned = block.get("host")
+    if pinned and pinned != host:
+        print(f"dispatch: pinned to {pinned} — not this host, reach it via "
+              "herdr remote / ssh")
+        return 1
+    alive = herdr_agents(env).get("dispatch")
+    if alive:
+        print(f"dispatch: already running "
+              f"({alive.get('agent_status', 'alive')})")
+        return 0
+    env_map = dict(block.get("env") or {})
+    if block.get("channels") or "DISCORD_STATE_DIR" in env_map:
+        # The org-scoped Discord state — bot token and allowlist — kept
+        # apart from any personal machine-level bot in ~/.claude.
+        state_dir = Path(env_map.get("DISCORD_STATE_DIR")
+                         or ".flywheel/discord")
+        if not state_dir.is_absolute():
+            state_dir = (manifest["root"] / state_dir).resolve()
+        state_dir.mkdir(parents=True, exist_ok=True)
+        env_map["DISCORD_STATE_DIR"] = str(state_dir)
+    claude_args = (("--channels", block["channels"])
+                   if block.get("channels") else ())
+    ok = launch_agent("dispatch", "flywheel-dispatch", block.get("model"),
+                      manifest["root"], block.get("prompt"), env,
+                      tab_env=tuple(f"{k}={v}" for k, v in env_map.items()),
+                      claude_args=claude_args)
+    return 0 if ok else 1
 
 
 SETTLED = {"idle", "done"}
@@ -1055,7 +1092,7 @@ def main() -> int:
         manifest = parse_manifest(find_manifest(overrides.get("--fleet")))
         return approve_cmd(manifest, args[1:])
     if len(args) != 1 or args[0] not in {"up", "status", "server", "down",
-                                         "version"}:
+                                         "dispatch", "version"}:
         print(__doc__.strip())
         return 2
     if args[0] == "version":
@@ -1074,9 +1111,17 @@ def main() -> int:
     host = this_host(manifest, overrides.get("--host"))
     if args[0] == "status":
         return status(manifest, host, session, env)
+    if args[0] == "dispatch":
+        return dispatch_cmd(manifest, host, env)
     if args[0] == "up":
-        rc = up(manifest, host, session, env)
-        return rc or start_server(manifest, host, overrides.get("--fleet"))
+        # A courtesy line, never a start: dispatch's lifecycle is its own
+        # command's.
+        block = manifest.get("dispatch") or {}
+        pinned = block.get("host")
+        if block and (not pinned or pinned == host) \
+                and "dispatch" not in herdr_agents(env):
+            print("dispatch: not running — `flywheel dispatch` starts it")
+        return start_server(manifest, host, overrides.get("--fleet"))
     # The server re-reads the manifest nowhere: it is read once here, and the
     # tracker — the thing that actually moves — is re-read every pass. A
     # manifest edit is an operator act, and restarting the daemon is how it

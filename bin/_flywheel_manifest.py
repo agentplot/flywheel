@@ -105,11 +105,9 @@ def parse_manifest(path: Path) -> dict:
         elif section == "books" and line.startswith("    ") and current_book:
             k, _, v = line.strip().partition(":")
             books[current_book][k.strip()] = v.strip().strip('"')
-    # "actors" is a bridge: the row grammar is retired, but `up`/`status`
-    # still iterate the (now always empty) list until their rewrite lands.
     manifest = {"top": top, "hosts": hosts, "dispatch": dispatch,
-                "actors": [], "teams": teams, "books": books,
-                "root": path.parent, "path": path}
+                "teams": teams, "books": books, "root": path.parent,
+                "path": path}
     validate(manifest)
     return manifest
 
