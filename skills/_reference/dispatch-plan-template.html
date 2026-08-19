@@ -516,5 +516,21 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
 
   preview();
 </script>
+<script type="module">
+  // A unit body's mermaid fences render as diagrams, not as raw fence
+  // text — the one part of the format that needs a module import.
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: false, theme: "dark" });
+  let n = 0;
+  for (const code of document.querySelectorAll(".md pre code.language-mermaid")) {
+    try {
+      const { svg } = await mermaid.render(`mmd-${n++}`, code.textContent);
+      const holder = document.createElement("div");
+      holder.className = "tablewrap";
+      holder.innerHTML = svg;
+      code.parentElement.replaceWith(holder);
+    } catch { /* an unparsable fence stays visible as text */ }
+  }
+</script>
 </body>
 </html>
