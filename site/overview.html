@@ -126,7 +126,7 @@ h3{
 p{margin:0 0 15px;max-width:74ch;font-size:13.5px;line-height:1.7;color:var(--ink2)}
 ul{margin:0 0 15px;padding-left:20px;max-width:74ch;font-size:13.5px;line-height:1.7;color:var(--ink2)}
 li{margin:0 0 6px}
-code,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.93em}
+code{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.93em}
 code{background:var(--code);padding:.12em .4em;border-radius:3px;color:var(--bone)}
 pre code{background:none;padding:0}
 
@@ -147,7 +147,6 @@ pre code{background:none;padding:0}
 .figure pre.mermaid{margin:0;text-align:center;min-width:min-content}
 .figure svg{max-width:100%;height:auto}
 .caption{color:var(--ink3);font-size:12.5px;line-height:1.65;margin:0 0 28px;max-width:74ch}
-.caption ul{color:var(--ink3);font-size:12.5px;line-height:1.65;margin:0}
 
 pre.block{
   background:var(--code);border:1px solid var(--line);border-radius:8px;
@@ -279,11 +278,12 @@ flowchart TD
 </pre>
     </div>
     <p class="caption">
-      Grey boxes are write scopes. The books and the context map are the one
-      scope more than one actor writes, and that is deliberate: they are the
-      destination, and every loop reads them. Nothing here messages anything
-      else — every arrow into a loop is a tracker query, and every arrow out of
-      a session is a commit, an item comment, or a label.
+      Grey boxes are write scopes. Every session directory is its own, so the
+      books and the context map are the one scope more than one actor writes
+      the same copy of — and that is deliberate: they are the destination, and
+      every loop reads them. Nothing here messages anything else — every arrow
+      into a loop is a tracker query, and every arrow out of a session is a
+      commit, an item comment, or a label.
     </p>
 
     <table>
