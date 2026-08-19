@@ -110,10 +110,11 @@ a:hover{color:var(--brass)}
    single plate in the viewport, and here the plate sits in page flow so a
    walkthrough can follow it. */
 /* The study padded its body 18px at the sides; that padding lives here now, so
-   the plate never touches the viewport edge and its left edge lines up with
-   every .wrap below it. */
+   the plate never touches the viewport edge. The fold runs wider than the
+   960px text column — like the .figure breakout below — so the plate has room
+   to read as machinery rather than an emblem. */
 .hero{padding:38px 18px 8px}
-.plate{width:100%;max-width:960px;margin:0 auto}
+.plate{width:100%;max-width:1200px;margin:0 auto}
 
 .eyebrow{
   font-size:11px;letter-spacing:.28em;text-transform:uppercase;
@@ -169,10 +170,11 @@ h1 span{color:var(--brass)}
 
 /* ----------------------------------------------------------------- fold --
    Beat 1 is a split: the plain sentence and the deck on the left, the plate
-   on the right at ~46% of the fold, so the five-beat nav sits in view on a
-   laptop screen without scrolling. Below 860px the plate drops under the
-   copy rather than shrinking into illegibility. */
-.fold{display:grid;grid-template-columns:minmax(0,1fr) 46%;gap:32px;align-items:center}
+   on the right at ~60% of a fold that runs wider than the text column, so
+   the plate dominates while the five-beat nav stays in view on a laptop
+   screen without scrolling. Below 860px the plate drops under the copy
+   rather than shrinking into illegibility. */
+.fold{display:grid;grid-template-columns:minmax(0,1fr) 60%;gap:36px;align-items:center}
 .fold-copy{min-width:0}
 .plain{
   font-family:"Space Grotesk",system-ui,sans-serif;font-weight:500;
@@ -585,7 +587,10 @@ footer a:hover{color:var(--brass)}
         <div class="step"><div class="s">bolt</div><div class="a">spec · build · test → <b>commits</b></div></div>
         <div class="step"><div class="s">merged</div><div class="a">acceptance passes → <b>main, task checked</b></div></div>
       </div>
-      <p class="deeper">A page per concept, walking this journey a step at a time, is on its way to this site.</p>
+      <p class="deeper">walk it a step at a time —
+        <a href="tour-export-backoff.html">export backoff</a> ·
+        <a href="tour-onboarding-email.html">onboarding email order</a> ·
+        <a href="tour-dashboard-dark-theme.html">dashboard dark theme</a></p>
     </div>
 
     <div class="block">
