@@ -38,6 +38,17 @@ Two levels, two different objects:
   units. Propose ONE bolt per run unless the gap genuinely splits
   into independent deliveries — many small bolts is the failure mode
   this shape exists to avoid.
+- **Name the bolt for the deliverable the operator wants to see
+  working together, never for the work items that build it** — a bolt
+  named for its tasks is a to-do list wearing a milestone. This rule is
+  every plan author's, not only this run's: dispatch plans and dictated
+  cards cite it from here.
+- **Read the open `bolt/*` milestones before proposing a new one.**
+  Units that serve an open bolt's deliverable fold into it as new
+  cards; a related idea splits — the parts the open bolt's deliverable
+  needs go in as units on it, the harder or independent parts become a
+  proposed successor bolt. A new bolt is for a new deliverable, not for
+  new work.
 - A **unit** is one coherent batch inside the bolt: buildable in one
   pass of the construction loop, leaving the branch consistent.
   Prefer small units inside one bolt over many bolts.
@@ -179,14 +190,18 @@ The work order says which mode you are in:
   items are born at expansion, which is the bolt loop's job, after
   board approval.
 
-A design session's round-close plan carries construction in this same
-grammar and applies it through this same board mode — the summary, the
-`Unit: <slug>` cards, the blocked-by mirroring, the supersede rule
-(`skills/_reference/round-close.md`). One format, whoever the author
-is, so nothing is reformatted between a round and the board. The one
-difference is authorized by the round itself: an approved card is
-flipped to board Ready by the session applying the operator's word,
-where a planning run's cards always wait at Backlog.
+A dispatch plan carries construction in this same grammar and applies
+it through this same board mode — the summary, the `Unit: <slug>`
+cards, the blocked-by mirroring, the supersede rule scoped to cards the
+plan itself replaces (`skills/_reference/dispatch-plan.md`). One
+format, whoever the author is, so nothing is reformatted between a
+round and the board. Two differences are authorized by the round
+itself: an approved card is flipped to board Ready by the actor
+applying the operator's word — including a card folded onto an open
+running bolt, which the live loop expands mid-flight — where a planning
+run's cards always wait at Backlog; and a plan's bolt container may
+reuse an open milestone instead of creating one, per the fold rule
+above.
 
 ## Boundaries
 

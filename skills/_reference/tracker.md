@@ -68,8 +68,8 @@ queue a question — never invent tracker structure.**
    and each move has an owner: anyone queues; only the operator's word
    makes ready — the flip to Ready on the board for a batch, born-ready
    at triage when the work IS the operator's word, or the approval of a
-   round-close plan, applied by the session that ran the round
-   (`round-close.md` beside this file); the
+   dispatch plan, applied by the actor that ran the round
+   (`dispatch-plan.md` beside this file); the
    loop flips `in-progress` as a session starts; whoever holds
    the evidence closes, always with one `closed:*` reason.
    **`stage:*` refines `in-progress` and never replaces a `state:*`
@@ -102,11 +102,12 @@ queue a question — never invent tracker structure.**
 6. **Construction work is born as a plan card, never as an intent
    item.** A design session records what must be built in its
    decisions and the book; the demand reaches the tracker one way —
-   the bolt planner cards it from the book, a session cards it in its
-   round-close plan (`round-close.md` beside this file), or the
-   operator dictates one; the operator approves
-   the card, and expansion births the work items on the bolt
-   milestone.
+   the bolt planner cards it from the book, a dispatch plan cards it
+   (`dispatch-plan.md` beside this file — a session's close, or
+   dispatch's triage), or the operator dictates one; the operator
+   approves the card, and expansion births the work items on the bolt
+   milestone — an approved plan's card may land on an open bolt, whose
+   running loop expands it mid-flight.
 7. **Blocked on the operator's word**: comment the one-line question
    on the item, add `needs-operator`, keep working what it does not
    gate. Whoever applies the answer removes the label. The label marks
@@ -153,10 +154,12 @@ through GitHub issues, and each consumer has an exact filter:
   milestone, plus the guard sweep: orphan `state:queued` design items
   (compose). Construction work never appears here — it is born as
   plan cards, approved and expanded on its bolt.
-- **dispatch** — open issues with no milestone (triage), and open
-  issues labelled `needs-operator` (relay). The relay half has no
-  milestone condition: an escalation from a running bolt has one and
-  still needs relaying.
+- **dispatch** — open issues with no milestone (the triage inbox:
+  routing is proposed over it through a triage plan —
+  `dispatch-plan.md` beside this file — or applied directly on the
+  operator's own word), and open issues labelled `needs-operator`
+  (relay). The relay half has no milestone condition: an escalation
+  from a running bolt has one and still needs relaying.
 
 **These filters are the whole coordination model.** A discovery is an
 issue; an escalation is a label; a completion is item state. Anything

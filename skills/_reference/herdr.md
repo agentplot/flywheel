@@ -71,7 +71,8 @@ dispatch is `dispatch`, and every session starts with its session type
 `planning-<topic>`, `interactive-<topic>`, `prototype-<topic>`,
 `writeback-<topic>`, `proposal-writing-<topic>`,
 `proposal-review-<topic>`, `spec-writing-<topic>`, `build-<topic>`,
-`test-<topic>`, `code-review-<topic>`, `human-code-review-<topic>`.
+`test-<topic>`, `code-review-<topic>`, `human-code-review-<topic>`,
+`findings-routing-<topic>`.
 Never a shorthand: `review-<topic>` cannot say which review type it is,
 and one bolt runs several. A loop's own mechanical sessions are named
 for the stage that launched them — `scaffold-`, `route-`, `plan-`,
@@ -96,7 +97,8 @@ are selected.
 **Every session launch names its model.** The session type's definition
 carries the default — the one enumeration is the type table in the
 plugin's `openspec/specs/flywheel-session-type-skills/spec.md`: fable
-for planning, interactive and proposal-review; `opus[1m]` for research,
+for planning, interactive, proposal-review and findings-routing;
+`opus[1m]` for research,
 spec-writing, build, test, code-review and human-code-review; opus for
 prototype, writeback and proposal-writing — and a work order or
 invocation may override it; pass whichever applies as `--model <name>`.
@@ -410,10 +412,10 @@ The parent is the board row. The released items are NOT added to the
 board beside it — one row per bolt is what the parent buys, and it is
 lost if the sub-issues appear too.
 
-A design session applying an approved round-close plan
-(`round-close.md` beside this file) runs the same Ready move — on the
-elaboration parent it composed and on each approved plan card — as the
-protocol's step 5, after `stage:done` and never before:
+An actor applying an approved dispatch plan
+(`dispatch-plan.md` beside this file) runs the same Ready move — on
+each elaboration parent it composed and each approved plan card — as
+the protocol's step 5, after `stage:done` and never before:
 
 ```bash
 <plugin-root>/bin/flywheel-board --org <org> --repo <tracker> \
