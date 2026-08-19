@@ -211,12 +211,81 @@ h1 span{color:var(--brass)}
   color:var(--ink3);
 }
 
+/* ---------------------------------------------------------- tour cards --
+   The three deep dives, styled as destinations rather than footnote links:
+   each card is one raw sentence and where its journey goes. */
+.tours{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));margin:26px 0 8px}
+.tourcard{
+  display:block;border:1px solid var(--line);border-radius:12px;
+  background:var(--panel);padding:18px 20px 16px;text-decoration:none;
+  transition:border-color .15s ease, transform .15s ease;
+}
+.tourcard:hover{border-color:var(--brass);transform:translateY(-2px)}
+.tourcard .say{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;
+  font-size:16.5px;line-height:1.35;letter-spacing:-.015em;color:var(--bone);margin:0 0 8px;
+}
+.tourcard .say i{font-style:normal;color:var(--brass)}
+.tourcard .why{font-size:12px;line-height:1.6;color:var(--ink3);margin:0 0 12px}
+.tourcard .go{
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mint);
+}
+.tourcard:hover .go{color:var(--brass)}
+
+/* ------------------------------------------------------ the plan screen --
+   Beat 4's centrepiece: the dispatch plan as it lands in the browser — a
+   faithful mock of the real surface (skills/_reference/dispatch-plan
+   -template.html), drawn in the site's own system. Decorative only:
+   the controls are pictures of controls. */
+.planshot{
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  background:var(--ground-2);margin:6px 0 10px;
+  box-shadow:0 24px 60px rgba(9,28,31,.55);
+}
+@media (min-width:1060px){
+  .planshot{width:min(1100px,calc(100vw - 36px));position:relative;left:50%;transform:translateX(-50%)}
+}
+.ps-chrome{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line-soft);background:rgba(9,28,31,.6)}
+.ps-chrome i{width:9px;height:9px;border-radius:50%;background:var(--line);display:inline-block}
+.ps-chrome .url{margin-left:10px;font-size:10.5px;letter-spacing:.08em;color:var(--ink3)}
+.ps-body{padding:20px 22px 0}
+.ps-title{font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:17px;color:var(--bone);margin:0 0 2px}
+.ps-sub{font-size:11.5px;color:var(--ink3);margin:0 0 16px}
+.ps-cap{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--mint);margin:16px 0 8px}
+.ps-box{border:1px solid var(--line);border-radius:9px;overflow:hidden;margin:0 0 14px;background:rgba(13,37,40,.55)}
+.ps-boxhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line-soft)}
+.ps-boxhead b{font-family:"Space Grotesk",system-ui,sans-serif;font-size:13.5px;font-weight:700;color:var(--bone)}
+.ps-boxhead .kind{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass)}
+.ps-boxhead .del{font-size:11px;color:var(--ink3)}
+.ps-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;padding:10px 14px;border-bottom:1px solid var(--line-soft);align-items:start}
+.ps-row:last-child{border-bottom:none}
+.ps-row .t{font-size:12px;color:var(--ink2);line-height:1.55}
+.ps-row .t b{color:var(--bone);font-weight:500}
+.ps-badge{display:inline-block;font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  padding:1px 7px;border-radius:12px;border:1px solid rgba(143,185,174,.4);color:var(--mint);margin-right:8px;vertical-align:1px}
+.ps-badge.brass{color:var(--brass);border-color:rgba(201,162,39,.45)}
+.ps-ctl{
+  font-size:10.5px;letter-spacing:.08em;color:var(--bone);white-space:nowrap;
+  border:1px solid var(--line);border-radius:6px;padding:4px 9px;background:rgba(9,28,31,.6);
+}
+.ps-ctl::after{content:" ▾";color:var(--ink3)}
+.ps-foot{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  padding:12px 22px;border-top:1px solid var(--line);background:rgba(9,28,31,.8);
+}
+.ps-approve{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:12.5px;
+  color:var(--ground);background:var(--brass);border-radius:7px;padding:7px 18px;
+}
+.ps-input{flex:1;min-width:180px;font-size:11px;color:var(--ink3);
+  border:1px solid var(--line);border-radius:7px;padding:7px 10px;background:none}
+.ps-send{font-size:11.5px;color:var(--ink2);border:1px solid var(--line);border-radius:7px;padding:6px 12px}
+
 /* ----------------------------------------------------------------- tabs --
-   Progressive enhancement. Before JS runs — and if it never does — this is a
-   plain scrolling document: every panel visible, the tablist a row of anchors
-   to real element ids. The tab layer switches on only after the diagrams have
-   rendered, and sets its own ARIA then, so a no-JS reader is never told about
-   tabs that are not there. */
+   The five beats as a section nav, not a tab layer: the page is one
+   scrolling document, the bar sticks under the topbar, and a script only
+   lights the label for the section in view. Nothing hides, so there is no
+   empty state and nothing jumps. Works untouched with JS off. */
 .tabs{
   position:sticky;top:46px;z-index:15;
   margin-top:34px;
@@ -236,19 +305,22 @@ h1 span{color:var(--brass)}
   background:none;font-family:inherit;cursor:pointer;
 }
 .tab:hover{color:var(--bone)}
-html[data-tabs="on"] .tab[aria-selected="true"]{
-  color:var(--brass);border-bottom-color:var(--brass);
-}
+.tab i{font-style:normal;font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;color:var(--brass);opacity:.8;margin-right:6px}
+.tab.on{color:var(--brass);border-bottom-color:var(--brass)}
 
 /* --------------------------------------------------------------- panels -- */
-.panel{padding:44px 0 8px;scroll-margin-top:96px}
-html:not([data-tabs="on"]) .panel{border-bottom:1px solid var(--line-soft)}
+.panel{padding:64px 0 22px;scroll-margin-top:96px;border-bottom:1px solid var(--line-soft)}
+.beatno{
+  font-size:11px;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--mint);margin:0 0 12px;
+}
+.beatno i{font-style:normal;font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;color:var(--brass);font-size:14px;letter-spacing:0;margin-right:8px}
 h2{
   font-family:"Space Grotesk",system-ui,sans-serif;
-  font-size:clamp(24px,3.4vw,32px);line-height:1.15;margin:0 0 6px;
-  letter-spacing:-.025em;font-weight:700;color:var(--bone);
+  font-size:clamp(28px,4vw,40px);line-height:1.1;margin:0 0 8px;
+  letter-spacing:-.03em;font-weight:700;color:var(--bone);
 }
-.sub{color:var(--ink3);margin:0 0 28px;font-size:12.5px;letter-spacing:.04em}
+.sub{color:var(--ink3);margin:0 0 30px;font-size:13px;letter-spacing:.04em}
 h3{
   font-family:"Space Grotesk",system-ui,sans-serif;
   font-size:17px;margin:34px 0 8px;font-weight:700;letter-spacing:-.015em;color:var(--bone);
@@ -508,13 +580,13 @@ footer a:hover{color:var(--brass)}
   </div>
 </div>
 
-<nav class="tabs" id="walkthrough" aria-label="The five beats">
+<nav class="tabs" id="walkthrough" aria-label="The five sections">
   <div class="wrap">
-    <a class="tab" href="#top">What it is</a>
-    <a class="tab" href="#problem">The problem</a>
-    <a class="tab" href="#walk">One idea, walked</a>
-    <a class="tab" href="#approval">Your approval</a>
-    <a class="tab" href="#setup">Install</a>
+    <a class="tab" href="#top"><i>1</i>What it is</a>
+    <a class="tab" href="#problem"><i>2</i>The problem</a>
+    <a class="tab" href="#walk"><i>3</i>From idea to merged</a>
+    <a class="tab" href="#approval"><i>4</i>Your approval</a>
+    <a class="tab" href="#setup"><i>5</i>Install</a>
   </div>
 </nav>
 
@@ -522,8 +594,9 @@ footer a:hover{color:var(--brass)}
 
 <section class="panel" id="problem">
   <div class="wrap">
-    <h2>The problem</h2>
-    <p class="sub">Why one conversation fails.</p>
+    <p class="beatno"><i>2</i>the problem</p>
+    <h2>Why one conversation fails</h2>
+    <p class="sub">Design and construction want different speeds.</p>
 
     <p>
       Most agent workflows collapse design and construction into one
@@ -566,8 +639,9 @@ footer a:hover{color:var(--brass)}
 
 <section class="panel" id="walk">
   <div class="wrap">
-    <h2>One idea, walked</h2>
-    <p class="sub">Seven steps, and the artifact each one leaves behind.</p>
+    <p class="beatno"><i>3</i>from idea to merged</p>
+    <h2>One sentence becomes shipped code</h2>
+    <p class="sub">Seven steps, and what each one leaves behind in writing.</p>
 
     <p>
       One raw sentence — the kind that arrives in a chat window on a Tuesday —
@@ -587,10 +661,27 @@ footer a:hover{color:var(--brass)}
         <div class="step"><div class="s">bolt</div><div class="a">spec · build · test → <b>commits</b></div></div>
         <div class="step"><div class="s">merged</div><div class="a">acceptance passes → <b>main, task checked</b></div></div>
       </div>
-      <p class="deeper">walk it a step at a time —
-        <a href="tour-export-backoff.html">export backoff</a> ·
-        <a href="tour-onboarding-email.html">onboarding email order</a> ·
-        <a href="tour-dashboard-dark-theme.html">dashboard dark theme</a></p>
+    </div>
+
+    <h3>Follow a real one, end to end</h3>
+    <p>Pick a sentence. Each page below walks its whole journey a step at a
+      time, with the actual artifact every step leaves.</p>
+    <div class="tours">
+      <a class="tourcard" href="tour-export-backoff.html">
+        <p class="say">“<i>Exports fail when the API rate-limits us.</i>”</p>
+        <p class="why">Code-flavoured — ends in a real diff. Reads best to engineers.</p>
+        <p class="go">follow this one →</p>
+      </a>
+      <a class="tourcard" href="tour-onboarding-email.html">
+        <p class="say">“<i>Onboarding emails arrive out of order.</i>”</p>
+        <p class="why">A bug whose fix is a design decision, not a patch — the strongest case for the design loop.</p>
+        <p class="go">follow this one →</p>
+      </a>
+      <a class="tourcard" href="tour-dashboard-dark-theme.html">
+        <p class="say">“<i>Give the dashboard a dark theme.</i>”</p>
+        <p class="why">Most legible to a non-engineer — every artifact stays readable.</p>
+        <p class="go">follow this one →</p>
+      </a>
     </div>
 
     <div class="block">
@@ -626,33 +717,79 @@ footer a:hover{color:var(--brass)}
 
 <section class="panel" id="approval">
   <div class="wrap">
-    <h2>Your approval — and how little it costs</h2>
+    <p class="beatno"><i>4</i>your approval</p>
+    <h2>One screen, one word — and how little it costs</h2>
     <p class="sub">The one turn of the wheel nothing else can take for you.</p>
 
     <p>
-      Plans, options and diffs open as a page in your browser — the reading you
-      would give a pull request, on the cheapest channel that can carry the
-      question.
+      This is the screen the flywheel turns on. A whole round of work — new
+      ideas routed, questions asked, construction proposed — lands in your
+      browser as one plan. Every control already holds the plan's suggestion;
+      you correct what's wrong and approve once. Nothing exists on GitHub
+      until you do.
     </p>
+
+    <figure class="planshot" role="img" aria-label="The plan surface: routed rows under an intent and a bolt, each with its own control, one Approve button at the bottom.">
+      <div class="ps-chrome"><i></i><i></i><i></i><span class="url">your browser · the plan, opened for you</span></div>
+      <div class="ps-body">
+        <p class="ps-title">Dispatch plan — Tuesday's ideas, routed</p>
+        <p class="ps-sub">Controls hold the plan's suggestion. Change any, then approve once — nothing exists on GitHub until you do.</p>
+
+        <p class="ps-cap">intent · export-backoff <span style="color:var(--ink3)">— new</span></p>
+        <div class="ps-box">
+          <div class="ps-boxhead"><b>Exports fail when the API rate-limits us</b><span class="kind">its first questions</span></div>
+          <div class="ps-row">
+            <p class="t"><span class="ps-badge">research</span><b>What does the API's Retry-After actually promise?</b> — read the client, probe the live behaviour, answer with evidence.</p>
+            <span class="ps-ctl">approve</span>
+          </div>
+          <div class="ps-row">
+            <p class="t"><span class="ps-badge">question</span><b>Retry, queue, or shed load?</b> — or type the answer here and it closes now.</p>
+            <span class="ps-ctl">answered</span>
+          </div>
+        </div>
+
+        <p class="ps-cap">bolt · site-refresh <span style="color:var(--ink3)">— open, folds in</span></p>
+        <div class="ps-box">
+          <div class="ps-boxhead"><b>site-refresh</b><span class="del">deliverable: the new pages, live</span></div>
+          <div class="ps-row">
+            <p class="t"><span class="ps-badge brass">unit</span><b>overview-page</b> — 1 change · the reference page, linked from the topbar.</p>
+            <span class="ps-ctl">bolt-plan</span>
+          </div>
+          <div class="ps-row">
+            <p class="t"><span class="ps-badge brass">unit</span><b>concept-tours</b> — 3 changes · one journey page per idea.</p>
+            <span class="ps-ctl">backlog</span>
+          </div>
+        </div>
+      </div>
+      <div class="ps-foot">
+        <span class="ps-approve">Approve</span>
+        <span class="ps-input">…or say what's wrong and</span>
+        <span class="ps-send">Send back</span>
+      </div>
+    </figure>
+    <p class="caption">The real surface, drawn to scale: containers for each
+      intent and bolt, one row per outcome, a route control on every row.
+      Over Discord the same plan is a numbered digest and “yes to all” is the
+      same approval.</p>
 
     <div class="cards">
       <div class="card">
         <span class="tag approval">what you do</span>
-        <h4>Read it in a browser</h4>
-        <p>Options, evidence, diffs, laid out as a page. Annotate the line you
-          disagree with, send it back — or approve it.</p>
+        <h4>Correct, don't compose</h4>
+        <p>Every choice arrives already made. You change a route, rename a
+          bolt, type an answer — or touch nothing.</p>
       </div>
       <div class="card">
         <span class="tag approval">what it costs</span>
-        <h4>One approval, one batch</h4>
-        <p>Not one question per item, and not a meeting to arrive at it. A
-          batch of settled work crosses in a single act.</p>
+        <h4>One approval, one round</h4>
+        <p>Not one question per item, and not a meeting to arrive at it. The
+          whole routed round crosses in a single act.</p>
       </div>
       <div class="card">
         <span class="tag approval">what follows</span>
         <h4>Then it runs without you</h4>
-        <p>Spec, review, build, acceptance, merged — across as many
-          repositories as the work touches.</p>
+        <p>The approved work is filed, the loops pick it up, and it comes back
+          only as evidence — or a question only you can answer.</p>
       </div>
     </div>
 
@@ -666,8 +803,9 @@ footer a:hover{color:var(--brass)}
 
 <section class="panel" id="setup">
   <div class="wrap">
-    <h2>Install</h2>
-    <p class="sub">The repository is its own marketplace, so it is two commands.</p>
+    <p class="beatno"><i>5</i>install</p>
+    <h2>Two commands</h2>
+    <p class="sub">The repository is its own marketplace.</p>
 
 <pre class="block"><code>/plugin marketplace add agentplot/flywheel
 /plugin install flywheel@flywheel</code></pre>
@@ -722,116 +860,24 @@ footer a:hover{color:var(--brass)}
   radialTicks("ticks-core", 84, 94, 48, "#B4552D", ".5", 1);
 </script>
 
-<script src="vendor/mermaid.min.js"></script>
 <script>
-  /* Rendered client-side against the same bundle scripts/check-site.mjs parses
-     with, so a diagram that renders here parses in the gate and vice versa. */
-  mermaid.initialize({
-    startOnLoad: false,
-    theme: "base",
-    securityLevel: "strict",
-    fontFamily: '"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace',
-    flowchart: { nodeSpacing: 34, rankSpacing: 46, padding: 10, useMaxWidth: true },
-    themeVariables: {
-      background:"#123236", primaryColor:"#1b3a3a", primaryTextColor:"#EDE7DA",
-      primaryBorderColor:"#C9A227", lineColor:"#8FB9AE", textColor:"#EDE7DA",
-      mainBkg:"#1b3a3a", nodeBorder:"#C9A227",
-    },
-  });
-
-  /* ------------------------------------------------------------------ tabs --
-     Order matters, and it is the whole reason startOnLoad is off.
-
-     Mermaid sizes a diagram by measuring its container. A diagram rendered
-     inside a hidden panel measures zero and lands as a collapsed or blank
-     SVG — which is exactly the failure check-site.mjs cannot catch, because it
-     proves the source parses and never that it renders. So every panel is laid
-     out and measurable while mermaid.run() works, and only afterwards does the
-     tab layer switch on and start hiding things.
-
-     Until that happens the page is a plain scrolling document with anchor
-     links, which is also what a reader with JS off keeps. The ARIA roles are
-     added here rather than in the markup for the same reason: nobody should be
-     told about tabs that are not running. */
-  (async () => {
-    const tablist = document.querySelector(".tabs .wrap");
+  /* Section nav: light the label for the section in view. The page never
+     hides anything — with JS off the bar is a row of working anchors. */
+  (() => {
     const tabs = [...document.querySelectorAll(".tab")];
-    const panels = tabs.map((t) => document.querySelector(t.getAttribute("href")));
-    if (!tablist || !tabs.length || panels.some((p) => !p)) return;
-
-    try {
-      await mermaid.run({ querySelector: "pre.mermaid" });
-    } catch (error) {
-      /* A diagram that fails here would have failed the gate. Leave the page
-         as a scrolling document rather than hiding four fifths of it. */
-      console.error("mermaid failed to render; staying in document mode", error);
-      return;
-    }
-
-    document.documentElement.setAttribute("data-tabs", "on");
-
-    tablist.setAttribute("role", "tablist");
-    tabs.forEach((tab, i) => {
-      const panel = panels[i];
-      const id = panel.id;
-      tab.id = "tab-" + id;
-      tab.setAttribute("role", "tab");
-      tab.setAttribute("aria-controls", id);
-      panel.setAttribute("role", "tabpanel");
-      panel.setAttribute("aria-labelledby", tab.id);
-      panel.setAttribute("tabindex", "0");
-    });
-
-    let current = -1;
-
-    function select(index, { focus = false, scroll = false } = {}) {
-      const i = Math.max(0, Math.min(tabs.length - 1, index));
-      if (i === current) return;
-      current = i;
-      tabs.forEach((tab, n) => {
-        const on = n === i;
-        tab.setAttribute("aria-selected", on ? "true" : "false");
-        tab.setAttribute("tabindex", on ? "0" : "-1");
-        panels[n].hidden = !on;
-      });
-      tabs[i].scrollIntoView({ block: "nearest", inline: "nearest" });
-      if (focus) tabs[i].focus();
-      if (scroll) document.getElementById("walkthrough").scrollIntoView({ block: "start" });
-    }
-
-    const indexForHash = () => {
-      const hash = location.hash.slice(1);
-      const found = panels.findIndex((p) => p.id === hash);
-      return found === -1 ? 0 : found;
-    };
-
-    tabs.forEach((tab, i) => {
-      tab.addEventListener("click", (event) => {
-        /* preventDefault keeps the browser from jumping the document; the hash
-           is still written, so the address bar and the back button both work. */
-        event.preventDefault();
-        select(i);
-        history.pushState(null, "", tab.getAttribute("href"));
-      });
-    });
-
-    tablist.addEventListener("keydown", (event) => {
-      const keys = { ArrowRight: current + 1, ArrowLeft: current - 1, Home: 0, End: tabs.length - 1 };
-      if (!(event.key in keys)) return;
-      event.preventDefault();
-      const next = (keys[event.key] + tabs.length) % tabs.length;
-      select(next, { focus: true });
-      history.pushState(null, "", tabs[next].getAttribute("href"));
-    });
-
-    addEventListener("popstate", () => select(indexForHash()));
-    addEventListener("hashchange", () => select(indexForHash()));
-
-    /* A deep link arrives with the tab already named; scroll to the
-       walkthrough so the reader lands on what they asked for. */
-    const initial = indexForHash();
-    select(initial, { scroll: location.hash !== "" && initial !== 0 });
+    const targets = tabs.map(t => document.querySelector(t.getAttribute("href")));
+    if (!tabs.length || targets.some(t => !t) || !("IntersectionObserver" in window)) return;
+    const paint = (i) => tabs.forEach((t, n) => t.classList.toggle("on", n === i));
+    const observer = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        paint(targets.indexOf(e.target));
+      }
+    }, { rootMargin: "-40% 0px -50% 0px" });
+    targets.forEach(t => observer.observe(t));
+    paint(0);
   })();
 </script>
+
 </body>
 </html>
