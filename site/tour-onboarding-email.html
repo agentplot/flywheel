@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>“Onboarding emails arrive out of order.” — one idea, walked</title>
+<meta name="description" content="A concept tour: a bug report walked end to end through the flywheel — the root cause found in design, not patched around — and the artifact every step leaves behind.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%238FB9AE' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='7.5' fill='none' stroke='%23C9A227' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23B4552D'/%3E%3C/svg%3E">
+
+<!-- The two faces this page paints, preloaded. As on the home page these are
+     also the only font paths check-site.mjs can see: it resolves href and src,
+     never a CSS url(), so a typo inside @font-face would fail silently by
+     falling back. Preloading them puts them under the check. -->
+<link rel="preload" as="font" type="font/woff2" crossorigin href="fonts/space-grotesk-latin-700-normal.woff2">
+<link rel="preload" as="font" type="font/woff2" crossorigin href="fonts/ibm-plex-mono-latin-400-normal.woff2">
+<style>
+/* The two blocks that follow — the @font-face rules and the :root custom
+   properties — are copied byte for byte out of index.html. There is no shared
+   stylesheet: site/ is plain static files with no build step. Keeping these two
+   regions identical is what makes palette drift between the pages show up as a
+   diff rather than as a colour that is subtly wrong. The same applies across
+   the three tour pages: everything above the STEP CONTENT marker is the tour
+   scaffold, identical on all three. */
+/* ---------------------------------------------------------------- fonts --
+   Vendored, not linked. Nothing on this page loads from a CDN — what ships is
+   what is in the repository, which is why the mermaid bundle sits in vendor/
+   and these five faces sit in fonts/. Both families are SIL OFL 1.1; the
+   licences ship beside them as fonts/LICENSE-*.txt. Re-vendor with
+   `npm run vendor-fonts`, which copies them out of the two @fontsource
+   devDependencies so the bytes have a recorded origin. */
+@font-face{
+  font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:swap;
+  src:url("fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"IBM Plex Mono";font-style:normal;font-weight:500;font-display:swap;
+  src:url("fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Space Grotesk";font-style:normal;font-weight:500;font-display:swap;
+  src:url("fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Space Grotesk";font-style:normal;font-weight:700;font-display:swap;
+  src:url("fonts/space-grotesk-latin-700-normal.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+:root{
+  --ground:#0D2528;
+  --ground-2:#123236;
+  --brass:#C9A227;
+  --brass-dim:#8A7326;
+  --mint:#8FB9AE;
+  --bone:#EDE7DA;
+  --rust:#B4552D;
+
+  --ink:var(--bone);
+  --ink2:rgba(237,231,218,.78);
+  --ink3:rgba(143,185,174,.66);
+  --line:rgba(143,185,174,.22);
+  --line-soft:rgba(143,185,174,.13);
+  --panel:#123236;
+  --code:rgba(9,28,31,.72);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+html,body{margin:0;padding:0;background:var(--ground);color:var(--bone);
+  font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;}
+body{
+  background-image:
+    linear-gradient(rgba(143,185,174,.055) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(143,185,174,.055) 1px,transparent 1px);
+  background-size:28px 28px;
+  background-attachment:fixed;
+  min-height:100vh;
+}
+.wrap{width:100%;max-width:960px;margin:0 auto;padding:0 18px}
+
+a{color:var(--mint);text-decoration-thickness:1px;text-underline-offset:3px}
+a:hover{color:var(--brass)}
+:focus-visible{outline:2px solid var(--brass);outline-offset:3px;border-radius:2px}
+
+/* --------------------------------------------------------------- topbar -- */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  background:rgba(13,37,40,.92);
+  border-bottom:1px solid var(--line-soft);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.topbar .wrap{display:flex;align-items:center;gap:18px;height:46px}
+.mark{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:-.02em;color:var(--bone);text-decoration:none;margin-right:auto;
+}
+.mark span{color:var(--brass)}
+.topbar nav{display:flex;gap:16px}
+.topbar nav a{
+  font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink3);text-decoration:none;white-space:nowrap;
+}
+.topbar nav a:hover{color:var(--brass)}
+
+/* ----------------------------------------------------------------- lede -- */
+.lede{padding:44px 0 6px}
+.eyebrow{
+  font-size:11px;letter-spacing:.28em;text-transform:uppercase;
+  color:var(--mint);opacity:.85;margin:0 0 10px;
+}
+.lede h1{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:clamp(26px,4.2vw,40px);line-height:1.12;margin:0 0 12px;
+  letter-spacing:-.025em;font-weight:700;color:var(--bone);
+}
+.lede h1 i{font-style:normal;color:var(--brass)}
+p{margin:0 0 15px;max-width:74ch;font-size:13.5px;line-height:1.7;color:var(--ink2)}
+code{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:.93em;background:var(--code);padding:.12em .4em;border-radius:3px;color:var(--bone)}
+.sibs{
+  margin:0 0 8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);
+}
+.sibs a{color:var(--mint);text-decoration:none;border-bottom:1px solid rgba(143,185,174,.35)}
+.sibs a:hover{color:var(--brass);border-bottom-color:var(--brass)}
+
+/* ----------------------------------------------------------------- rail --
+   The journey's spine, pinned under the topbar. Before JS runs — and if it
+   never does — it is a row of anchor links to the step sections and the page
+   is a plain scrolling document. The script only lights it up as the reader
+   scrolls past each step; it never takes over the scroll. */
+.rail{
+  position:sticky;top:46px;z-index:15;
+  background:rgba(13,37,40,.92);
+  border-top:1px solid var(--line-soft);
+  border-bottom:1px solid var(--line);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.rail .wrap{display:flex;align-items:flex-start;padding:12px 18px 10px;overflow-x:auto;scrollbar-width:none}
+.rail .wrap::-webkit-scrollbar{display:none}
+.rl{
+  flex:1 0 84px;display:flex;flex-direction:column;align-items:center;gap:6px;
+  text-decoration:none;position:relative;padding:0 2px;
+}
+.rl .dot{width:13px;height:13px;border-radius:50%;border:2px solid var(--ink3);background:var(--ground);z-index:2}
+.rl .lbl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);white-space:nowrap}
+.rl::before{content:"";position:absolute;top:6px;left:-50%;width:100%;height:2px;background:rgba(143,185,174,.25)}
+.rl:first-child::before{display:none}
+.rl.seen .dot{border-color:var(--mint);background:rgba(143,185,174,.35)}
+.rl.on .dot{border-color:var(--brass);background:var(--brass);box-shadow:0 0 0 4px rgba(201,162,39,.2)}
+.rl.on .lbl{color:var(--brass)}
+.rl.approval .dot{border-radius:3px}
+
+/* ----------------------------------------------------------------- steps --
+   One tall page: each step is a full section the reader scrolls through, what
+   happens on the left, the artifact it leaves on the right. */
+.stepbox{
+  border:1px solid var(--line);border-radius:12px;background:rgba(13,37,40,.75);
+  overflow:hidden;margin:0 0 26px;scroll-margin-top:132px;
+}
+.stage2{display:grid;gap:0;grid-template-columns:minmax(0,5fr) minmax(0,6fr)}
+@media(max-width:760px){.stage2{grid-template-columns:1fr}}
+.happens{padding:22px 22px 16px}
+.happens .k{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--mint);margin:0 0 8px}
+.happens h2{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  margin:0 0 10px;font-size:20px;line-height:1.3;letter-spacing:-.015em;font-weight:700;color:var(--bone);
+}
+.happens p{font-size:13px;margin:0 0 12px}
+.who{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.who i{font-style:normal;color:var(--brass)}
+.artifact{padding:22px 22px 16px;border-left:1px solid var(--line-soft);background:rgba(9,28,31,.5)}
+@media(max-width:760px){.artifact{border-left:none;border-top:1px solid var(--line-soft)}}
+.artifact .k{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);margin:0 0 10px}
+
+/* artifact cards */
+.art{border:1px solid var(--line);border-radius:8px;background:var(--ground-2);overflow:hidden;font-size:12px}
+.art .ahead{display:flex;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line-soft);
+  font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3)}
+.art .abody{padding:12px 14px;line-height:1.65;color:var(--ink2);overflow-x:auto}
+.art .abody .file{color:var(--mint)}
+.art .abody .cm{color:var(--ink3)}
+.art .abody .hot{color:var(--brass)}
+.art .abody .yes{color:var(--mint)}
+.art .abody ins{background:rgba(143,185,174,.16);color:#c9e4dc;text-decoration:none;display:block;padding:0 4px}
+.art .abody del{background:rgba(180,85,45,.18);color:#e8b09a;text-decoration:none;display:block;padding:0 4px}
+.art .abody pre{margin:0;font-family:inherit;white-space:pre;font-size:11.5px}
+.chip{display:inline-block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  padding:2px 8px;border-radius:20px;border:1px solid var(--line);color:var(--ink3);white-space:nowrap}
+.chip.mint{color:var(--mint);border-color:rgba(143,185,174,.45);background:rgba(143,185,174,.08)}
+.lanes{display:flex;gap:8px}
+.lane{flex:1;border:1px dashed var(--line);border-radius:6px;padding:6px}
+.lane .ln{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);margin-bottom:6px;text-align:center}
+.bcard{border:1px solid rgba(201,162,39,.5);background:rgba(201,162,39,.08);border-radius:5px;padding:6px 8px;font-size:11px;color:var(--bone)}
+.bcard.ghost{opacity:.35;border-style:dashed;background:none}
+.bcard .n{color:var(--ink3);font-size:10px;margin-top:3px}
+.ok{color:var(--mint)}
+
+/* ----------------------------------------------------------------- close -- */
+.close{padding:10px 0 0}
+.close h2{
+  font-family:"Space Grotesk",system-ui,sans-serif;
+  font-size:clamp(20px,3vw,26px);line-height:1.15;margin:0 0 6px;
+  letter-spacing:-.025em;font-weight:700;color:var(--bone);
+}
+.deeper{
+  margin:14px 0 0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);
+}
+.deeper a{color:var(--mint);text-decoration:none;border-bottom:1px solid rgba(143,185,174,.35)}
+.deeper a:hover{color:var(--brass);border-bottom-color:var(--brass)}
+
+footer{
+  margin-top:52px;border-top:1px solid var(--line);
+  padding:26px 0 60px;color:var(--ink3);font-size:11px;
+  letter-spacing:.14em;text-transform:uppercase;
+}
+footer .wrap{display:flex;gap:20px;flex-wrap:wrap}
+footer a{color:var(--ink3);text-decoration:none}
+footer a:hover{color:var(--brass)}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="mark" href="index.html">Fly<span>wheel</span></a>
+    <nav aria-label="Elsewhere">
+      <a href="index.html#walk">One idea, walked</a>
+      <a href="overview.html">Overview</a>
+      <a href="https://github.com/agentplot/flywheel">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="lede">
+  <div class="wrap">
+    <p class="eyebrow">Concept tour · one idea, walked end to end</p>
+    <h1>“<i>Onboarding emails arrive out of order.</i>”</h1>
+    <p>One raw sentence — the kind that arrives in a chat window on a Tuesday —
+      walked through all seven steps of the flywheel, with the artifact each step
+      leaves behind. The steps never change; that constancy is the lesson. Only
+      the idea does.</p>
+    <p class="sibs">the same journey, other ideas:
+      <a href="tour-export-backoff.html">exports fail when the API rate-limits us</a> ·
+      <a href="tour-dashboard-dark-theme.html">give the dashboard a dark theme</a></p>
+  </div>
+</div>
+
+<nav class="rail" id="rail" aria-label="The seven steps">
+  <div class="wrap">
+    <a class="rl" href="#step-dispatch"><span class="dot"></span><span class="lbl">dispatch</span></a>
+    <a class="rl" href="#step-intent"><span class="dot"></span><span class="lbl">intent</span></a>
+    <a class="rl" href="#step-session"><span class="dot"></span><span class="lbl">session</span></a>
+    <a class="rl" href="#step-decision"><span class="dot"></span><span class="lbl">decision</span></a>
+    <a class="rl approval" href="#step-approval"><span class="dot"></span><span class="lbl">approval</span></a>
+    <a class="rl" href="#step-bolt"><span class="dot"></span><span class="lbl">bolt</span></a>
+    <a class="rl" href="#step-merged"><span class="dot"></span><span class="lbl">merged</span></a>
+  </div>
+</nav>
+
+<main class="wrap" style="padding-top:28px">
+
+<!-- ===================================================== STEP CONTENT --
+     Everything below is this concept's own; the scaffold above is shared
+     byte for byte across the three tour pages. -->
+
+<section class="stepbox" id="step-dispatch">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 1 of 7 · dispatch</p>
+      <h2>You report a bug in one sentence.</h2>
+      <p>Dispatch doesn't route it to a patch queue — out-of-order delivery
+        smells like a design problem, so it files an intent where the root
+        cause can be asked about.</p>
+      <p class="who">actor: <i>dispatch</i> · your cost: one sentence</p>
+    </div>
+    <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="art"><div class="ahead">◎ tracker item</div><div class="abody">
+        <div style="color:var(--bone)">Onboarding emails arrive out of order</div>
+        <div style="margin-top:6px"><span class="chip mint">milestone · intent/onboarding-email-order</span>
+          <span class="chip">type:question</span> <span class="chip">state:queued</span></div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<section class="stepbox" id="step-intent">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 2 of 7 · intent</p>
+      <h2>The bug becomes questions, not a hotfix.</h2>
+      <p>The intent loop frames what nobody has asked: is ordering even
+        guaranteed anywhere today? The frontier fills with the questions a
+        hotfix would have skipped.</p>
+      <p class="who">actor: <i>intent loop</i> · your cost: nothing yet</p>
+    </div>
+    <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="art"><div class="ahead">▤ openspec/changes/onboarding-email-order/</div><div class="abody"><pre>onboarding-email-order/
+├── <span class="file">intent.md</span>
+├── questions
+│   ├── <span class="cm">#298 where is order lost — scheduler or sender?</span>
+│   └── <span class="cm">#299 is 'in order' a promise we ever made?</span>
+└── sessions/</pre></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="stepbox" id="step-session">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 3 of 7 · session</p>
+      <h2>A session finds the root cause.</h2>
+      <p>Reading the jobs code, it finds five independently-scheduled sends
+        racing each other. The bug is architectural: there is no sequence
+        anywhere — just five alarms set close together.</p>
+      <p class="who">actor: <i>design session</i> · your cost: nothing yet</p>
+    </div>
+    <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="art"><div class="ahead">▤ sessions/2026-08-12-where-order-dies/</div><div class="abody"><pre>where-order-dies/
+├── <span class="file">findings.md</span>   <span class="cm">5 sends, 5 schedules, 0 sequences —</span>
+│                <span class="cm">order was never enforced, only likely</span>
+└── <span class="file">options.md</span>    <span class="cm">per-user queue vs delays vs idempotent copy</span></pre></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="stepbox" id="step-decision">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 4 of 7 · decision</p>
+      <h2>You choose the fix's shape, not its code.</h2>
+      <p>Bigger delays would paper over the race. You pick the real fix: a
+        per-user sequence where each email unlocks the next. The record says
+        why the cheap option lost.</p>
+      <p class="who">actor: <i>you</i> · your cost: minutes</p>
+    </div>
+    <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="art"><div class="ahead">✎ decisions/sequence-not-schedule.md</div><div class="abody"><pre># Decision — order is a sequence, not a schedule
+
+Onboarding becomes a <span class="hot">per-user queue</span>: each send
+unlocks the next. Padding the delays is out —
+it shrinks the race without closing it.
+<span class="cm">Closed by the operator, 2026-08-12.</span></pre></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="stepbox" id="step-approval">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 5 of 7 · approval</p>
+      <h2>One yes covers the rework.</h2>
+      <p>The batch — the queue, its migration, its tests — is one row on the
+        board. Your single approval covers all of it at once.</p>
+      <p class="who">actor: <i>you</i> · your cost: one word</p>
+    </div>
+    <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="art"><div class="ahead">▦ the board — one row, your word</div><div class="abody">
+        <div class="lanes">
+          <div class="lane"><div class="ln">Backlog</div><div class="bcard ghost">unit · onboarding-email-order</div></div>
+          <div class="lane"><div class="ln">Ready ← your word</div><div class="bcard">unit · onboarding-email-order<div class="n">4 changes approved</div></div></div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<section class="stepbox" id="step-bolt">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 6 of 7 · bolt</p>
+      <h2>The bolt rebuilds it against the book.</h2>
+      <p>Spec agents cite the design book; the build replaces five schedules
+        with one sequence. A reviewer who wasn't in any conversation can still
+        check the code against the book.</p>
+      <p class="who">actors: <i>construction sessions</i> · your cost: none</p>
+    </div>
+    <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="art"><div class="ahead">± jobs/onboarding.ts</div><div class="abody"><pre><span class="cm">@@ enqueue on signup @@</span>
+<del>- for (const step of STEPS) schedule(step, user, step.delay);</del>
+<ins>+ // decisions/sequence-not-schedule.md — order is a sequence</ins>
+<ins>+ sequences.start("onboarding", user, STEPS);</ins></pre></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="stepbox" id="step-merged">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 7 of 7 · merged</p>
+      <h2>The bug closes with its why on file.</h2>
+      <p>Acceptance passes and the work merges to main; the intent's task is
+        checked. Six months from now, the book still says why the delays
+        weren't just padded.</p>
+      <p class="who">actor: <i>bolt loop</i> · your cost: none</p>
+    </div>
+    <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="art"><div class="ahead">⇂ merged to main</div><div class="abody"><pre><span class="hot">4b8e77a</span>  fix(onboarding): per-user send sequence replaces raced schedules</pre>
+        <div style="margin-top:8px;border-top:1px solid var(--line-soft);padding-top:8px">
+          <div class="ok">☑ intent/onboarding-email-order · handoff landed</div>
+          <div class="ok">☑ #299 is 'in order' a promise? — closed: it is now</div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- =================================================== /STEP CONTENT -- -->
+
+<section class="close">
+  <h2>Seven steps, one spec trail</h2>
+  <p>A bug whose fix was a design decision, not a patch: the race was closed,
+    not shrunk, and the reasoning is on file where the next reader can find
+    it. Your cost, totalled: one sentence, a few minutes, one word.</p>
+  <p class="deeper">
+    <a href="index.html#walk">back to the walk ↩</a> ·
+    same journey, other ideas:
+    <a href="tour-export-backoff.html">export backoff →</a> ·
+    <a href="tour-dashboard-dark-theme.html">dashboard dark theme →</a>
+  </p>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span><a href="index.html">Flywheel</a></span>
+    <span><a href="https://github.com/agentplot/flywheel">agentplot/flywheel</a></span>
+    <span>MIT licensed</span>
+  </div>
+</footer>
+
+<script>
+/* The rail lights up as the reader scrolls past each step. Anchor navigation
+   and the document itself work without this; the script only observes. */
+(() => {
+  const links = [...document.querySelectorAll(".rl")];
+  const steps = links.map(l => document.querySelector(l.getAttribute("href")));
+  if (!links.length || steps.some(s => !s) || !("IntersectionObserver" in window)) return;
+  let current = -1;
+  const paint = (i) => {
+    if (i === current) return;
+    current = i;
+    links.forEach((l, n) => {
+      l.classList.toggle("on", n === i);
+      l.classList.toggle("seen", n < i);
+    });
+  };
+  const observer = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      paint(steps.indexOf(e.target));
+    }
+  }, { rootMargin: "-35% 0px -55% 0px" });
+  steps.forEach(s => observer.observe(s));
+  paint(0);
+})();
+</script>
+</body>
+</html>
