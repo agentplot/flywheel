@@ -204,25 +204,27 @@ th{color:var(--mint);font-weight:500;font-size:10.5px;letter-spacing:.16em;text-
     <h1>Overview</h1>
     <p>
       The operator's reference. It assumes you have the plugin installed and
-      want to know what is running: which actors exist and what each one is
-      allowed to write, the states a bolt's work moves through, and how to work
-      on the flywheel itself. The home page teaches the shape of the thing;
-      this page is the map you keep open beside it.
+      want to know what is running: the fleet and what each actor is allowed
+      to write, the plan surface every approval arrives on, the five bolt
+      types and what each one buys, the states a work item moves through, and
+      how to work on the flywheel itself. The home page teaches the shape of
+      the thing; this page is the map you keep open beside it.
     </p>
   </div>
 </section>
 
-<section class="panel" id="actors">
+<section class="panel" id="fleet">
   <div class="wrap">
-    <h2>The actors</h2>
-    <p class="sub">Two loop programs, four agent profiles, three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
+    <h2>The fleet</h2>
+    <p class="sub">Two loop programs, six agent profiles, three persona lenses. Each actor owns a write scope, and the scopes do not overlap.</p>
 
     <p>
       The loops are programs, not agents: <code>flywheel server</code> is a
       daemon you start on any host, and every 60 seconds it starts one
       stateless loop process per milestone the tracker gives a job to, and
-      stops those without. A profile exists where a mind is needed and nowhere
-      else.
+      stops those without. Dispatch — the one standing agent — is started by
+      <code>flywheel dispatch</code>. A profile exists where a mind is needed
+      and nowhere else.
     </p>
 
     <div class="figure">
@@ -234,16 +236,20 @@ flowchart TD
   disp["flywheel-dispatch<br/><small>always · one per fleet</small>"]
   ic["flywheel-intent-loop<br/><small>one process, while its intent has a job</small>"]
   bc["flywheel-bolt-loop<br/><small>one process, while its bolt has a job</small>"]
+  bp["flywheel-bolt-planner<br/><small>one planning run</small>"]
   ds["flywheel-design-session<br/><small>one task batch</small>"]
   is["flywheel-interactive-session<br/><small>one task batch · builds a page you work</small>"]
-  cs["flywheel-construction-session<br/><small>one task batch</small>"]
+  cs["flywheel-construction-session<br/><small>one work-item batch</small>"]
+  fr["flywheel-findings-routing-session<br/><small>one queued set</small>"]
 
   tracker["the tracker<br/><small>the only bus</small>"]
 
   wIntake["new intent changes,<br/>at the moment of triage<br/>· inbox files"]
   wIntent["that intent's records,<br/>on main"]
-  wBolt["the bolt's proposal registry<br/>and its tasks, on main"]
+  wBolt["the bolt change's record<br/>and every merge, on the bolt branch"]
+  wPlan["bolt milestones and<br/>plan cards, at board Backlog"]
   wSession["its session directory, its own task<br/>lines, its charged closures<br/>— in its worktree"]
+  wRoute["its routing plan, under<br/>the bolt's change"]
   wBooks["the design books<br/>and the context map"]
   wCode["the built repositories, and its own<br/>task lines — in its worktree"]
 
@@ -253,28 +259,32 @@ flowchart TD
   tracker --> srv
   srv -- "a job" --> ic
   srv -- "a job" --> bc
+  srv -- "a planning run" --> bp
   ic --> ds
   ic --> is
   bc --> cs
+  bc -- "a non-empty findings queue" --> fr
 
   disp --> wIntake
   ic --> wIntent
   ic --> wBooks
   bc --> wBolt
+  bp --> wPlan
   ds --> wSession
   is --> wSession
   ds --> wBooks
   is --> wBooks
   cs --> wCode
+  fr --> wRoute
 
   classDef hu stroke-width:2px
   classDef d stroke-width:1.5px
   classDef b stroke-width:1.5px
   classDef w stroke-width:1.5px,stroke-dasharray:4 3
   class op hu
-  class disp,ds,is,cs d
+  class disp,ds,is,cs,bp,fr d
   class srv,ic,bc b
-  class tracker,wIntake,wIntent,wSession,wBooks,wBolt,wCode w
+  class tracker,wIntake,wIntent,wSession,wBooks,wBolt,wPlan,wRoute,wCode w
 </pre>
     </div>
     <p class="caption">
@@ -294,10 +304,12 @@ flowchart TD
         <tr><td><code>flywheel server</code></td><td>always — one per host in the fleet</td><td>nothing; it starts and stops loop processes</td></tr>
         <tr><td><code>flywheel-dispatch</code></td><td>always — one per fleet</td><td>new intent changes, at the moment of triage; inbox files; nothing else</td></tr>
         <tr><td><code>flywheel-intent-loop</code></td><td>one process, while its intent has a job</td><td>that intent's records on main; the books; the context map</td></tr>
-        <tr><td><code>flywheel-bolt-loop</code></td><td>one process, while its bolt has a job</td><td>the bolt's proposal registry and its tasks, on main</td></tr>
+        <tr><td><code>flywheel-bolt-loop</code></td><td>one process, while its bolt has a job</td><td>the bolt change's record and every merge, on the bolt branch</td></tr>
+        <tr><td><code>flywheel-bolt-planner</code></td><td>one planning run</td><td>bolt milestones and plan cards, delivered at board Backlog</td></tr>
         <tr><td><code>flywheel-design-session</code></td><td>one task batch</td><td>its session directory, its own task lines, its charged closures, the books and map — in its worktree</td></tr>
         <tr><td><code>flywheel-interactive-session</code></td><td>one task batch</td><td>the same, and it builds a page you work</td></tr>
-        <tr><td><code>flywheel-construction-session</code></td><td>one task batch</td><td>the built repo and its own task lines — in its worktree</td></tr>
+        <tr><td><code>flywheel-construction-session</code></td><td>one work-item batch</td><td>the built repo and its own task lines — in its worktree</td></tr>
+        <tr><td><code>flywheel-findings-routing-session</code></td><td>one queued set</td><td>its routing plan, under the bolt's change</td></tr>
       </tbody>
     </table>
 
@@ -313,9 +325,9 @@ flowchart TD
         <b>A session closes what it was charged with; the loop opens what it
         discovered.</b> In its own worktree a session checks off exactly its
         assigned task lines and writes the decision records for questions it
-        closed firsthand; the loop is sole writer on main, and its merge is
-        what admits a session's work. A loop, symmetrically, never edits inside
-        a session's directory.
+        closed firsthand; the loop is sole writer on its branch, and its merge
+        is what admits a session's work. A loop, symmetrically, never edits
+        inside a session's directory.
       </li>
       <li>
         <b>Dispatch is the only actor bridged to a human.</b> A question a
@@ -336,51 +348,124 @@ flowchart TD
   </div>
 </section>
 
-<section class="panel" id="bolt">
+<section class="panel" id="plan">
   <div class="wrap">
-    <h2>Inside a bolt</h2>
-    <p class="sub">Every row of the registry is in exactly one of these states.</p>
+    <h2>The plan surface</h2>
+    <p class="sub">Every approval arrives the same way: a batch of routed outcomes, facing you as one page.</p>
 
     <p>
-      One bolt is one construction iteration, tracking a registry of proposals
-      across however many repositories the work touches. A bolt exists only
-      because you approved it, which is why it can run without you: the one
-      approval you gave covers everything inside it.
+      Three origins build a plan — a design session closing its round,
+      dispatch triaging accumulated raw ideas, and a findings-routing session
+      the bolt loop charges over its queued findings. Whatever built it, the
+      shape is one: <b>containers</b> for each intent and bolt it proposes,
+      one <b>row</b> per outcome placed under exactly one of them, and every
+      choice already made — the round corrects choices rather than supplies
+      them. The home page's <a href="index.html#approval">fourth section</a>
+      shows the screen itself.
+    </p>
+    <p>
+      <b>Nothing the plan proposes reaches GitHub before your approval.</b> A
+      plan is previewed, corrected, or abandoned without leaving a stranded
+      object on the board. Per row, one route:
+    </p>
+
+    <table>
+      <thead><tr><th>Route</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>approve</code></td><td>files the row under its container — an item in an intent's elaboration, or a unit card on a bolt. A unit's type rides the card and is yours to override.</td></tr>
+        <tr><td><code>backlog</code></td><td>files it <code>state:queued</code> on the container's milestone, out of this round — the board's word for parked work.</td></tr>
+        <tr><td><code>drop</code></td><td>not filed at all.</td></tr>
+        <tr><td><code>answered</code></td><td>questions only — type the answer into the row and it closes now, no session charged.</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      The same plan reaches you on whichever channel you are on: the page in
+      a browser, or a numbered digest over chat where corrections go by number
+      and <em>yes to all</em> is the whole approval. An omitted correction
+      means as-proposed — which is what makes one word enough.
+    </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel/blob/main/skills/_reference/dispatch-plan.md">The protocol, in full</a></p>
+  </div>
+</section>
+
+<section class="panel" id="types">
+  <div class="wrap">
+    <h2>The five bolt types</h2>
+    <p class="sub">The type is the whole choice: a named loop configuration, nothing beside it.</p>
+
+    <p>
+      A bolt binds one type at creation, and a unit may name its own on its
+      card's <code>Type:</code> line — the control you see seeded on every
+      plan. The type sets the stages that run, how the spec is written, and
+      whether a spec is written at all. There is no other axis: no mode, no
+      per-bolt declaration, nothing read from a milestone.
+    </p>
+
+    <table>
+      <thead><tr><th>Type</th><th>Spec</th><th>Verify</th><th>Pick it for</th></tr></thead>
+      <tbody>
+        <tr><td><code>bolt-default</code></td><td>proposal first, then the artifacts</td><td>runs</td><td>the ordinary case — work that deserves a spec trail and an acceptance pass</td></tr>
+        <tr><td><code>bolt-quick</code></td><td>generated in one command</td><td>runs</td><td>the same scrutiny with a cheaper spec — small, well-understood work</td></tr>
+        <tr><td><code>bolt-adversarial</code></td><td>stepped artifact by artifact</td><td>runs</td><td>work worth slowing down for: the most boundaries exposed for review to attach to</td></tr>
+        <tr><td><code>bolt-direct</code></td><td>generated in one command</td><td>skipped</td><td>work whose correctness the spec and the repo's merge gate already settle between them</td></tr>
+        <tr><td><code>bolt-plan</code></td><td>none — the approved plan stands as the spec</td><td>skipped</td><td>pages and prose, never machinery: work that leaves no implemented specs behind</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+      What never varies by type: the merge gate. <code>wt merge</code> runs
+      the repository's own checks at every merge-back and again at the
+      landing, on <code>bolt-plan</code> exactly as on <code>bolt-default</code>,
+      and no type weakens it.
+    </p>
+
+    <p class="more"><a href="https://github.com/agentplot/flywheel/tree/main/schemas">The schemas, one directory per type</a></p>
+  </div>
+</section>
+
+<section class="panel" id="item">
+  <div class="wrap">
+    <h2>An item's life</h2>
+    <p class="sub">One <code>stage:</code> label names its leading edge; the label's absence is the honest record of a stage that did not run.</p>
+
+    <p>
+      A work item is born on the bolt's milestone when you approve its unit.
+      From there its history is its comment thread plus one stage label at a
+      time, and it closes twice: <code>closed:merged</code> when its work
+      reaches the bolt branch — which is what advances the unit's progress
+      bar — and the landing upgrades that to <code>closed:done</code> with the
+      landing commit in the closing comment.
     </p>
 
     <div class="figure">
 <pre class="mermaid">
-stateDiagram-v2
-  direction TB
-  [*] --&gt; to_spec
-  to_spec : to-spec
-  in_review : in-review
+flowchart LR
+  born["born on the milestone<br/><small>your approval of the unit</small>"]
+  planned["stage:planned<br/><small>its spec validates — or, on bolt-plan,<br/>the plan is approved in the pane</small>"]
+  built["stage:built<br/><small>build session, nested worktree</small>"]
+  verified["stage:verified<br/><small>acceptance on the bolt branch —<br/>only on types that run verify</small>"]
+  merged["closed:merged<br/><small>merge-back through the repo's gate</small>"]
+  done["closed:done<br/><small>the landing on main</small>"]
 
-  to_spec --&gt; specced : spec agent, validated
-  specced --&gt; in_review : independent reviewer
-  in_review --&gt; approved : verdict
-  in_review --&gt; to_spec : bounced — one round only
-  approved --&gt; building : apply agent, nested worktree
-  building --&gt; built : commit stage, then the pre-merge checks
-  built --&gt; verified : batched acceptance on the bolt branch
-  verified --&gt; merged : the full run of checks before a bolt lands
-  merged --&gt; [*]
+  born --> planned --> built --> verified --> merged --> done
+  built -- "bolt-direct · bolt-plan" --> merged
+
+  classDef d stroke-width:1.5px
+  classDef g stroke-width:2px
+  class born,planned,built,verified d
+  class merged,done g
 </pre>
     </div>
     <p class="caption">
-      Spec review is bounded to one round. A bounced review returns the row to
-      <code>to-spec</code> — once. After that the row takes one binary call on
-      the evidence in hand (approve, or re-spec from the decision record that
-      settled it) and then builds, because further rounds converge on wording
-      rather than on whether the thing can actually be built. What is bounded
-      is <em>reading</em>: the commit stage, the pre-merge checks, the batched
-      acceptance run and the full run of checks before a bolt lands never
-      relax. Adversarial agent review plus automated testing is what earns the
-      loop its automated delivery, and weakening either of them is a design
-      decision, not a call the loop makes for itself.
+      A verify with findings charges a review session to rule on them before
+      the merge-back — by evidence, not by type. Discoveries never widen an
+      item: a finding becomes a new queued item on the bolt, and the
+      findings-routing round proposes where each one goes.
     </p>
 
-    <p class="more"><a href="https://github.com/agentplot/flywheel#the-construction-loop--a-bolt">Read this in full in the README</a></p>
+    <p class="more"><a href="https://github.com/agentplot/flywheel/blob/main/skills/_reference/tracker.md">The label grammar, in full</a></p>
   </div>
 </section>
 
@@ -411,9 +496,9 @@ stateDiagram-v2
 
     <ul>
       <li><a href="https://github.com/agentplot/flywheel#readme">The README</a> — the whole machinery in prose, and the source of every claim on this page.</li>
-      <li><a href="https://github.com/agentplot/flywheel/tree/main/skills">skills/</a> — the two loop skills and the thirteen session-type skills.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/skills">skills/</a> — the loop skills and the session-type skills.</li>
       <li><a href="https://github.com/agentplot/flywheel/tree/main/agents">agents/</a> — the agent profiles, one file each.</li>
-      <li><a href="https://github.com/agentplot/flywheel/tree/main/schemas">schemas/</a> — the OpenSpec workflow schemas, published for consuming repositories to bind to.</li>
+      <li><a href="https://github.com/agentplot/flywheel/tree/main/schemas">schemas/</a> — the OpenSpec workflow schemas, one per bolt type, published for consuming repositories to bind to.</li>
     </ul>
 
     <p>
