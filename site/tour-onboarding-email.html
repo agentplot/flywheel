@@ -208,6 +208,27 @@ body.scrolly .stepbox.on{opacity:1;border-color:rgba(201,162,39,.55)}
 .bcard .n{color:var(--ink3);font-size:10px;margin-top:3px}
 .ok{color:var(--mint)}
 
+/* the plan cap — the home page's surface, at artifact scale */
+.pm{border:1px solid rgba(201,162,39,.45);border-radius:8px;overflow:hidden;background:rgba(9,28,31,.65);font-size:12px}
+.pm-head{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line-soft);
+  font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--brass)}
+.pm-row{display:flex;gap:10px;align-items:baseline;justify-content:space-between;
+  padding:8px 12px;border-bottom:1px solid var(--line-soft);color:var(--ink2)}
+.pm-row b{color:var(--bone);font-weight:500}
+.pm-row .r{font-size:10px;letter-spacing:.08em;color:var(--ink3);white-space:nowrap}
+.pm-row.go .r{color:var(--rust)}
+.pm-row.grow .r{color:var(--brass)}
+.pm-foot{padding:9px 12px;border-top:1px solid var(--line);background:rgba(9,28,31,.8);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.pm-approve{font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:11px;
+  color:var(--ground);background:var(--brass);border-radius:6px;padding:4px 13px}
+.pm-foot .note{font-size:10px;color:var(--ink3);letter-spacing:.06em}
+.pm-outcome{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.pm-outcome span{font-size:11px;color:var(--ink2);border:1px solid var(--line-soft);border-radius:6px;padding:5px 9px}
+.pm-outcome .go{border-color:rgba(180,85,45,.45)}
+.pm-outcome .grow{border-color:rgba(201,162,39,.45)}
+
+
 /* ----------------------------------------------------------------- close -- */
 .close{padding:10px 0 0}
 .close h2{
@@ -261,11 +282,11 @@ footer a:hover{color:var(--brass)}
 <nav class="rail" id="rail" aria-label="The seven steps">
   <div class="wrap">
     <a class="rl" href="#step-dispatch"><span class="dot"></span><span class="lbl">dispatch</span></a>
-    <a class="rl" href="#step-intent"><span class="dot"></span><span class="lbl">intent</span></a>
-    <a class="rl" href="#step-session"><span class="dot"></span><span class="lbl">session</span></a>
-    <a class="rl" href="#step-decision"><span class="dot"></span><span class="lbl">decision</span></a>
-    <a class="rl approval" href="#step-approval"><span class="dot"></span><span class="lbl">approval</span></a>
-    <a class="rl" href="#step-bolt"><span class="dot"></span><span class="lbl">bolt</span></a>
+    <a class="rl" href="#step-expand"><span class="dot"></span><span class="lbl">expand</span></a>
+    <a class="rl" href="#step-work"><span class="dot"></span><span class="lbl">work</span></a>
+    <a class="rl" href="#step-plan"><span class="dot"></span><span class="lbl">the plan</span></a>
+    <a class="rl approval" href="#step-word"><span class="dot"></span><span class="lbl">your word</span></a>
+    <a class="rl" href="#step-build"><span class="dot"></span><span class="lbl">build</span></a>
     <a class="rl" href="#step-merged"><span class="dot"></span><span class="lbl">merged</span></a>
   </div>
 </nav>
@@ -296,11 +317,11 @@ footer a:hover{color:var(--brass)}
   </div>
 </section>
 
-<section class="stepbox" id="step-intent">
+<section class="stepbox" id="step-expand">
   <div class="stage2">
     <div class="happens">
-      <p class="k">step 2 of 7 · intent</p>
-      <h2>The bug becomes questions, not a hotfix.</h2>
+      <p class="k">step 2 of 7 · the intent expands</p>
+      <h2>The bug expands into questions, not a hotfix.</h2>
       <p>The intent loop frames what nobody has asked: is ordering even
         guaranteed anywhere today? The frontier fills with the questions a
         hotfix would have skipped.</p>
@@ -317,10 +338,10 @@ footer a:hover{color:var(--brass)}
   </div>
 </section>
 
-<section class="stepbox" id="step-session">
+<section class="stepbox" id="step-work">
   <div class="stage2">
     <div class="happens">
-      <p class="k">step 3 of 7 · session</p>
+      <p class="k">step 3 of 7 · a session works the round</p>
       <h2>A session finds the root cause.</h2>
       <p>Reading the jobs code, it finds five independently-scheduled sends
         racing each other. The bug is architectural: there is no sequence
@@ -336,51 +357,58 @@ footer a:hover{color:var(--brass)}
   </div>
 </section>
 
-<section class="stepbox" id="step-decision">
+<section class="stepbox" id="step-plan">
   <div class="stage2">
     <div class="happens">
-      <p class="k">step 4 of 7 · decision</p>
-      <h2>You choose the fix's shape, not its code.</h2>
-      <p>Bigger delays would paper over the race. You pick the real fix: a
-        per-user sequence where each email unlocks the next. The record says
-        why the cheap option lost.</p>
-      <p class="who">actor: <i>you</i> · your cost: minutes</p>
+      <p class="k">step 4 of 7 · the plan</p>
+      <h2>The round closes into one screen.</h2>
+      <p>Everything the session settled — and everything it proposes next —
+        lands as one plan: answers seeded, a decision drafted, a unit of
+        construction proposed, sometimes the next round. Nothing on this
+        screen exists on GitHub yet.</p>
+      <p class="who">actor: <i>the session, assembling</i> · your cost: still nothing</p>
     </div>
     <div class="artifact"><div class="k">the artifact it leaves</div>
+      <div class="pm">
+        <div class="pm-head">the plan · caps the round</div>
+        <div class="pm-row"><span>✓ <b>where order is lost</b> — the scheduler; never enforced, only likely</span><span class="r">closed</span></div>
+        <div class="pm-row"><span>✓ <b>sequence, not schedule</b> — drafted as a record</span><span class="r">closed</span></div>
+        <div class="pm-row go"><span>⚙ <b>unit · onboarding-email-order</b> · 4 changes · <b>bolt-default</b></span><span class="r">→ construction</span></div>
+        <div class="pm-row grow"><span>⊕ <b>next round</b> · audit the other multi-step sends</span><span class="r">expands</span></div>
+        <div class="pm-foot"><span class="pm-approve">Approve</span><span class="note">one word · nothing existed on GitHub before it</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="stepbox" id="step-word">
+  <div class="stage2">
+    <div class="happens">
+      <p class="k">step 5 of 7 · your word</p>
+      <h2>One word contracts the round — and can expand the next.</h2>
+      <p>You correct what's wrong — a route, a type, an answer typed into a
+        row — and approve once. The root-cause ruling becomes a record, the queue rework drops into construction — and the audit of every other multi-step send opens only because you said grow.</p>
+      <p class="who">actor: <i>you</i>, on the rim · your cost: one word</p>
+    </div>
+    <div class="artifact"><div class="k">what that word left behind</div>
       <div class="art"><div class="ahead">✎ decisions/sequence-not-schedule.md</div><div class="abody"><pre># Decision — order is a sequence, not a schedule
 
 Onboarding becomes a <span class="hot">per-user queue</span>: each send
 unlocks the next. Padding the delays is out —
 it shrinks the race without closing it.
 <span class="cm">Closed by the operator, 2026-08-12.</span></pre></div></div>
+      <div class="pm-outcome">
+        <span class="go">⚙ unit · onboarding-email-order → construction, covered by this word</span>
+        <span class="grow">⊕ elaboration · audit the other multi-step sends — the next round, open</span>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="stepbox" id="step-approval">
+<section class="stepbox" id="step-build">
   <div class="stage2">
     <div class="happens">
-      <p class="k">step 5 of 7 · approval</p>
-      <h2>One yes covers the rework.</h2>
-      <p>The batch — the queue, its migration, its tests — is one row on the
-        board. Your single approval covers all of it at once.</p>
-      <p class="who">actor: <i>you</i> · your cost: one word</p>
-    </div>
-    <div class="artifact"><div class="k">the artifact it leaves</div>
-      <div class="art"><div class="ahead">▦ the board — one row, your word</div><div class="abody">
-        <div class="lanes">
-          <div class="lane"><div class="ln">Backlog</div><div class="bcard ghost">unit · onboarding-email-order</div></div>
-          <div class="lane"><div class="ln">Ready ← your word</div><div class="bcard">unit · onboarding-email-order<div class="n">4 changes approved</div></div></div>
-        </div>
-      </div></div>
-    </div>
-  </div>
-</section>
-
-<section class="stepbox" id="step-bolt">
-  <div class="stage2">
-    <div class="happens">
-      <p class="k">step 6 of 7 · bolt</p>
+      <p class="k">step 6 of 7 · build — the bolt runs</p>
       <h2>The bolt rebuilds it against the book.</h2>
       <p>Spec agents cite the design book; the build replaces five schedules
         with one sequence. A reviewer who wasn't in any conversation can still
@@ -403,7 +431,7 @@ it shrinks the race without closing it.
       <h2>The bug closes with its why on file.</h2>
       <p>Acceptance passes and the work merges to main; the intent's task is
         checked. Six months from now, the book still says why the delays
-        weren't just padded.</p>
+        weren't just padded. And the audit round you opened with the same word is already turning — that is the flywheel in motion.</p>
       <p class="who">actor: <i>bolt loop</i> · your cost: none</p>
     </div>
     <div class="artifact"><div class="k">the artifact it leaves</div>

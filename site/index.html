@@ -188,24 +188,83 @@ h1 span{color:var(--brass)}
 }
 
 /* ----------------------------------------------------------------- walk --
-   Beat 3's seven steps. Markup and CSS rather than a diagram: the page
-   carries at most one architecture picture and that is the plate — and a
-   strip is outside check-site's mermaid rules because it never reaches them. */
-.walk{
-  border:1px solid var(--line);border-radius:10px;background:var(--panel);
-  padding:20px 20px 16px;margin:0 0 8px;overflow-x:auto;
+   Beat 3: not a straight line — rounds. The intent expands with questions,
+   a plan screen caps each round, and the approval contracts settled work
+   into the construction lane while sometimes expanding the next round.
+   Markup and CSS rather than a diagram, drawn in the plan surface's own
+   visual language so beat 4's screen is recognisably the same object. */
+.breathe{
+  display:grid;gap:20px;grid-template-columns:minmax(0,3fr) minmax(0,2fr);
+  margin:0 0 8px;align-items:start;
 }
-.walk .quote{
+@media(max-width:860px){.breathe{grid-template-columns:1fr}}
+.b-quote{
   font-family:"Space Grotesk",system-ui,sans-serif;font-weight:500;
-  font-size:15px;line-height:1.5;color:var(--bone);margin:0 0 16px;
+  font-size:15px;line-height:1.5;color:var(--bone);margin:0 0 14px;
 }
-.walk .quote i{font-style:normal;color:var(--brass)}
-.walk-row{display:flex;align-items:stretch;min-width:720px}
-.step{flex:1;padding:0 10px;position:relative}
-.step+.step::before{content:"\2192";position:absolute;left:-7px;top:0;color:var(--brass);font-size:13px}
-.step .s{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mint)}
-.step .a{font-size:11px;line-height:1.5;color:var(--ink3);margin-top:3px}
-.step .a b{color:var(--ink2);font-weight:400}
+.b-quote i{font-style:normal;color:var(--brass)}
+.b-round{
+  border-left:2px solid rgba(201,162,39,.4);padding:0 0 20px 18px;position:relative;
+}
+.b-round::before{
+  content:"";position:absolute;left:-6px;top:2px;width:10px;height:10px;border-radius:50%;
+  background:var(--brass);box-shadow:0 0 0 4px rgba(201,162,39,.15);
+}
+.b-phase{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--mint);margin:0 0 8px}
+.b-phase i{font-style:normal;color:var(--brass)}
+.b-qs{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 10px}
+.b-qs span{
+  font-size:11px;color:var(--ink2);border:1px dashed rgba(143,185,174,.4);
+  border-radius:14px;padding:3px 11px;background:rgba(143,185,174,.05);
+}
+.b-sess{font-size:11.5px;color:var(--ink3);margin:0 0 10px}
+.b-done{
+  border-left:2px solid rgba(143,185,174,.35);padding:2px 0 2px 18px;position:relative;
+  font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);
+}
+.b-done::before{
+  content:"";position:absolute;left:-6px;top:4px;width:10px;height:10px;border-radius:50%;
+  border:2px solid var(--mint);background:var(--ground);
+}
+/* the plan cap — beat 4's surface at thumbnail scale */
+.pm{border:1px solid rgba(201,162,39,.45);border-radius:9px;overflow:hidden;background:rgba(9,28,31,.65)}
+.pm-head{
+  display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--line-soft);
+  font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--brass);
+}
+.pm-row{
+  display:flex;gap:10px;align-items:baseline;justify-content:space-between;
+  padding:7px 12px;border-bottom:1px solid var(--line-soft);font-size:11.5px;color:var(--ink2);
+}
+.pm-row b{color:var(--bone);font-weight:500}
+.pm-row .r{font-size:10px;letter-spacing:.08em;color:var(--ink3);white-space:nowrap}
+.pm-row.go .r{color:var(--rust)}
+.pm-row.grow .r{color:var(--brass)}
+.pm-foot{
+  padding:8px 12px;border-top:1px solid var(--line);background:rgba(9,28,31,.8);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.pm-approve{
+  font-family:"Space Grotesk",system-ui,sans-serif;font-weight:700;font-size:11px;
+  color:var(--ground);background:var(--brass);border-radius:6px;padding:4px 13px;
+}
+.pm-foot .note{font-size:10px;color:var(--ink3);letter-spacing:.06em}
+/* the construction lane */
+.b-lane{
+  border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  padding:16px 16px 14px;position:sticky;top:120px;
+}
+.b-lane .ln{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--rust);margin:0 0 12px}
+.b-unit{
+  border:1px solid rgba(180,85,45,.45);background:rgba(180,85,45,.08);border-radius:7px;
+  padding:8px 11px;font-size:11.5px;color:var(--bone);margin:0 0 8px;
+}
+.b-unit .u{font-size:10px;color:var(--ink3);margin-top:2px}
+.b-merge{
+  border-top:1px solid var(--line);margin-top:12px;padding-top:12px;
+  font-size:11.5px;color:var(--mint);
+}
+.b-merge b{color:var(--bone);font-weight:500}
 .deeper{
   margin:14px 0 0;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink3);
@@ -641,27 +700,66 @@ footer a:hover{color:var(--brass)}
   <div class="wrap">
     <p class="beatno"><i>3</i>from idea to merged</p>
     <h2>One sentence becomes shipped code</h2>
-    <p class="sub">Seven steps, and what each one leaves behind in writing.</p>
+    <p class="sub">Not a straight line — rounds. The intent expands, your word contracts it into construction.</p>
 
     <p>
       One raw sentence — the kind that arrives in a chat window on a Tuesday —
-      all the way to merged code. Every step hands the next one something
-      written down, so nothing rests on a conversation somebody has to
-      remember.
+      all the way to merged code. But the journey is not a pipeline: an intent
+      breathes. It expands as elaboration rounds open questions, and every
+      round ends the same way — a plan screen, and one word of yours that
+      closes the round, focuses construction, and decides whether anything
+      grows.
     </p>
 
-    <div class="walk">
-      <p class="quote">“<i>Exports fail when the API rate-limits us.</i>” — one sentence, walked:</p>
-      <div class="walk-row">
-        <div class="step"><div class="s">dispatch</div><div class="a">files it → <b>a tracked intent</b></div></div>
-        <div class="step"><div class="s">intent</div><div class="a">frames it → <b>questions to settle</b></div></div>
-        <div class="step"><div class="s">session</div><div class="a">works it → <b>options, evidence</b></div></div>
-        <div class="step"><div class="s">decision</div><div class="a">you annotate → <b>a decision record</b></div></div>
-        <div class="step"><div class="s">approval</div><div class="a">one word → <b>an approved batch</b></div></div>
-        <div class="step"><div class="s">bolt</div><div class="a">spec · build · test → <b>commits</b></div></div>
-        <div class="step"><div class="s">merged</div><div class="a">acceptance passes → <b>main, task checked</b></div></div>
+    <div class="breathe">
+      <div>
+        <p class="b-quote">“<i>Exports fail when the API rate-limits us.</i>” — one sentence, in motion:</p>
+
+        <div class="b-round">
+          <p class="b-phase"><i>round 1</i> · the intent expands</p>
+          <div class="b-qs">
+            <span>retry, queue, or shed load?</span>
+            <span>what does Retry-After actually promise?</span>
+          </div>
+          <p class="b-sess">a session works the round → findings, options, evidence</p>
+          <div class="pm">
+            <div class="pm-head">the plan · caps the round</div>
+            <div class="pm-row"><span>✓ <b>Retry-After promise</b> — answered, with evidence</span><span class="r">closed</span></div>
+            <div class="pm-row"><span>✓ <b>retry shape</b> → backoff, capped — a decision record</span><span class="r">closed</span></div>
+            <div class="pm-row go"><span>⚙ <b>unit · export-backoff</b> · 3 changes</span><span class="r">→ construction</span></div>
+            <div class="pm-row grow"><span>⊕ <b>next round</b> · harden the export tests</span><span class="r">expands</span></div>
+            <div class="pm-foot"><span class="pm-approve">Approve</span><span class="note">one word · nothing existed on GitHub before it</span></div>
+          </div>
+        </div>
+
+        <div class="b-round">
+          <p class="b-phase"><i>round 2</i> · expands again — because you said grow</p>
+          <div class="b-qs"><span>which failure modes deserve tests?</span></div>
+          <p class="b-sess">a shorter session — the intent is narrowing</p>
+          <div class="pm">
+            <div class="pm-head">the plan · caps the round</div>
+            <div class="pm-row"><span>✓ <b>failure modes</b> — the three worth pinning</span><span class="r">closed</span></div>
+            <div class="pm-row go"><span>⚙ <b>unit · test-hardening</b> · 2 changes</span><span class="r">→ construction</span></div>
+            <div class="pm-foot"><span class="pm-approve">Approve</span><span class="note">no new round proposed — the intent is breathing out</span></div>
+          </div>
+        </div>
+
+        <div class="b-done">nothing left open — the intent is spent, and everything it settled is written down</div>
+      </div>
+
+      <div class="b-lane">
+        <p class="ln">construction · runs without you</p>
+        <div class="b-unit">unit · export-backoff<div class="u">spec · build · merge — your round-1 word covers all of it</div></div>
+        <div class="b-unit">unit · test-hardening<div class="u">arrives from round 2, already approved</div></div>
+        <div class="b-merge"><b>merged to main</b> — evidence climbs back out, tasks check themselves off, and the record of every why survives</div>
       </div>
     </div>
+
+    <p class="caption">Each plan is one turn of the wheel. Approving <em>contracts</em>:
+      the round's questions close into records and its settled work drops into
+      construction. Approving a proposed next round is the only way the intent
+      <em>expands</em>. Expansion, contraction, cap after cap — that loop is the
+      flywheel in motion.</p>
 
     <h3>Follow a real one, end to end</h3>
     <p>Pick a sentence. Each page below walks its whole journey a step at a
