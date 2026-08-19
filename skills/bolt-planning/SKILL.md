@@ -196,7 +196,7 @@ cards, the blocked-by mirroring, the supersede rule scoped to cards the
 plan itself replaces (`skills/_reference/dispatch-plan.md`). One
 format, whoever the author is, so nothing is reformatted between a
 round and the board. Two differences are authorized by the round
-itself: an approved card is flipped to board Ready by the actor
+itself: an approved card is moved to board Ready by the actor
 applying the operator's word — including a card folded onto an open
 running bolt, which the live loop expands mid-flight — where a planning
 run's cards always wait at Backlog; and a plan's bolt container may

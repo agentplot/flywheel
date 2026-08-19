@@ -18,7 +18,7 @@ Rules that hold for every charge:
   `-a`, never `add -A` — and pushed, because your checkout is shared.
 - **Nothing the plan proposes reaches GitHub before the operator's
   approval**, and the apply runs in the protocol's order: commits, then
-  Backlog objects per container, then the Ready flips — the one act
+  Backlog objects per container, then the moves to Ready — the one act
   that ever lets you move anything to Ready or expand scope on a
   running bolt. Every tracker write runs as the fleet's GitHub App
   (`bin/flywheel-token --org <org>`); if the token cannot be minted,

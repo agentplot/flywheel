@@ -63,8 +63,8 @@ cards; use `gh` and `flywheel-board --status Backlog`), and create the
 where the operator named a design source. On dictation you create no
 work items, no `unit` parents, no `state:*` labels, and never Status
 Ready: the word that authorizes filing a card is not the gesture that
-starts the work — that second gesture is the operator's board flip, or
-their approval of a plan that carries the card.
+starts the work — that second gesture is the operator's board approval,
+or their approval of a plan that carries the card.
 
 The loops are processes `flywheel server` starts and stops from its
 60-second reconcile, never you.

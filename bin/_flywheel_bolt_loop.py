@@ -3180,9 +3180,9 @@ class BoltLoop:
         live agent under the name) while a later, different inbox gets a
         fresh pane and a real work order; the apply drains the queue, so
         a run against an empty inbox charges nothing — the dry-cycle
-        property. A held finding keeps the inbox non-empty on purpose:
-        the operator routed it `hold`, and the standing pane is where
-        they re-route it.
+        property. A backlogged finding keeps the inbox non-empty on
+        purpose: the operator routed it `backlog`, and the standing pane
+        is where they re-route it.
 
         Best-effort: a charge that cannot launch (no herdr, a torn pane)
         is reported, never a halt — the inbox waits either way.

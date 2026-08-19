@@ -41,8 +41,8 @@ or by a work order, queue a question rather than inventing structure.
 - **The lifecycle** is `state:queued → state:ready → state:in-progress`,
   ending closed with a `closed:*` reason — done, declined, superseded,
   parked. Anyone queues; only the operator's word makes an item ready —
-  the board flip, or the approval of a dispatch plan, which the actor
-  that ran the round applies
+  their approval on the board, or the approval of a dispatch plan,
+  which the actor that ran the round applies
   (`skills/_reference/dispatch-plan.md`); an item's progress is its
   comment history.
 - **A batch** is a parent issue whose sub-issues are the batch,
@@ -237,7 +237,7 @@ belongs to a session or to the operator.
   design items into a proposed batch (`flywheel-batch`) at Status
   **Backlog** — composing is not releasing — and report one line per
   batch and unbatched item. A session applying an approved dispatch
-  plan composes its own batch the same way and flips it Ready itself;
+  plan composes its own batch the same way and moves it to Ready itself;
   the guard only ever sees what no session proposed. Construction work is never an intent
   item: it is born as bolt plan cards — the planner's, a session's,
   or the operator's — released by approval, and the loop never

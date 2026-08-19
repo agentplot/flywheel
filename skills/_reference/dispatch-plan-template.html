@@ -6,12 +6,12 @@
   to the same decision contract).
 
   An actor building a plan COPIES this file to the plan's own
-  plan.html — a design session's sessions/<date>-<slug>/close/, or
-  dispatch's <org>/.flywheel/plans/<date>-triage/ — and fills exactly
-  two regions:
+  plan.html — a design session's or findings-routing session's
+  sessions/<date>-<slug>/close/, or dispatch's
+  <org>/.flywheel/plans/<date>-triage/ — and fills exactly two regions:
 
     1. The PAYLOAD blocks — the <script type="text/markdown"> elements.
-       For a design session each one's content is byte-identical to a
+       For a committing origin each one's content is byte-identical to a
        markdown file committed beside the page (elaboration member
        blocks, intent bodies, bolt summaries, units/<slug>.md). The page
        renders them; the apply posts the .md files verbatim. Embedded
@@ -137,18 +137,19 @@ Type: `bolt-default` · Price: 2 changes · ~1.5 days
 
 ## Left out
 
-- The construction-findings origin — deferred by decision; findings
-  keep queuing as items.
+- The willdan-blueprints half of the rollout — that org's tracker owns
+  it.
 
 Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
 </script>
 
 <!-- ============== FILL REGION 2: the plan data ==============
-     origin.kind: "design-session" | "dispatch" — design-session shows
-       the round numbers; dispatch offers retarget routes across
-       same-kind containers.
-     context: what this plan is over — the round's closed decisions, or
-       the raw ideas under triage. The heading follows origin.kind.
+     origin.kind: "design-session" | "dispatch" | "construction" —
+       design-session shows the round numbers; the other two offer
+       retarget routes across same-kind containers.
+     context: what this plan is over — the round's closed decisions, the
+       raw ideas under triage, or the findings from the acceptance run.
+       The heading follows origin.kind.
      containers[]: kind "intent" | "bolt" · status "existing" | "new".
        A NEW container's slug is editable on the page (a rename rides
        the contract). A bolt carries `deliverable` (what the operator
@@ -205,7 +206,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       ] }
   ],
   "left_out": [
-    "The construction-findings origin — deferred by decision; findings keep queuing as items. Listed so silence about it is never approval."
+    "The willdan-blueprints half of the rollout — that org's tracker owns it. Listed so silence about it is never approval."
   ]
 }
 </script>
@@ -236,7 +237,9 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       ? `round ${ORIGIN.round_closing} closes`
       : `dispatch plan`) + `</span>`;
   document.getElementById("context-title").textContent =
-    isDesign ? "Closed this round" : "Raw ideas in this triage";
+    isDesign ? "Closed this round"
+    : ORIGIN.kind === "construction" ? "Findings from the acceptance run"
+    : "Raw ideas in this triage";
 
   for (const c of PLAN.context || []) {
     const li = document.createElement("li");
@@ -271,12 +274,14 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
 
   const BOLT_TYPES = ["bolt-default", "bolt-quick", "bolt-direct",
                       "bolt-adversarial", "bolt-plan"];
-  // A row's control offers only the routes that make sense for it; on a
-  // dispatch-origin plan it also offers the other same-kind containers,
-  // because cross-routing is that origin's point. Needing more design
-  // first is a send-back with a note, never a routing value.
-  const ROUTES = { intent: ["next round", "hold", "drop"],
-                   bolt: ["file the card", "hold", "drop"] };
+  // One route enum, aligned with the board's own words: approve files
+  // the row under its container, backlog parks it state:queued on the
+  // milestone, drop files nothing. On a non-design-origin plan a row
+  // also offers the other same-kind containers, because cross-routing
+  // is those origins' point. Needing more design first is a send-back
+  // with a note, never a routing value.
+  const ROUTES = { intent: ["approve", "backlog", "drop"],
+                   bolt: ["approve", "backlog", "drop"] };
 
   function routesFor(container) {
     const routes = [...ROUTES[container.kind]];

@@ -87,7 +87,7 @@ one contract SHALL be asked again, never guessed.
 
 #### Scenario: A correction by number
 
-- **WHEN** the reply is "3 -> hold, 2 as bolt-quick"
+- **WHEN** the reply is "3 -> backlog, 2 as bolt-quick"
 - **THEN** row 3 files `state:queued` out of the round, row 2's card is
   filed with `Type: bolt-quick` written before filing, and everything
   else applies as seeded
@@ -111,15 +111,17 @@ round loses nothing, because unrouted ideas wait unmilestoned.
 
 ### Requirement: Routing is exclusive and the chain carries the sequencing
 
-Every row SHALL resolve to exactly one route: for an intent row `next
-round`, `hold` (filed `state:queued`, out of this round), `drop` (not
-filed), or `answered` (questions only — the answer becomes a decision
-record and no item is filed); for a bolt row `file the card`, `hold`, or
-`drop`, with the unit's bolt type seeded and overridable. A retarget
-re-files a row under another container of the same kind and is not a
-route.
+Every row SHALL resolve to exactly one route from the one enum, aligned
+with the board's own words: `approve` (filed under the row's container —
+an item in an intent container's elaboration, or a unit card on a bolt
+container), `backlog` (filed `state:queued` on the container's
+milestone, out of this round), `drop` (not filed), or `answered`
+(questions only — the answer becomes a decision record and no item is
+filed). On a bolt row the unit's bolt type is seeded and overridable. A
+retarget re-files a row under another container of the same kind and is
+not a route.
 
-The test for `file the card` SHALL be the card's sources: it cites what
+The test for approving a bolt row SHALL be the card's sources: it cites what
 exists — a decision record, the session's own records, a chapter already
 written. An outcome with no source a spec could be written from SHALL
 route to a writeback item instead, and that writeback session's own
