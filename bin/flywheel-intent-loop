@@ -29,7 +29,6 @@ Token: `GH_TOKEN`, or minted by the sibling `flywheel-token`.
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -85,7 +84,6 @@ def main():
         runner = runner_for("herdr")
 
     ledger = RunLedger(observations_root(config.org), f"intent-{config.slug}",
-                       gate_mode=os.environ.get("FLYWHEEL_GATE", "gate"),
                        log=lambda m: print(m, flush=True))
     report = run(config, tracker=tracker, runner=runner, ledger=ledger)
     print(report.render())

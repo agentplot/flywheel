@@ -15,7 +15,6 @@ The loop itself is `_flywheel_bolt_loop.py` beside this file.
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -99,8 +98,7 @@ def build_loop(args):
         tracker = loop.ReadOnlyTracker(tracker)
     log = lambda m: print(m, flush=True)   # noqa: E731
     run_ledger = ledger_mod.RunLedger(
-        ledger_mod.observations_root(args.org), f"bolt-{args.slug}",
-        gate_mode=os.environ.get("FLYWHEEL_GATE", "gate"), log=log)
+        ledger_mod.observations_root(args.org), f"bolt-{args.slug}", log=log)
     return loop.BoltLoop(params, tracker, log=log,
                          dry_run=args.dry_run, ledger=run_ledger), params
 

@@ -1059,52 +1059,34 @@ class WriterCacheTest(unittest.TestCase):
 
 
 class ObservedRunTest(unittest.TestCase):
-    """The run ledger and the expectation gate on the intent loop."""
+    """The run ledger on the intent loop — records, never gates."""
 
     def a_ready_batch(self):
         return Snapshot(items=[item(1, "type:research", inbox.READY)])
 
-    def observed(self, snap, root, gate_mode="gate"):
-        led = obs.RunLedger(root, "intent-x", gate_mode=gate_mode)
+    def observed(self, snap, root):
+        led = obs.RunLedger(root, "intent-x")
         tracker = FakeTracker(snapshot=snap)
         runner = ScriptedRunner()
         report = intent.run(config(slug="x", apply=True), tracker=tracker,
                             runner=runner, clock=Clock(), ledger=led)
         return report, runner
 
-    def test_an_unapproved_pass_gates_before_any_dispatch(self):
+    def test_an_observed_pass_writes_the_plan_and_dispatches(self):
         with tempfile.TemporaryDirectory() as tmp:
-            report, runner = self.observed(self.a_ready_batch(), tmp)
-            self.assertEqual(report.status, "stopped")
-            self.assertIn("gated", report.failure)
-            self.assertEqual(runner.launched, [], "nothing may be charged")
-            scope = Path(tmp) / "intent-x"
-            self.assertTrue((scope / "pending.json").exists())
-            self.assertTrue(list(scope.glob("*.plan.md")))
-
-    def test_an_approved_plan_dispatches(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.observed(self.a_ready_batch(), tmp)
-            obs.approve(tmp, "intent-x")
             report, runner = self.observed(self.a_ready_batch(), tmp)
             self.assertEqual(report.status, "ok", report.failure)
-            self.assertTrue(runner.launched)
-            report_doc = list((Path(tmp) / "intent-x").glob("*.report.md"))
+            self.assertTrue(runner.launched, "the pass is never gated")
+            scope = Path(tmp) / "intent-x"
+            self.assertTrue(list(scope.glob("*.plan.md")))
+            self.assertFalse((scope / "pending.json").exists())
+            report_doc = list(scope.glob("*.report.md"))
             self.assertTrue(report_doc)
             self.assertIn("session:research-x", report_doc[-1].read_text())
 
-    def test_a_changed_plan_regates(self):
+    def test_a_dry_run_writes_the_plan_too(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.observed(self.a_ready_batch(), tmp)
-            obs.approve(tmp, "intent-x")
-            other = Snapshot(items=[item(2, "type:planning", inbox.READY)])
-            report, runner = self.observed(other, tmp)
-            self.assertIn("gated", report.failure)
-            self.assertEqual(runner.launched, [])
-
-    def test_a_dry_run_writes_the_plan_and_never_gates(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            led = obs.RunLedger(tmp, "intent-x", gate_mode="gate")
+            led = obs.RunLedger(tmp, "intent-x")
             report = intent.run(
                 config(slug="sandbox-design",
                        fixture=str(FIXTURES / "intent-tracker.json")),

@@ -4,7 +4,7 @@
 
 Every loop run leaves a machine-readable record of what it read, what it
 intended, and what happened — the factual substrate every observation report
-and expectation gate is rendered from.
+and expectation plan is rendered from.
 
 ## ADDED Requirements
 

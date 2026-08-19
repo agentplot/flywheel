@@ -5,27 +5,20 @@ One JSONL file per loop process under
 `intent-<slug>`, or `dispatch`. The loop writes four kinds of entry —
 `precondition`, `expect`, `actual`, `note` — and two markdown documents are
 rendered from them beside the JSONL: the plan (`<run>.plan.md`, preconditions
-and expectations only, what the expectation gate shows the operator) and the
+and expectations only, what the run intends, for the operator to read) and the
 report (`<run>.report.md`, expected and actual joined by step, mismatches
 first).
 
-The gate is a content-addressed approval: the SHA-256 of a drive plan's
-step/trigger/expected content is the key, `approved/<key>` under the scope
-directory is the grant, and `pending.json` names the plan awaiting one.
-An approved plan never re-gates; a changed plan writes a new pending.
-
-Every write is best-effort: observation must never kill a pass. A failed
-write is logged, counted, and noted in the report.
+Observation never gates: the plan document is written for the operator to
+read, and the run proceeds. Every write is best-effort: observation must
+never kill a pass. A failed write is logged, counted, and noted in the
+report.
 """
 
-import hashlib
 import json
 import os
 import time
 from pathlib import Path
-
-PENDING = "pending.json"
-APPROVED_DIR = "approved"
 
 
 def state_home():
@@ -43,26 +36,12 @@ def observations_root(org, home=None):
     return (home or state_home()) / org / "observations"
 
 
-def expectation_key(plan):
-    """The content of a drive plan, hashed — no run ids, no timestamps,
-    so an identical plan on a later pass finds its approval."""
-    canon = sorted(
-        ({"step": e.get("step", ""), "trigger": e.get("trigger", ""),
-          "expected": e.get("expected", "")}
-         for e in plan),
-        key=lambda e: (e["step"], e["trigger"], e["expected"]))
-    blob = json.dumps(canon, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(blob.encode()).hexdigest()[:16]
-
-
 class RunLedger:
-    """One loop run's ledger. `gate_mode` is "gate" (default) or "courtesy"."""
+    """One loop run's ledger."""
 
-    def __init__(self, root, scope, run_id=None, gate_mode="gate",
-                 clock=time.time, log=None):
+    def __init__(self, root, scope, run_id=None, clock=time.time, log=None):
         self.dir = Path(root) / scope
         self.scope = scope
-        self.gate_mode = gate_mode
         self._clock = clock
         self._log = log or (lambda message: None)
         stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(clock()))
@@ -98,34 +77,13 @@ class RunLedger:
     def note(self, text):
         self._append({"kind": "note", "text": str(text)})
 
-    # -- the gate ----------------------------------------------------------
-
-    def gate(self, plan):
-        """True when the run may drive `plan` (a list of dicts with step /
-        trigger / expected). Gating writes the plan document and the pending
-        marker, and returns False; approval is `flywheel approve`'s."""
-        if not plan:
-            return True
-        key = expectation_key(plan)
-        plan_path = self.write_plan(plan, key)
-        if self.gate_mode != "gate":
-            return True
-        if (self.dir / APPROVED_DIR / key).exists():
-            return True
-        try:
-            self.dir.mkdir(parents=True, exist_ok=True)
-            (self.dir / PENDING).write_text(json.dumps(
-                {"key": key, "run": self.run_id, "plan": plan,
-                 "plan_path": str(plan_path) if plan_path else None},
-                indent=1), encoding="utf-8")
-        except OSError as err:
-            self.write_failures += 1
-            self._log(f"ledger pending write failed: {err}")
-        return False
-
     # -- rendering ---------------------------------------------------------
 
-    def write_plan(self, plan, key=None):
+    def write_plan(self, plan):
+        """The drive plan, rendered for the operator to read. Never a gate:
+        the run proceeds; the document is the record of what it intends."""
+        if not plan:
+            return None
         lines = [f"# {self.scope} — plan for run {self.run_id}", ""]
         pre = [e["text"] for e in self.entries if e["kind"] == "precondition"]
         if pre:
@@ -133,8 +91,6 @@ class RunLedger:
         lines += ["| step | trigger | expected |", "|---|---|---|"]
         lines += [f"| {e.get('step', '')} | {e.get('trigger', '')} "
                   f"| {e.get('expected', '')} |" for e in plan]
-        if key:
-            lines += ["", f"approve with: flywheel approve — key {key}"]
         return self._write_doc(f"{self.run_id}.plan.md", "\n".join(lines) + "\n")
 
     def write_report(self):
@@ -193,10 +149,9 @@ class RunLedger:
 
 
 class NullLedger:
-    """The absent ledger: records nothing, gates nothing. The default seam
-    for callers (and tests) that never asked for observation."""
+    """The absent ledger: records nothing. The default seam for callers
+    (and tests) that never asked for observation."""
 
-    gate_mode = "off"
     run_id = None
     entries = ()
     write_failures = 0
@@ -213,28 +168,8 @@ class NullLedger:
     def note(self, text):
         pass
 
-    def gate(self, plan):
-        return True
-
-    def write_plan(self, plan, key=None):
+    def write_plan(self, plan):
         return None
 
     def write_report(self):
         return None
-
-
-def approve(root, scope):
-    """Grant the pending approval for a scope. Returns the pending record,
-    or None when nothing is pending."""
-    scope_dir = Path(root) / scope
-    pending_path = scope_dir / PENDING
-    if not pending_path.exists():
-        return None
-    try:
-        record = json.loads(pending_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    (scope_dir / APPROVED_DIR).mkdir(parents=True, exist_ok=True)
-    (scope_dir / APPROVED_DIR / record["key"]).write_text("", encoding="utf-8")
-    pending_path.unlink()
-    return record

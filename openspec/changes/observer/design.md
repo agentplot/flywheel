@@ -46,29 +46,15 @@ repo param. The server passes nothing new; a standalone loop invocation
 lands in the same place the server's would. Alternative: a `--state-dir`
 flag threaded from the server — more plumbing for the same answer.
 
-**D3 — The gate is a content-addressed approval.** The expectation set for a
-pass is the canonical JSON of its `expect` entries for drive steps; its
-SHA-256 is the key. Approval is a file `observations/<scope>/approved/<key>`;
-the pending set is `observations/<scope>/pending.json` naming the key and the
-plan document. `flywheel approve <milestone-slug>` moves pending to approved.
-An identical plan on a later pass finds its key approved and proceeds;
-a different plan writes a new pending. Alternative: approve-by-run-id —
-rejected, a re-run of an approved plan would re-gate forever on a 60s server.
-
-**D4 — Gate placement: where the drives begin.** Bolt loop: after `analyse`
-filters the batches, before the drive loop — and again before `land_stage`
-(the landing launches a session too, and its intent is only known after the
-cycles). Intent loop: before `dispatch_batch`. Guard writes stay ungated:
-they are idempotent repairs, and gating them would deadlock convergence on
-operator clicks. Gate mode is a loop param — `gate` (default) or `courtesy`
-— wired from `FLYWHEEL_GATE` at the CLI so tests construct loops with the
-mode they mean to test.
-
-**D5 — A gated pass stops, the server retries.** Gating reuses the loops'
-existing stop semantics: the pass records `gated — awaiting flywheel
-approve`, writes the plan, and exits. The stateless-restart property does
-the rest: after approval the next reconcile's pass recomputes the same set,
-finds the key approved, and drives. No new process states.
+**D3 — The expectation report is a record, never a gate.** The plan
+document renders where the drives begin — bolt loop: after `analyse`
+filters the batches, before the drive loop, and again before `land_stage`;
+intent loop: before `dispatch_batch` — and the pass proceeds. The approvals
+that pace the flywheel are the tracker's own (the board move, the dispatch
+plan's round); a loop that paused on a second, file-system approval made
+every new milestone stall silently until the operator found the pending
+marker. Guard writes were never observed as plans: they are idempotent
+repairs, recorded as they happen.
 
 **D6 — Dispatch nudges ledger at the server.** The server appends to
 `observations/dispatch/<server-run>.jsonl` around each dispatch prompt it

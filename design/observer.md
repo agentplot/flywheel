@@ -97,8 +97,8 @@ same as any other decision.
 
 ## The evaluation loop this enables
 
-Operator reads the expectation report → approves or corrects → run →
-operator reads the comparison report → comments → a repair agent (an
+Operator reads the expectation report beside the run → reads the
+comparison report → comments → a repair agent (an
 ordinary interactive session with the operator, not machinery) consumes
 report + commentary and fixes the flywheel → next run. Tighter than
 live-fire-and-forensics, and the only loop in which machinery fixes
@@ -108,8 +108,8 @@ happen.
 
 - R1 — The ledger sits beside the server/loop logs; logs stay raw, the
   ledger is curated.
-- R2 — The expectation report is a gate: an acting pass pauses for
-  `flywheel approve` while the flywheel is under repair. `FLYWHEEL_GATE=
-  courtesy` is the relaxation for when it is trusted.
+- R2 (2026-08-19) — The expectation report is a record, never a gate:
+  the tracker's own approvals pace the flywheel, and a pass that intends
+  actions writes its plan and proceeds.
 - R3 — Dispatch is observed too: the server ledgers every nudge it
   sends under `observations/dispatch/`.

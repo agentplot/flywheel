@@ -937,12 +937,7 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
                 "trigger": ", ".join(f"#{n}" for n in batch.numbers) + " ready",
                 "expected": f"a {batch.type} session is charged and supervised",
             } for batch in batches]
-            if config.apply:
-                if not led.gate(plan):
-                    raise LoopStop("gated — the expectation report awaits "
-                                   "flywheel approve")
-            else:
-                led.write_plan(plan)   # a dry run IS the expectation preview
+            led.write_plan(plan)       # the expectation record, never a gate
 
             # Every batch launches before any is waited on: the sessions run in
             # parallel, the WAITING is the loop's and is serial, and so is the

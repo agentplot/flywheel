@@ -2959,10 +2959,7 @@ class BoltLoop:
                 for b in batches)
             result.stopped = "dry run — nothing launched, nothing written"
             return result
-        if not self.ledger.gate(self.drive_plan(batches)):
-            result.stopped = ("gated — the expectation report awaits "
-                              "flywheel approve")
-            return result
+        self.ledger.write_plan(self.drive_plan(batches))
         outcomes = []
         merged = 0
         for batch in batches:
@@ -3153,11 +3150,7 @@ class BoltLoop:
             "trigger": f"every work item merged to {self.params.bolt_branch}",
             "expected": ("merge criteria green; bolt landed on "
                          f"{self.params.main_branch}")}]
-        if not self.ledger.gate(landing_plan):
-            report.landing = ("gated — the expectation report awaits "
-                              "flywheel approve")
-            self._finish_observation()
-            return report
+        self.ledger.write_plan(landing_plan)
         row = landing_plan[0]
         self.ledger.expect(row["step"], row["trigger"], row["expected"])
         outcome = self.land_stage(snapshot)

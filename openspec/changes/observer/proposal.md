@@ -15,10 +15,11 @@ machinery never files issues about itself.
 - Both loop programs write a **run ledger** — a machine-readable JSONL record
   of preconditions as read, each intended action with its expected outcome, and
   each actual outcome — beside the loop logs under the org state directory.
-- A pass that intends actions is **gated**: the loop renders an expectation
-  report (preconditions + expected, no actuals) from the ledger and exits
-  without acting until the operator approves that exact expectation set;
-  an approved set does not re-gate. `flywheel approve` grants the approval.
+- A pass that intends actions renders an **expectation report**
+  (preconditions + expected, no actuals) from the ledger before it drives —
+  a record for the operator to read, never a gate: the approvals that pace
+  the flywheel are the tracker's (the board, the dispatch plan), and a loop
+  never waits on a second one.
 - At the end of an acting pass the loop renders the **observation report** —
   the same table with the actual column filled, mismatches first — from ledger
   facts alone; an observer agent MAY add narrative, but facts never originate
@@ -34,8 +35,6 @@ machinery never files issues about itself.
 - `flywheel-run-ledger`: what a loop run records, where, and in what vocabulary
   — preconditions, expectation entries before acting, actual entries after,
   dispatch-nudge entries from the server.
-- `flywheel-expectation-gate`: the pre-run report, the pause, the approval
-  keyed to the expectation set, and the `flywheel approve` grant.
 - `flywheel-observation-report`: the operator-facing expected-vs-actual
   report rendered from the ledger, and the optional observer-agent narrative.
 

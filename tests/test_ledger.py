@@ -1,4 +1,4 @@
-"""The run ledger: entries, rendering, the expectation gate, approval."""
+"""The run ledger: entries and rendering."""
 
 import json
 import tempfile
@@ -8,9 +8,8 @@ from pathlib import Path
 from context import ledger
 
 
-def make(root, gate_mode="gate", clock=lambda: 1_755_000_000.0):
-    return ledger.RunLedger(root, "bolt-demo", run_id="run1",
-                            gate_mode=gate_mode, clock=clock)
+def make(root, clock=lambda: 1_755_000_000.0):
+    return ledger.RunLedger(root, "bolt-demo", run_id="run1", clock=clock)
 
 
 PLAN = [
@@ -49,52 +48,23 @@ class Entries(unittest.TestCase):
             self.assertTrue(logged)
 
 
-class Gate(unittest.TestCase):
-    def test_unapproved_plan_gates_and_writes_pending(self):
+class Plan(unittest.TestCase):
+    def test_plan_renders_and_never_gates(self):
         with tempfile.TemporaryDirectory() as tmp:
             led = make(tmp)
-            self.assertFalse(led.gate(PLAN))
+            path = led.write_plan(PLAN)
             scope = Path(tmp) / "bolt-demo"
-            pending = json.loads((scope / "pending.json").read_text())
-            self.assertEqual(ledger.expectation_key(PLAN), pending["key"])
-            self.assertTrue((scope / "run1.plan.md").exists())
-
-    def test_approved_plan_drives_and_does_not_regate(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertFalse(make(tmp).gate(PLAN))
-            record = ledger.approve(tmp, "bolt-demo")
-            self.assertEqual(ledger.expectation_key(PLAN), record["key"])
-            # a later run with the same plan proceeds
-            led2 = ledger.RunLedger(tmp, "bolt-demo", run_id="run2")
-            self.assertTrue(led2.gate(PLAN))
-
-    def test_changed_plan_regates(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertFalse(make(tmp).gate(PLAN))
-            ledger.approve(tmp, "bolt-demo")
-            other = PLAN + [{"step": "landing", "trigger": "all merged",
-                             "expected": "criteria green"}]
-            self.assertFalse(make(tmp).gate(other))
-
-    def test_key_ignores_entry_order(self):
-        self.assertEqual(ledger.expectation_key(PLAN),
-                         ledger.expectation_key(list(reversed(PLAN))))
-
-    def test_empty_plan_never_gates(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            self.assertTrue(make(tmp).gate([]))
-
-    def test_courtesy_writes_the_plan_and_drives(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            led = make(tmp, gate_mode="courtesy")
-            self.assertTrue(led.gate(PLAN))
-            scope = Path(tmp) / "bolt-demo"
-            self.assertTrue((scope / "run1.plan.md").exists())
+            self.assertEqual(scope / "run1.plan.md", path)
+            text = path.read_text()
+            self.assertIn("spec:demo-1", text)
+            self.assertNotIn("approve", text)
             self.assertFalse((scope / "pending.json").exists())
 
-    def test_approve_with_nothing_pending(self):
+    def test_empty_plan_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertIsNone(ledger.approve(tmp, "bolt-demo"))
+            led = make(tmp)
+            self.assertIsNone(led.write_plan([]))
+            self.assertFalse((Path(tmp) / "bolt-demo" / "run1.plan.md").exists())
 
 
 class Report(unittest.TestCase):
@@ -142,7 +112,7 @@ class Report(unittest.TestCase):
         led.precondition("x")
         led.expect("a", "b", "c")
         led.actual("a", "d")
-        self.assertTrue(led.gate(PLAN))
+        self.assertIsNone(led.write_plan(PLAN))
         self.assertIsNone(led.write_report())
 
 

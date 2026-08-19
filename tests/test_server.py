@@ -503,7 +503,7 @@ class DispatchLedgerTest(unittest.TestCase):
     def test_a_delivered_relay_writes_expect_and_actual(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            led = obs.RunLedger(tmp, "dispatch", gate_mode="courtesy")
+            led = obs.RunLedger(tmp, "dispatch")
             box = a_server(tracker=FakeTracker(self.snap()), ledger=led,
                            dispatch=FakeDispatch())
             box.pass_once()
@@ -517,7 +517,7 @@ class DispatchLedgerTest(unittest.TestCase):
     def test_a_failed_delivery_is_a_recorded_divergence_with_its_reason(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            led = obs.RunLedger(tmp, "dispatch", gate_mode="courtesy")
+            led = obs.RunLedger(tmp, "dispatch")
             refusing = FakeDispatch(
                 {"delivered": False, "reason": "dispatch is busy (working)"})
             box = a_server(tracker=FakeTracker(self.snap()), ledger=led,
