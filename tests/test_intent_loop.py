@@ -336,7 +336,8 @@ class ResumeMergeTest(unittest.TestCase):
 
     def session_of(self, *items, name="writeback-x"):
         snap = Snapshot(items=list(items))
-        run = FakeRun(stdout="worktree /tmp/sess-x\nbranch refs/heads/sess/writeback-x\n")
+        run = FakeRun(stdout="worktree /tmp/sess-x\n"
+                             f"branch refs/heads/sess/{name}\n")
         # PRODUCTION SHAPE: dispatch writes its marker on every item, and
         # that marker is the only record of which session an item belongs
         # to. A fixture without it pins a state the loop cannot produce.
@@ -371,42 +372,27 @@ class ResumeMergeTest(unittest.TestCase):
         self.assertTrue(any("#2 still open" in n for n in report.notes),
                         report.notes)
 
-    def test_a_type_that_gets_no_worktree_merges_nothing(self):
-        # Research edits no files, so it gets no worktree and there is no
-        # branch to merge — the resume path must not invent one.
-        self.assertFalse(intent.TYPES["research"].worktree)
+    def test_research_carries_a_worktree_and_merges_like_any_other(self):
+        # Every design type launches with a worktree now — the close may
+        # fold answers into decisions/ and write close/ — so the resume
+        # path merges a research session's branch exactly as it would a
+        # writeback's, and closes its pane.
+        self.assertTrue(intent.TYPES["research"].worktree)
         run, report, runner = self.session_of(
             item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
             name="research-x")
-        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
+        merges = [c for c in run.calls if c[:2] == ["wt", "merge"]]
+        self.assertEqual(len(merges), 1, run.calls)
+        self.assertEqual(runner.closed, ["research-x"])
 
-    def test_a_type_that_gets_no_worktree_still_has_its_pane_closed(self):
-        """No branch to merge is not no pane to close.
-
-        The two session-scoped acts are independent: the merge is
-        conditional on the type having a worktree, the close never is.
-        `land` gets this right on the live path — `if
-        TYPES[batch.type].worktree: merge_session(...)` and then
-        `runner.close(handle)` unconditionally — and the resume path was
-        gating BOTH behind the same `continue`.
-
-        `session_name` is deterministic and `launch` reuses a running
-        agent, so an unclosed pane is not merely untidy: the next research
-        batch is dispatched into an orphaned, already-settled pane.
-        """
-        run, report, runner = self.session_of(
-            item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
-            name="research-x")
-        self.assertEqual(runner.closed, ["research-x"],
-                         "the pane closes even though nothing merged")
-
-    def test_a_half_flipped_no_worktree_session_keeps_its_pane_open(self):
+    def test_a_half_flipped_research_session_keeps_its_pane_open(self):
         # The close is unconditional on TYPE, never on completeness: a
-        # session with an item still open keeps its pane, worktree or not.
+        # session with an item still open keeps its pane and its branch.
         run, report, runner = self.session_of(
             item(1, "type:research", inbox.IN_PROGRESS, "stage:done"),
             item(2, "type:research", inbox.IN_PROGRESS, "stage:in-session"),
             name="research-x")
+        self.assertEqual([c for c in run.calls if c[:2] == ["wt", "merge"]], [])
         self.assertEqual(runner.closed, [])
         self.assertTrue(any("#2 still open" in n for n in report.notes),
                         report.notes)
@@ -624,19 +610,21 @@ class SessionSpecTest(unittest.TestCase):
         self.assertTrue(all(
             t.profile == "flywheel-design-session"
             for name, t in intent.TYPES.items() if name != "interactive"),
-            "one rule: does this session build a lavish surface?")
+            "one rule: does this session's batch work build a lavish surface?")
         self.assertEqual(
             {n: t.model for n, t in intent.TYPES.items()},
             {"planning": "fable", "interactive": "fable",
              "research": "opus[1m]", "prototype": "opus", "writeback": "opus"})
-        self.assertEqual(
-            sorted(n for n, t in intent.TYPES.items() if t.operator_round),
-            ["interactive", "planning"])
 
-    def test_research_gets_no_worktree_and_so_skips_the_merge(self):
-        self.assertFalse(intent.TYPES["research"].worktree)
-        self.assertTrue(all(t.worktree for n, t in intent.TYPES.items()
-                            if n != "research"))
+    def test_every_design_type_is_an_operator_round_session(self):
+        # Any session may end with a round-close plan, which the operator
+        # takes as long as they like — so no design type ever auto-stalls.
+        self.assertTrue(all(t.operator_round for t in intent.TYPES.values()))
+
+    def test_every_design_type_carries_a_worktree(self):
+        # The close writes decisions/ and close/ files; an unchanged
+        # worktree costs nothing at teardown.
+        self.assertTrue(all(t.worktree for t in intent.TYPES.values()))
 
     def test_a_session_name_is_stable_and_fits_herdrs_cap(self):
         batch = intent.DesignBatch("planning", (item(1, "type:planning"),))
@@ -808,7 +796,10 @@ class LandingTest(unittest.TestCase):
         snapshot = Snapshot(items=items)
         if tracker.snapshot_obj is None:
             tracker.snapshot_obj = snapshot
-        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snapshot)
+        # Every design type carries a worktree now, so a fully collected
+        # session merges — answered by a fake, never a real subprocess.
+        writer = intent.Writer(tracker=tracker, apply=True, run=FakeRun(),
+                               snapshot=snapshot)
         report = intent.Report(slug="x")
         intent.land(batch, spec, handle, writer, runner, tracker, cfg,
                     snapshot, clock or Clock(), report)
@@ -893,7 +884,8 @@ class LandingTest(unittest.TestCase):
                                     profile="flywheel-design-session")
         runner = ScriptedRunner()
         handle = runner.launch(spec)
-        writer = intent.Writer(tracker=tracker, apply=True, snapshot=before)
+        writer = intent.Writer(tracker=tracker, apply=True, run=FakeRun(),
+                               snapshot=before)
         report = intent.Report(slug="x")
         intent.land(batch, spec, handle, writer, runner, tracker,
                     config(apply=True), before, Clock(), report)

@@ -750,10 +750,12 @@ def supervise(runner, handle, operator_round=False, on_notify=None,
       waiting continues. A live wait is what that label means.
     - At `stall_after` (4 h) the wait gives up and returns STALLED. The pane
       is left open on purpose: a stalled session is evidence.
-    - An `operator_round` session NEVER auto-stalls. Plannotator and lavish
-      rounds are the operator's to take as long as they like, and a program
-      that calls that a stall is measuring the wrong thing. It still
-      notifies at 90 minutes: the record excepts the stall, not the notice.
+    - An `operator_round` session NEVER auto-stalls — and every design
+      session is one, since any may end with a round-close plan. A round —
+      plannotator, lavish, the close plan — is the operator's to take as
+      long as they like, and a program that calls that a stall is
+      measuring the wrong thing. It still notifies at 90 minutes: the
+      record excepts the stall, not the notice.
 
     **`origin` is why this takes a wall clock and not a monotonic one.**
     Loop processes are stateless and a 60s reconcile restarts them freely.

@@ -73,7 +73,7 @@ class LoopStop(Exception):
 
 
 # ---------------------------------------------------------------------------
-# The six design types — one enumeration, and this is it
+# The five design types — one enumeration, and this is it
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -81,22 +81,27 @@ class DesignType:
     """A design session type and its launch mechanics.
 
     `profile` follows the single rule in
-    `openspec/specs/flywheel-inception-skill/spec.md`: does this session build
-    a lavish surface? Interactive does and takes
-    `flywheel-interactive-session`; the other five take
-    `flywheel-design-session`. No second basis is admitted.
+    `openspec/specs/flywheel-inception-skill/spec.md`: does this session's
+    BATCH WORK build a lavish surface? Interactive's does and takes
+    `flywheel-interactive-session`; the other four take
+    `flywheel-design-session`. The round-close plan every type may end
+    with is not part of the basis. No second basis is admitted.
 
     `model` is the default column of
     `openspec/specs/flywheel-session-type-skills/spec.md`.
 
-    `operator_round` is the intent schema's LIMITS paragraph: planning and
-    interactive hold operator rounds by design, so they notify at
-    90 minutes like everything else but never auto-stall.
+    `operator_round` is True across the board: any design session may end
+    with a round-close plan (`skills/_reference/round-close.md`), which the
+    operator takes as long as they like, so every type notifies at
+    90 minutes like everything else but never auto-stalls. The 4-hour
+    stall is deliberately traded away — the loop cannot know at launch
+    whether a session will run a close round, and the notify survives as
+    the hung-session signal.
 
-    `worktree` is herdr.md's "a session that edits no files gets no worktree —
-    skip the `wt switch`, start it in the launch directory, and skip the merge
-    and teardown too". Research is the type that reads: "the finding is the
-    item comment and the report; nothing is built."
+    `worktree` is True across the board too: any session may fold answers
+    into `decisions/` and write `close/` at its end, and an unchanged
+    worktree costs nothing at teardown. Most research batches still edit
+    nothing — the worktree is for the close.
 
     `alone` is the schema's "prototypes always alone" — each is its own
     experiment.
@@ -113,9 +118,9 @@ class DesignType:
 TYPES = {t.name: t for t in (
     DesignType("planning", "flywheel-design-session", "fable", True, True),
     DesignType("interactive", "flywheel-interactive-session", "fable", True, True),
-    DesignType("research", "flywheel-design-session", "opus[1m]", False, False),
-    DesignType("prototype", "flywheel-design-session", "opus", False, True, alone=True),
-    DesignType("writeback", "flywheel-design-session", "opus", False, True),
+    DesignType("research", "flywheel-design-session", "opus[1m]", True, True),
+    DesignType("prototype", "flywheel-design-session", "opus", True, True, alone=True),
+    DesignType("writeback", "flywheel-design-session", "opus", True, True),
 )}
 
 
@@ -925,7 +930,7 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
                 set_needs_operator(
                     writer, item.number,
                     f"The intent loop cannot dispatch this item: its type is "
-                    f"`{kind or 'missing'}`, which is not one of the six "
+                    f"`{kind or 'missing'}`, which is not one of the five "
                     f"design types ({', '.join(sorted(TYPES))}). "
                     f"Set a type label — the loop will not guess one.",
                 )
