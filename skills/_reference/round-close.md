@@ -32,7 +32,15 @@ abandoned without ever leaving a stranded object on the board.
 
 ## The page
 
-Opened with `npx -y lavish-axi sessions/<date>-<slug>/close/plan.html`;
+**The page is the template, filled — never redesigned.** Copy
+`round-close-template.html` beside this file into the session's
+`close/plan.html` and fill its two marked regions: the payload
+markdown blocks (mirroring the committed `close/*.md` exactly) and the
+`plan-data` JSON (slug, round numbers, what closed, the member and
+unit rows, what is left out). Everything below the template's fill
+line is the format and is not edited, which is what makes every
+round's page the same page. Opened with
+`npx -y lavish-axi sessions/<date>-<slug>/close/plan.html`;
 the steering source for the surface is the user-level `lavish` skill.
 Four fixed sections, in order:
 

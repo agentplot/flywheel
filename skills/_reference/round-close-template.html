@@ -1,0 +1,351 @@
+<!doctype html>
+<!-- =====================================================================
+  The round-close plan page — the one template (round-close.md is the
+  protocol; this file is the format).
+
+  A session closing a round COPIES this file to its own
+  sessions/<date>-<slug>/close/plan.html and fills exactly two regions:
+
+    1. The PAYLOAD blocks — the <script type="text/markdown"> elements.
+       Each one's content is byte-identical to a markdown file committed
+       beside the page (elaboration member blocks, bolt-summary.md,
+       units/<slug>.md). The page renders them; the apply posts the
+       .md files verbatim. Embedded because lavish serves the page from
+       a /session/ URL, so sibling fetches do not resolve.
+    2. The PLAN DATA object — the <script id="plan-data"> JSON: slug,
+       round, what closed, the member and unit rows, what is left out.
+
+  Everything below the fill line is the format and is not edited per
+  session — that is what makes the page the same page every round.
+  The content shipped here is a worked example to replace, drawn from
+  a real round.
+====================================================================== -->
+<html lang="en" data-theme="dim">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Round-close plan</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, li, td, th) { overflow-wrap: anywhere; }
+  .md p, .md li { font-size: .84rem; line-height: 1.5; margin: .35rem 0; }
+  .md ul { padding-left: 1.1rem; }
+  .md h1, .md h2, .md h3 { display: none; }     /* the row header shows the title */
+  .md code { font-size: .76rem; background: color-mix(in oklab, var(--color-base-content) 10%, transparent); padding: .05rem .3rem; border-radius: .25rem; }
+  .md table { font-size: .78rem; border-collapse: collapse; margin: .5rem 0; white-space: nowrap; }
+  .md th, .md td { border: 1px solid color-mix(in oklab, var(--color-base-content) 18%, transparent); padding: .25rem .5rem; text-align: left; }
+  .md td:nth-child(3), .md th:nth-child(3) { white-space: normal; min-width: 14rem; }
+  .tablewrap { overflow-x: auto; }
+  .row { display: grid; grid-template-columns: 6.5rem 1fr 10.5rem; gap: .75rem 1rem; align-items: start; padding: .8rem 1rem; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+  details > summary { cursor: pointer; }
+</style>
+</head>
+<body class="bg-base-100 text-base-content min-h-screen">
+<div class="max-w-3xl mx-auto px-4 py-8 space-y-8 pb-40">
+  <header>
+    <h1 id="page-title" class="text-xl font-bold tracking-tight"></h1>
+    <p class="text-sm opacity-60 mt-1">Dropdowns hold the session's suggestion. Change any, then approve once — nothing exists on GitHub until you do.</p>
+  </header>
+  <section>
+    <h2 class="text-xs font-bold uppercase tracking-widest opacity-50 mb-2">Closed this round</h2>
+    <ul id="closed" class="text-sm space-y-1.5"></ul>
+  </section>
+  <section id="sec-members">
+    <h2 id="members-title" class="text-xs font-bold uppercase tracking-widest opacity-50 mb-2"></h2>
+    <div id="elab-members" class="rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200"></div>
+  </section>
+  <section id="sec-units">
+    <div class="flex items-baseline justify-between mb-2 gap-3 flex-wrap">
+      <h2 id="units-title" class="text-xs font-bold uppercase tracking-widest opacity-50"></h2>
+      <span id="units-stats" class="text-xs opacity-60"></span>
+    </div>
+    <div id="unit-cards" class="rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200"></div>
+  </section>
+  <section id="sec-leftout">
+    <h2 class="text-xs font-bold uppercase tracking-widest opacity-50 mb-2">Left out of this round</h2>
+    <ul id="leftout" class="text-sm opacity-70 space-y-1"></ul>
+  </section>
+  <section class="fixed bottom-0 inset-x-0 bg-base-300/95 backdrop-blur border-t border-base-content/10">
+    <div class="max-w-3xl mx-auto px-4 py-3 space-y-2">
+      <pre id="preview" class="text-[11px] leading-4 whitespace-pre-wrap m-0 font-mono opacity-70"></pre>
+      <div class="flex gap-2 items-center flex-wrap">
+        <button id="approve" class="btn btn-primary btn-sm">Approve</button>
+        <input id="sendback-note" class="input input-sm grow min-w-48" placeholder="…or say what's wrong and">
+        <button id="sendback" class="btn btn-outline btn-sm">Send back</button>
+        <span id="status" class="text-xs font-medium text-success"></span>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ============== FILL REGION 1: the payload markdown ==============
+     One block per elaboration member and per unit, plus the bolt
+     summary. Content mirrors the committed close/*.md files exactly. -->
+<script type="text/markdown" id="src-writeback">
+### Write the chaining design into the flywheel book
+
+The three decisions this round closed — the chaining design, the
+writeback type's fate, the context-map code's home — written into the
+flywheel book at `agentplot/blueprints`, chapters rewritten whole in
+destination voice. Record: `decisions/the-round-close-plan-chains-sessions.md`.
+</script>
+<script type="text/markdown" id="src-research">
+### Confirm lavish poll results carry the dropdown values intact
+
+Every proposal on a round-close plan must come back as exactly one
+routing value, with no prose to interpret. Verify a poll result
+carries the queued control payloads (question, answer, data) intact.
+Record: `decisions/the-round-close-plan-chains-sessions.md`.
+</script>
+<script type="text/markdown" id="src-planning">
+### Decide who closes a replaced plan's cards
+
+When a later iteration replaces an applied plan wholesale, the
+replaced cards close `closed:superseded` — decide whether the next
+apply writes those closes or the operator does.
+Record: `decisions/the-round-close-plan-chains-sessions.md`.
+</script>
+<script type="text/markdown" id="src-unit-round-close-protocol">
+# Unit: round-close-protocol
+
+A design session's operator approves one plan and the session carries
+it out whole — this unit makes that real: the close contract in the
+profiles and skills, and the tracker moves proven against a scratch
+milestone. The records already say everything a spec needs, so this
+is built now with no writeback ahead of it.
+
+Sequence: 1 of 2 · builds on: none
+Type: `bolt-default` · Price: 3 changes · ~2 days
+
+| # | change | delivers | sources | after | why this bolt |
+|---|--------|----------|---------|-------|---------------|
+| 1 | close-contract-prose | the round-close section in both session profiles and the five type skills | decisions/the-round-close-plan-chains-sessions.md | — | the contract edits are one commit's worth of prose |
+| 2 | apply-invocations | the batch, board and stage moves exercised against a scratch milestone | decisions/the-round-close-plan-chains-sessions.md | 1 | proves the order the prose promises |
+| 3 | close-round-evals | eval cases pinning nothing-before-approval and the failure path | decisions/the-round-close-plan-chains-sessions.md | 1 | the discipline survives only if evals bite |
+
+## Left out
+
+- The replaced-cards closure question — it is this round's planning
+  item, and building it before the decision closes would invent
+  structure.
+
+Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
+</script>
+<script type="text/markdown" id="src-unit-context-map-tool-move">
+# Unit: context-map-tool-move
+
+The context-map checker ships with the machinery that runs it: the
+code moves out of willdan-blueprints into the plugin's `tools/`, and
+every gate that invokes it points at the plugin copy. The decision
+record says everything a spec needs, so no book write comes first.
+
+Sequence: 2 of 2 · builds on: none
+Type: `bolt-quick` · Price: 1 change · ~0.5 days
+
+| # | change | delivers | sources | after | why this bolt |
+|---|--------|----------|---------|-------|---------------|
+| 1 | map-tool-into-plugin | `tools/context-map/` in the plugin, gates and writeback skill pointing at it | decisions/context-map-code-lives-in-the-plugin.md | — | one move, one pointer sweep, no review needed |
+
+## Left out
+
+- The willdan-blueprints removal half — that org's own tracker owns it.
+
+Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
+</script>
+
+<!-- ============== FILL REGION 2: the plan data ==============
+     badge: the type or bolt type. badgeClass by kind —
+       writeback badge-warning · research badge-info · planning
+       badge-secondary · interactive badge-primary · prototype
+       badge-neutral · bolt-default badge-accent · bolt-quick
+       badge-success · other bolt types badge-accent.
+     question: true puts the inline-answer input on the row.
+     An empty members[] or units[] hides that whole section. -->
+<script id="plan-data" type="application/json">
+{
+  "slug": "writeback-in-session",
+  "round_closing": 2,
+  "round_next": 3,
+  "closed": [
+    { "title": "The chaining design", "record": "the-round-close-plan-chains-sessions.md" },
+    { "title": "The writeback type keeps the destination write", "record": "writeback-type-narrows-to-repair.md" },
+    { "title": "The context-map code moves into the plugin", "record": "context-map-code-lives-in-the-plugin.md" }
+  ],
+  "members": [
+    { "key": "writeback: book chapters", "badge": "writeback", "badgeClass": "badge-warning",
+      "title": "Write the chaining design into the flywheel book",
+      "oneliner": "This round's three decisions, into agentplot/blueprints in destination voice",
+      "srcId": "src-writeback" },
+    { "key": "research: poll values", "badge": "research", "badgeClass": "badge-info",
+      "title": "Confirm lavish poll results carry the dropdown values intact",
+      "oneliner": "Every proposal must come back as one routing value, no prose to interpret",
+      "srcId": "src-research" },
+    { "key": "planning: replaced cards", "badge": "planning", "badgeClass": "badge-secondary",
+      "title": "Decide who closes a replaced plan's cards",
+      "oneliner": "closed:superseded on a replaced plan — written by the next apply, or by you?",
+      "srcId": "src-planning", "question": true }
+  ],
+  "bolt": "bolt/round-close-protocol",
+  "bolt_stats": "2 units · 4 changes · ~2.5 days",
+  "units": [
+    { "key": "unit: round-close-protocol", "badge": "bolt-default", "badgeClass": "badge-accent",
+      "title": "Unit: round-close-protocol — 3 changes · ~2 days",
+      "oneliner": "The close contract in profiles and skills; tracker moves proven on a scratch milestone",
+      "srcId": "src-unit-round-close-protocol" },
+    { "key": "unit: context-map-tool-move", "badge": "bolt-quick", "badgeClass": "badge-success",
+      "title": "Unit: context-map-tool-move — 1 change · ~0.5 days",
+      "oneliner": "The map checker moves into the plugin's tools/; gates point at the plugin copy",
+      "srcId": "src-unit-context-map-tool-move" }
+  ],
+  "left_out": [
+    "The willdan-blueprints removal half of the context-map move — that org's tracker owns it. Listed so silence about it is never approval."
+  ]
+}
+</script>
+
+<!-- ============== THE FORMAT — not edited per session ============== -->
+<script>
+  const PLAN = JSON.parse(document.getElementById("plan-data").textContent);
+  const md = id => document.getElementById(id).textContent.trim();
+  const render = text => {
+    const div = document.createElement("div");
+    div.className = "md";
+    div.innerHTML = marked.parse(text);
+    for (const t of div.querySelectorAll("table")) {
+      const wrap = document.createElement("div");
+      wrap.className = "tablewrap";
+      t.parentNode.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    }
+    return div;
+  };
+
+  document.title = `Round-close plan — ${PLAN.slug}`;
+  document.getElementById("page-title").innerHTML =
+    `${PLAN.slug} <span class="opacity-50 font-normal">· round ${PLAN.round_closing} closes</span>`;
+  document.getElementById("members-title").textContent =
+    `Next round (${PLAN.round_next}) — ${PLAN.members.length} design item${PLAN.members.length === 1 ? "" : "s"}`;
+  document.getElementById("units-title").textContent = `Construction — ${PLAN.bolt || ""}`;
+  document.getElementById("units-stats").textContent = PLAN.bolt_stats || "";
+
+  for (const c of PLAN.closed) {
+    const li = document.createElement("li");
+    li.className = "flex gap-2 items-baseline";
+    li.innerHTML = `<span class="text-success">✓</span><span class="font-medium"></span><span class="text-xs opacity-45 truncate"></span>`;
+    li.children[1].textContent = c.title;
+    li.children[2].textContent = c.record;
+    document.getElementById("closed").append(li);
+  }
+  for (const l of PLAN.left_out || []) {
+    const li = document.createElement("li");
+    li.textContent = l;
+    document.getElementById("leftout").append(li);
+  }
+
+  const state = {};
+  function selectFor(key, routes) {
+    const sel = document.createElement("select");
+    sel.className = "select select-sm w-full";
+    for (const r of routes) sel.append(new Option(r, r));
+    state[key] = routes[0];
+    sel.addEventListener("change", () => { state[key] = sel.value; preview(); });
+    return sel;
+  }
+
+  // One row = badge · title + one-liner + collapsed full text · control.
+  function row(item, routes) {
+    const r = document.createElement("div");
+    r.className = "row";
+    const b = document.createElement("span");
+    b.className = "badge badge-sm " + item.badgeClass;
+    b.textContent = item.badge;
+    const mid = document.createElement("div");
+    const t = document.createElement("div");
+    t.className = "text-sm font-semibold leading-snug";
+    t.textContent = item.title;
+    const o = document.createElement("div");
+    o.className = "text-xs opacity-55 mt-0.5";
+    o.textContent = item.oneliner;
+    const det = document.createElement("details");
+    det.className = "mt-1";
+    const sum = document.createElement("summary");
+    sum.className = "text-xs opacity-50 hover:opacity-80";
+    sum.textContent = "full text";
+    det.append(sum, render(md(item.srcId)));
+    mid.append(t, o, det);
+    if (item.question) {
+      const inp = document.createElement("input");
+      inp.className = "input input-sm w-full mt-2";
+      inp.placeholder = "It's a question — type the answer to settle it now (recorded as a decision; no item filed)";
+      inp.dataset.answerFor = item.key;
+      inp.addEventListener("input", preview);
+      mid.append(inp);
+    }
+    const ctl = document.createElement("div");
+    ctl.append(selectFor(item.key, routes));
+    r.append(b, mid, ctl);
+    return r;
+  }
+
+  // A row offers only the routes that make sense for it. Needing more
+  // design first is a send-back with a note, never a routing value.
+  const DESIGN_ROUTES = ["next round", "hold", "drop"];
+  const UNIT_ROUTES = ["file the card", "hold", "drop"];
+
+  for (const m of PLAN.members) document.getElementById("elab-members").append(row(m, DESIGN_ROUTES));
+  for (const u of PLAN.units) document.getElementById("unit-cards").append(row(u, UNIT_ROUTES));
+  if (!PLAN.members.length) document.getElementById("sec-members").hidden = true;
+  if (!PLAN.units.length) document.getElementById("sec-units").hidden = true;
+  if (!(PLAN.left_out || []).length) document.getElementById("sec-leftout").hidden = true;
+
+  // The payload is always visible — a control change is never silently lost.
+  function payload() {
+    const map = { ...state };
+    const answers = {};
+    for (const inp of document.querySelectorAll("input[data-answer-for]")) {
+      const a = inp.value.trim();
+      if (a) { map[inp.dataset.answerFor] = "answered now"; answers[inp.dataset.answerFor] = a; }
+    }
+    return { map, answers };
+  }
+  function preview() {
+    const { map, answers } = payload();
+    document.getElementById("preview").textContent =
+      "on approve → " + Object.entries(map).map(([k, v]) => `${k}: ${v}`).join(" · ")
+      + Object.entries(answers).map(([k, a]) => `\nanswer (${k}): ${a}`).join("");
+  }
+
+  document.getElementById("approve").addEventListener("click", () => {
+    const { map, answers } = payload();
+    const lines = Object.entries(map).map(([k, v]) => `${k} -> ${v}`).join("; ");
+    window.lavish.queuePrompt(
+      "APPROVE the round-close plan with this routing: " + lines
+      + Object.entries(answers).map(([k, a]) => `. Inline answer for '${k}': "${a}"`).join("")
+      + ". Carry it out in the protocol's order.",
+      { tag: "approval", text: "Approve: " + lines,
+        data: { decision: "approve", routing: map, answers } });
+    window.lavish.sendQueuedPrompts();
+    document.getElementById("status").textContent = "Approval sent.";
+  });
+
+  document.getElementById("sendback").addEventListener("click", () => {
+    const note = document.getElementById("sendback-note").value.trim();
+    if (!note) { document.getElementById("status").textContent = "Say what to change first."; return; }
+    window.lavish.queuePrompt(
+      "SEND BACK the round-close plan for another pass: " + note,
+      { tag: "sendback", text: "Send back: " + note,
+        data: { decision: "sendback", note } });
+    window.lavish.sendQueuedPrompts();
+    document.getElementById("status").textContent = "Sent back.";
+  });
+
+  preview();
+</script>
+</body>
+</html>
