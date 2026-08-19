@@ -24,6 +24,7 @@ The plugin SHALL carry one skill per session type under `skills/`:
 | `flywheel:test` | test | `opus[1m]` | the batched acceptance run on the bolt branch |
 | `flywheel:code-review` | code-review | `opus[1m]` | an adversarial or persona read of built work |
 | `flywheel:human-code-review` | human-code-review | `opus[1m]` | plannotator, over built diffs for the operator |
+| `flywheel:findings-routing` | findings-routing | fable | the dispatch plan over a bolt's queued findings inbox |
 
 The default-model column is the one enumeration of session-model
 defaults; every launch path accepts a runtime override via the
@@ -78,17 +79,17 @@ report; the worktree is for the close.
   as comments and a report, and its unchanged branch merges as a no-op
   at teardown
 
-### Requirement: Any design type may end with a round-close plan
+### Requirement: Any design type may end with a dispatch plan
 
-Every design type skill SHALL point at the shared round-close protocol
-(`skills/_reference/round-close.md`) as the way a session with a next
-round to propose ends: real files in the session directory's `close/`, a
-lavish page over them, one operator approval, and the session applying
-the word in the protocol's order before settling. A session with nothing
-to propose SHALL settle as today, and the loop's compose guard and the
-operator's board flip SHALL remain the fallback path. The protocol SHALL
-live in the one shared reference and SHALL NOT be restated in any type
-skill.
+Every design type skill SHALL point at the shared dispatch-plan protocol
+(`skills/_reference/dispatch-plan.md`) as the way a session with a next
+round or construction to propose ends: real files in the session
+directory's `close/`, a lavish page over them, one operator approval,
+and the session applying the word in the protocol's order before
+settling. A session with nothing to propose SHALL settle as today, and
+the loop's compose guard and the operator's board flip SHALL remain the
+fallback path. The protocol SHALL live in the one shared reference and
+SHALL NOT be restated in any type skill.
 
 #### Scenario: A session has a next round to propose
 

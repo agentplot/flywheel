@@ -160,7 +160,11 @@ empty and the guards wrote nothing, report this bolt's queue —
 `state:queued` items and Backlog units, one line each — and STOP, which
 is a finished pass and not a failure. New work pushed into a live bolt
 joins as queued items; scope that belongs elsewhere is queued
-elsewhere.
+elsewhere. The queued items are the bolt's **findings inbox**: a run
+that stops at a non-empty one also charges the findings-routing session
+— one dispatch plan over the whole inbox
+(`skills/_reference/dispatch-plan.md`), the operator's round to take or
+leave, and the inbox waits either way.
 
 **Cleanup is mechanical and immediate; archive is the operator's.**
 At the merge, a merged-back session's pane, worktree and branch go — no

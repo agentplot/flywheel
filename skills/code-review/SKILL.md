@@ -63,7 +63,7 @@ beside it. Your contract:
 
 - **You receive**: built work for the batch's items, on build branches or the bolt branch.
 - **You leave**: one verdict comment per item. You never edit what you review; a bounce re-dispatches the build.
-- A defect beyond the batch is a queued item on the right milestone.
+- A defect beyond the batch is a queued item on the right milestone — on the bolt it joins the findings inbox, routed later through the bolt loop's findings-routing round, so write it to be routed.
 
 ## What you report
 

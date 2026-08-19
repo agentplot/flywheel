@@ -125,6 +125,8 @@ def render(report, params):
     if report.queue:
         lines.append("  queue:")
         lines += [f"    {row}" for row in report.queue]
+    if report.routing:
+        lines.append(f"  findings-routing: {report.routing}")
     return "\n".join(lines)
 
 
@@ -134,6 +136,7 @@ def as_dict(report):
         "halted": report.halted,
         "landing": report.landing,
         "queue": report.queue,
+        "routing": report.routing,
         "cycles": [
             {"number": c.number, "ready": list(c.ready), "actions": list(c.actions),
              "stopped": c.stopped, "halted": c.halted,

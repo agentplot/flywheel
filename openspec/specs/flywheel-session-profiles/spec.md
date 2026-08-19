@@ -49,16 +49,20 @@ Every session type SHALL run under one of the three host profiles, and
 the assignment SHALL follow one two-part question: which loop is this,
 and does the session's BATCH WORK build a lavish surface? Construction —
 all seven
-types — SHALL run under `flywheel-construction-session`. Design whose
+types — SHALL run under `flywheel-construction-session`. The
+findings-routing session stands outside this assignment: like the bolt
+planner it is a routing actor with its own profile
+(`flywheel-findings-routing-session`), because applying a dispatch plan
+creates the tracker objects the construction profile forbids. Design whose
 batch work builds a lavish surface is interactive design and SHALL run
 under `flywheel-interactive-session`; design whose batch work does not —
 planning, research, prototype, writeback — SHALL run under
 `flywheel-design-session`.
 
-The round-close plan any design session may end with
-(`skills/_reference/round-close.md`) is NOT part of the basis: its lavish
-page belongs to the close, not to the batch work, and counting it would
-collapse every type into the interactive profile. Of the four types the
+The dispatch plan any design session may end with
+(`skills/_reference/dispatch-plan.md`) is NOT part of the basis: its
+lavish page belongs to the close, not to the batch work, and counting it
+would collapse every type into the interactive profile. Of the four types the
 default profile hosts, **only the planning type opens a plannotator round
 over its batch work**. Prototype, research, and writeback batch work
 opens none: a prototype delivers a finding note, a research session
@@ -84,7 +88,7 @@ type.
   whose batch work uses neither plannotator nor lavish
 - **THEN** it launches `flywheel-design-session` with the writeback type
   named in the work order, and the session rewrites chapters and runs the
-  gates without opening a review round on them — a round-close plan at its
+  gates without opening a review round on them — a dispatch plan at its
   end, if it has one to propose, does not change which profile hosted it
 
 #### Scenario: A prototype session considers annotating its finding
@@ -92,7 +96,7 @@ type.
 - **WHEN** a prototype session has written `prototypes/<slug>.md` and could
   open a round on it, since it is a file the session itself wrote
 - **THEN** it opens none and delivers the finding to its conductor, because
-  only the planning type opens batch-work rounds — a round-close plan
+  only the planning type opens batch-work rounds — a dispatch plan
   routes outcomes and is not an annotation surface; if the operator should
   annotate what the prototype proved, the conductor charges a
   planning-type session for it

@@ -3380,3 +3380,72 @@ class CloseReadyTest(unittest.TestCase):
                       tracker.writes)
         self.assertNotIn(("add_label", 9, inbox.NEEDS_OPERATOR),
                          tracker.writes)
+
+
+class FindingsRoutingChargeTest(unittest.TestCase):
+    """A run that stops at a non-empty queue charges the findings-routing
+    session — the construction origin of the dispatch plan. The queued
+    items are the bolt's findings inbox: durable, inert, and routed only
+    through the operator's round; the charge is launch-and-leave, so the
+    run never waits on the pane."""
+
+    def test_a_stop_at_a_queue_charges_the_routing_session(self):
+        snapshot = Snapshot(items=[item(5, inbox.QUEUED, title="a flake"),
+                                   item(7, inbox.QUEUED, title="a gap")],
+                            milestone="bolt/x")
+        runner = ScriptedRunner()
+        program = a_loop(FakeTracker(snapshot), runner=runner)
+        report = program.run(land=False)
+        self.assertEqual(len(runner.launched), 1)
+        spec = runner.launched[0]
+        self.assertEqual(spec.profile, loop.FINDINGS_PROFILE)
+        self.assertEqual(spec.name, "findings-routing-x-5",
+                         "deterministic, keyed to the lowest queued number")
+        self.assertTrue(spec.operator_round,
+                        "the round is the operator's to take as long as "
+                        "they like")
+        self.assertEqual(spec.model, loop.STAGE_MODELS["findings"])
+        self.assertIn("#5", spec.order)
+        self.assertIn("#7", spec.order)
+        self.assertIn("findings-routing-x-5", report.routing)
+
+    def test_an_empty_queue_charges_nothing(self):
+        runner = ScriptedRunner()
+        program = a_loop(FakeTracker(Snapshot(milestone="bolt/x")),
+                         runner=runner)
+        report = program.run(land=False)
+        self.assertEqual(runner.launched, [])
+        self.assertEqual(report.routing, "")
+
+    def test_a_queued_container_is_not_a_finding(self):
+        # A batch parent at state:queued is a container, never inbox work.
+        snapshot = Snapshot(items=[item(9, inbox.UNIT, inbox.QUEUED)],
+                            milestone="bolt/x")
+        runner = ScriptedRunner()
+        program = a_loop(FakeTracker(snapshot), runner=runner)
+        report = program.run(land=False)
+        self.assertEqual(runner.launched, [])
+        self.assertEqual(report.routing, "")
+
+    def test_a_dry_run_reports_the_charge_it_would_make(self):
+        snapshot = Snapshot(items=[item(5, inbox.QUEUED, title="a flake")],
+                            milestone="bolt/x")
+        runner = ScriptedRunner()
+        program = a_loop(FakeTracker(snapshot), runner=runner)
+        program.dry_run = True
+        report = program.run(land=False)
+        self.assertEqual(runner.launched, [])
+        self.assertIn("would charge", report.routing)
+
+    def test_a_charge_that_cannot_launch_is_reported_never_a_halt(self):
+        snapshot = Snapshot(items=[item(5, inbox.QUEUED, title="a flake")],
+                            milestone="bolt/x")
+
+        class NoLaunch(ScriptedRunner):
+            def launch(self, spec):
+                raise sessions.SessionError("no herdr here")
+
+        program = a_loop(FakeTracker(snapshot), runner=NoLaunch())
+        report = program.run(land=False)
+        self.assertFalse(report.halted)
+        self.assertIn("not charged", report.routing)

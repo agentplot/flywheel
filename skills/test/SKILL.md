@@ -34,7 +34,10 @@ queued item with the evidence to reproduce it. A test session that
 patches the tree has become an unreviewed build session mid-run. A
 finding that indicts the design rather than the build — the criterion
 is wrong, the decision it derives from does not hold — is named as
-such and queued for the intent.
+such and queued for the intent. What you queue on the bolt is its
+findings inbox: inert until the bolt loop's findings-routing round puts
+it before the operator, so write each finding to be routed, not merely
+logged.
 
 A bolt branch that will not even build is the andon cord: stop after
 the first structural failure rather than accumulating fifty findings

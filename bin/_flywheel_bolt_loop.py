@@ -67,6 +67,13 @@ import _flywheel_sessions as sessions  # noqa: E402
 
 PROFILE = "flywheel-construction-session"
 
+#: The findings-routing session is a routing actor, not a construction
+#: type: it builds one dispatch plan over the bolt's queued findings and
+#: applies the operator's approval, so it runs under its own profile —
+#: the construction profile forbids creating tracker objects, and the
+#: apply is exactly that.
+FINDINGS_PROFILE = "flywheel-findings-routing-session"
+
 #: Every session launch names its model (herdr.md). Construction types run
 #: `opus[1m]`; the mechanical stages and the one-line judgments do not.
 STAGE_MODELS = {
@@ -77,6 +84,7 @@ STAGE_MODELS = {
     "land": "opus[1m]",
     "scaffold": "sonnet",
     "plan": "sonnet",      # a plan against a claim
+    "findings": "fable",   # an operator-facing routing surface
 }
 
 #: The type's strategy is the sequence of spec commands the loop runs on one
@@ -896,6 +904,7 @@ class RunReport:
     cycles: list = field(default_factory=list)
     landing: str = "not attempted"
     queue: list = field(default_factory=list)
+    routing: str = ""      # the findings-routing charge, when the queue held any
     halted: str = ""
 
     @property
@@ -3082,6 +3091,13 @@ class BoltLoop:
         on_milestone = snapshot.on(self.params.milestone)
         open_items = [i for i in on_milestone if i.is_open]
         report.queue = [f"#{i.number} {i.title}" for i in open_items if i.queued]
+        findings = [i for i in open_items if i.queued and not i.is_container]
+        if findings:
+            if self.dry_run:
+                report.routing = ("would charge findings-routing over "
+                                  + ", ".join(f"#{i.number}" for i in findings))
+            else:
+                report.routing = self.route_findings(findings)
         unlanded = open_items + [i for i in on_milestone if i.merge_closed]
         held = self.holding_cards(snapshot)
         if held:
@@ -3149,6 +3165,68 @@ class BoltLoop:
         self.ledger.actual("landing", report.landing, ok=outcome.ok)
         self._finish_observation()
         return report
+
+    def route_findings(self, queued):
+        """Charge the findings-routing session over the queue this run
+        stops at — the construction origin of the dispatch plan
+        (`skills/_reference/dispatch-plan.md`). The queued items are the
+        bolt's findings inbox: durable while the operator is away, inert
+        until a plan routes them, drained by the plan's apply.
+
+        Launch-and-leave: the round is the operator's to take as long as
+        they like and this run is finishing anyway, so nothing here waits
+        on the pane. The name carries the lowest queued number, so a
+        restarted loop re-adopts the running session (`launch` reuses a
+        live agent under the name) while a later, different inbox gets a
+        fresh pane and a real work order; the apply drains the queue, so
+        a run against an empty inbox charges nothing — the dry-cycle
+        property. A held finding keeps the inbox non-empty on purpose:
+        the operator routed it `hold`, and the standing pane is where
+        they re-route it.
+
+        Best-effort: a charge that cannot launch (no herdr, a torn pane)
+        is reported, never a halt — the inbox waits either way.
+        """
+        items = sorted(queued, key=lambda i: i.number)
+        stem = f"findings-routing-{self.params.slug}"
+        suffix = f"-{items[0].number}"
+        name = stem[:sessions.MAX_NAME - len(suffix)] + suffix
+        nums = ", ".join(f"#{i.number}" for i in items)
+        order = sessions.work_order(
+            "/flywheel:findings-routing",
+            "\n".join([
+                f"Bolt: {self.params.milestone}. Items: {nums} — every "
+                "queued finding on the milestone, awaiting routing.",
+                "",
+                "Build one dispatch plan over the whole inbox per the "
+                "skill and skills/_reference/dispatch-plan.md, run the "
+                "round, and apply the operator's word in the protocol's "
+                "order. Nothing reaches GitHub before the approval; an "
+                "operator who never takes the round costs nothing — the "
+                "inbox waits.",
+                "",
+                f"Your plan directory is openspec/changes/"
+                f"{self.params.slug}/sessions/<date>-findings-routing/ "
+                "and you are its sole writer; commit by pathspec and "
+                "push.",
+            ]))
+        session_id = str(uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"flywheel://{self.params.repo_dir}/{name}"))
+        spec = sessions.SessionSpec(
+            name=name, cwd=str(self.params.repo_dir), order=order,
+            profile=FINDINGS_PROFILE, model=STAGE_MODELS.get("findings"),
+            operator_round=True, session_id=session_id,
+            runner=sessions.choose_runner("findings",
+                                          self.params.runner_config))
+        try:
+            self.runner("findings").launch(spec)
+        except Exception as error:  # noqa: BLE001 — best-effort, see above
+            self._log(f"findings-routing not charged: {error}")
+            return f"not charged — {error}"
+        self.ledger.note(f"findings-routing `{name}` charged over {nums}")
+        self._log(f"findings-routing session {name} charged — {nums}")
+        return f"`{name}` charged over {nums}"
 
     def _finish_observation(self):
         """Render the run's report and offer it to the observer hook.
