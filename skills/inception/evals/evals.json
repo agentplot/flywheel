@@ -159,8 +159,8 @@
     },
     {
       "id": 14,
-      "name": "round-close-answered-question-not-filed",
-      "prompt": "You are a flywheel design session working a round-close plan the operator has just returned. One proposed elaboration item was a question, and the operator typed its answer into the plan's answer box instead of approving the item. Say what happens to that question at apply.",
+      "name": "dispatch-plan-answered-question-not-filed",
+      "prompt": "You are a flywheel design session working a dispatch plan the operator has just returned. One proposed elaboration item was a question, and the operator typed its answer into the plan's answer box instead of approving the item. Say what happens to that question at apply.",
       "expected_output": "The answer is folded as a decision — written to decisions/<slug>.md in the session's worktree and committed with the close files — and the question item is never filed on the tracker. The elaboration is composed without it.",
       "expectations": [
         "The typed answer becomes a decision record in the change's decisions/ directory, committed before any tracker write",

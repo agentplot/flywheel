@@ -161,7 +161,7 @@ reacts to the tracker change: collects that item's deliverables
 `stage:collected`, and closes it. There is one flip and one filter,
 and no parameter names which signal is in use. The loop never infers
 completion from a round artifact, because the operator may iterate a
-plannotator or lavish round, or a round-close plan, as many times as
+plannotator or lavish round, or a dispatch plan, as many times as
 they want.
 
 Each item's stages advance independently — an operator who marks two
@@ -194,7 +194,7 @@ reused); work orders are one prompt with the invocation first line;
 the PROGRAM owns all waiting with real clocks — notify at 90 min via
 needs-operator, stall at 4 h except operator-round sessions, which
 never auto-stall. Every design session is one, since any may end with
-a round-close plan.
+a dispatch plan.
 
 ## The andon cord — no judgment in the loop
 

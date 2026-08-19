@@ -121,16 +121,17 @@ artifacts:
       Each directory opens with `README.md`: the work order, what the
       session produced (reports, decision drafts, prototype notes - all
       real committed files, here and nowhere else), and what it delivered.
-      A session that ends with a round-close plan writes it under
+      A session that ends with a dispatch plan writes it under
       `close/` in this directory - `plan.html` (the surface),
-      `elaboration.md`, `bolt-summary.md`, `units/<slug>.md` - per the
-      plugin's `skills/_reference/round-close.md`; the page renders the
-      markdown files, and the apply posts them verbatim.
+      `elaboration.md`, `intents/<slug>.md`, `bolt-summary.md` (or
+      `bolts/<slug>.md` for several), `units/<slug>.md` - per the
+      plugin's `skills/_reference/dispatch-plan.md`; the page renders
+      the markdown files, and the apply posts them verbatim.
       The session comments each item it worked; the loop merges the
       session's branch and closes items on the evidence, once the
       OPERATOR has marked the session done on the tracker. Completion is
       never inferred from a round artifact - a plannotator or lavish
-      round, or a round-close plan, may be worked as many times as the
+      round, or a dispatch plan, may be worked as many times as the
       operator wants.
 
       A closed session directory is never rewritten - it is the trail. When
@@ -168,7 +169,7 @@ apply:
     collects on the operator's `stage:done`, merges `sess/*` branches
     through the gate, and stops honestly at the queue. Its contract
     is the plugin's specs and tests - flywheel-design-session-
-    completion, flywheel-session-type-skills, flywheel-round-close -
+    completion, flywheel-session-type-skills, flywheel-dispatch-plan -
     not this instruction. The record grows as sessions write it:
     decisions/, questions/, sessions/ (with each session's close/),
     and prototypes/.

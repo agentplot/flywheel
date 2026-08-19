@@ -50,16 +50,17 @@ An item filed as writeback whose target is neither — a skill, a profile,
 a schema instruction, a `CLAUDE.md` — is construction: queue it for a
 bolt, say so in your report, and work the rest of the batch.
 
-## Close with a round-close plan
+## Close with a dispatch plan
 
-A batch with a next round to propose ends with a round-close plan — the
-protocol is the shared copy at `skills/_reference/round-close.md`: the
-`close/` files, the lavish page, the exclusive routing, the apply order,
-the failure discipline. For this type the close is where a chapter
-becomes construction: the cards you propose cite the chapters you just
-wrote, which is why no card anywhere waits on a writeback. Nothing
-reaches GitHub before the operator approves, and a session with nothing
-to propose settles as today.
+A batch with a next round or construction to propose ends with a
+dispatch plan — the protocol is the shared copy at
+`skills/_reference/dispatch-plan.md`: the `close/` payload drafted as
+outcomes settle, the lavish page, the exclusive routing across intent
+and bolt containers, the apply order, the failure discipline. For this
+type the close is where a chapter becomes construction: the cards you
+propose cite the chapters you just wrote, which is why no card anywhere
+waits on a writeback. Nothing reaches GitHub before the operator
+approves, and a session with nothing to propose settles as today.
 
 ## On the tracker
 

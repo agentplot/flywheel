@@ -36,13 +36,15 @@ not work has done its whole job: name what failed and how you know, and
 discard the worktree. Reporting "inconclusive" because the answer was no
 throws away the thing you were sent to get.
 
-## Close with a round-close plan
+## Close with a dispatch plan
 
-A batch with a next round to propose ends with a round-close plan — the
-protocol is the shared copy at `skills/_reference/round-close.md`: the
-`close/` files, the lavish page, the exclusive routing, the apply order,
-the failure discipline. Nothing reaches GitHub before the operator
-approves, and a session with nothing to propose settles as today.
+A batch with a next round or construction to propose ends with a
+dispatch plan — the protocol is the shared copy at
+`skills/_reference/dispatch-plan.md`: the `close/` payload drafted as
+outcomes settle, the lavish page, the exclusive routing across intent
+and bolt containers, the apply order, the failure discipline. Nothing
+reaches GitHub before the operator approves, and a session with nothing
+to propose settles as today.
 
 ## On the tracker
 

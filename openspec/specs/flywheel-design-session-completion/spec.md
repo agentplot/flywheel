@@ -21,10 +21,10 @@ no signal is configured, and completion is therefore *unknown* rather than
 false, SHALL cease to exist.
 
 Completion SHALL NOT be inferred from a session settling. The operator may
-iterate a plannotator or lavish round, or a round-close plan, as many
+iterate a plannotator or lavish round, or a dispatch plan, as many
 times as they want, and a settled pane is not a finished session. Every
 design type is an operator-round session for this reason: any may end
-with a round-close plan, so none auto-stalls.
+with a dispatch plan, so none auto-stalls.
 
 #### Scenario: A session settles and the operator has not flipped
 
@@ -57,22 +57,22 @@ write the label to the items it carries and settle rather than doing
 anything further with the deliverables: the collect, the merge and the
 closes are the loop's.
 
-When the word arrives as approval of a round-close plan, the session
+When the word arrives as approval of a dispatch plan, the session
 SHALL apply the protocol's ordered steps
-(`skills/_reference/round-close.md`) before settling — commits first,
-the composed batch and cards at Backlog, `stage:done`, then the board
-Ready flips, which are the one exception to a session never moving an
-item to `state:ready`. The collect, the merge and the closes remain the
-loop's, and `stage:done` SHALL precede any Ready flip so a loop restart
-mid-apply merges the finished branch before the released batch can
-dispatch.
+(`skills/_reference/dispatch-plan.md`) before settling — commits first,
+the composed batches and cards at Backlog per container, `stage:done`,
+then the board Ready flips, which are the one exception to a session
+never moving an item to `state:ready`. The collect, the merge and the
+closes remain the loop's, and `stage:done` SHALL precede any Ready flip
+so a loop restart mid-apply merges the finished branch before any
+released batch can dispatch.
 
-#### Scenario: The operator approves a round-close plan
+#### Scenario: The operator approves a dispatch plan
 
-- **WHEN** the operator approves a session's round-close plan
-- **THEN** the session commits its close files, files the elaboration and
-  cards at Backlog, writes `stage:done` on its own items, flips the
-  approved batch and cards to board Ready, and settles
+- **WHEN** the operator approves a session's dispatch plan
+- **THEN** the session commits its close files, files the elaborations
+  and cards at Backlog, writes `stage:done` on its own items, flips the
+  approved batches and cards to board Ready, and settles
 - **AND** the loop consumes the `stage:done` items and the Ready batch
   exactly as it would had the operator produced them on GitHub
 

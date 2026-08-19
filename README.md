@@ -39,14 +39,14 @@ a raw idea
   → dispatch routes it, and files the intent
   → a design session works a batch of its tasks
   → decision records in the change
-  → a round-close plan — the next round and the direct construction,
+  → a dispatch plan — the next round and the direct construction,
     approved in one gesture, applied by the session
 ```
 
 A task is filed under the session type that will run it, so the line says
 both what the work is and who does it. The five design types, chosen by
 what you will actually do with the material — and any of them may end
-with a round-close plan that chains the next session on your one
+with a dispatch plan that chains the next session on your one
 approval:
 
 | type | the session it spawns |

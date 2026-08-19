@@ -84,7 +84,7 @@ class DesignType:
     `openspec/specs/flywheel-inception-skill/spec.md`: does this session's
     BATCH WORK build a lavish surface? Interactive's does and takes
     `flywheel-interactive-session`; the other four take
-    `flywheel-design-session`. The round-close plan every type may end
+    `flywheel-design-session`. The dispatch plan every type may end
     with is not part of the basis. No second basis is admitted.
 
     `model` is the default column of
@@ -97,7 +97,7 @@ class DesignType:
     carry no per-type information: each launches in its own worktree
     (the close writes `decisions/` and `close/` files; an unchanged
     worktree costs nothing at teardown) and each is an operator-round
-    session (any may end with a round-close plan the operator takes as
+    session (any may end with a dispatch plan the operator takes as
     long as they like — the 4-hour auto-stall is traded for the
     surviving 90-minute notify).
     """
@@ -825,7 +825,7 @@ def dispatch_batch(batch, writer, runner, config, clock):
     """
     name = session_name(batch, config.slug)
     # Every design type carries a worktree and holds an operator round:
-    # any session may end with a round-close plan, whose close writes
+    # any session may end with a dispatch plan, whose close writes
     # decisions/ and close/ files and whose round the operator takes as
     # long as they like.
     cwd = ensure_worktree(writer, config, name)

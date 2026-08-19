@@ -31,13 +31,16 @@ and the full statement of why no session spells out a label edit of its
 own, are in `skills/_reference/herdr.md`. Nothing further: the collect,
 the merge and the close are the loop's. Each item flips on its own.
 
-**A batch with a next round to propose ends with a round-close plan** —
-the shared protocol at `skills/_reference/round-close.md`: real files in
-your session directory's `close/`, its own lavish page distinct from the
-batch's decision page, one operator approval, and you apply the word in
-the protocol's order before you settle. That apply is the one exception
-to never moving an item to `state:ready`. Nothing reaches GitHub before
-the approval, and a session with nothing to propose settles as today.
+**A batch with a next round or construction to propose ends with a
+dispatch plan** — the shared protocol at
+`skills/_reference/dispatch-plan.md`: real files in your session
+directory's `close/`, drafted incrementally as outcomes settle, its own
+lavish page distinct from the batch's decision page, one operator
+approval, and you apply the word in the protocol's order before you
+settle. The plan may propose new intents beside your own and fold units
+into an existing open bolt. That apply is the one exception to never
+moving an item to `state:ready`. Nothing reaches GitHub before the
+approval, and a session with nothing to propose settles as today.
 
 THE ANDON CORD — if the batch has gone wrong in a way no further work
 inside it will fix, stop, hold the batch, and report. Raise it as the

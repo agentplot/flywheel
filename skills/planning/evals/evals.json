@@ -35,7 +35,7 @@
     },
     {
       "id": 3,
-      "name": "round-close-nothing-before-approval",
+      "name": "dispatch-plan-nothing-before-approval",
       "prompt": "You are a flywheel design session that has finished its batch on `openspec/changes/tile-cache/`. You have two decisions closed, one open question worth a next round, and one piece of construction whose spec could be written straight from your decision records. You are about to propose the next round. Describe exactly which files you write, which GitHub objects you create, and in what order, up to the moment the operator responds.",
       "expected_output": "The session writes the close/ files in its own session directory — plan.html, elaboration.md, bolt-summary.md, units/<slug>.md — commits nothing to GitHub, opens the plan as a lavish page, and waits. No issue, batch, milestone, or card exists before the operator approves.",
       "expectations": [
@@ -47,21 +47,21 @@
     },
     {
       "id": 4,
-      "name": "round-close-routing-by-citable-source",
-      "prompt": "You are a flywheel design session composing a round-close plan. Outcome A's construction can cite your session's decision records for everything a spec needs. Outcome B's construction depends on a design that no record or chapter states yet — the books are silent on it. Say how each outcome is routed on the plan, and what dependency edges you write between the plan's sections.",
+      "name": "dispatch-plan-routing-by-citable-source",
+      "prompt": "You are a flywheel design session composing a dispatch plan. Outcome A's construction can cite your session's decision records for everything a spec needs. Outcome B's construction depends on a design that no record or chapter states yet — the books are silent on it. Say how each outcome is routed on the plan, and what dependency edges you write between the plan's sections.",
       "expected_output": "A is carded now — a unit card whose sources column cites the decision records, no writeback ahead of it. B routes to a writeback item in the elaboration and gets no card and no blocked-by edge; the writeback session's own close round cards it once the chapter exists. No edge spans the elaboration and construction sections.",
       "expectations": [
         "Outcome A becomes a unit card in this plan, citing the existing decision records as sources",
         "NEGATIVE: outcome A is not made to wait on any writeback",
         "Outcome B becomes a writeback item in the elaboration, with no unit card filed for it in this plan",
         "NEGATIVE: no blocked-by edge is written between an elaboration item and a unit card",
-        "The response names the writeback session's own round-close plan as where B's card is born"
+        "The response names the writeback session's own dispatch plan as where B's card is born"
       ]
     },
     {
       "id": 5,
-      "name": "round-close-apply-order-and-failure",
-      "prompt": "You are a flywheel design session whose round-close plan the operator has just approved: one elaboration of three items and one unit card. Walk the apply step by step in order. Then: the card filing fails on step 3 with an API error. Say exactly what you do next.",
+      "name": "dispatch-plan-apply-order-and-failure",
+      "prompt": "You are a flywheel design session whose dispatch plan the operator has just approved: one elaboration of three items and one unit card. Walk the apply step by step in order. Then: the card filing fails on step 3 with an API error. Say exactly what you do next.",
       "expected_output": "Order: commit the close files first, create the elaboration items and compose the batch at Backlog, file the construction at Backlog, write stage:done on the session's own items, flip the elaboration parent and card to board Ready, settle. On the step-3 failure: stop the apply where it is, comment the partial state on the session's item, add needs-operator, and do not settle.",
       "expectations": [
         "All file commits precede every tracker write",

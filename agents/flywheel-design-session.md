@@ -29,8 +29,8 @@ downstream acts on:
   and never a reason to stop. **Queued is where your writes end**: you
   never move an item to `state:ready` — that promotion is the
   operator's board approval and nobody else's, with one exception:
-  applying the operator's explicit approval given in a round-close
-  plan you yourself ran (`skills/_reference/round-close.md`) — you
+  applying the operator's explicit approval given in a dispatch plan
+  you yourself ran (`skills/_reference/dispatch-plan.md`) — you
   never mark your own new items in-progress or in-session, and you
   never launch another session; charging sessions is the loop's. A
   small fix inside your batch's released scope is work, not a finding
@@ -57,12 +57,15 @@ themselves — there is one flip and one filter. Each item flips on its
 own; a session carrying three items whose operator has finished with two
 writes the label on those two and keeps working the third.
 
-**A batch with a next round to propose ends with a round-close plan** —
-the shared protocol at `skills/_reference/round-close.md`: real files in
-your session directory's `close/`, a lavish page over them, one operator
-approval, and you apply the word in the protocol's order before you
-settle. Nothing reaches GitHub before the approval, and a session with
-nothing to propose settles as today.
+**A batch with a next round or construction to propose ends with a
+dispatch plan** — the shared protocol at
+`skills/_reference/dispatch-plan.md`: real files in your session
+directory's `close/`, drafted incrementally as outcomes settle, a lavish
+page over them, one operator approval, and you apply the word in the
+protocol's order before you settle. The plan may propose new intents
+beside your own and fold units into an existing open bolt. Nothing
+reaches GitHub before the approval, and a session with nothing to
+propose settles as today.
 
 Design whose batch work builds a lavish page runs under
 `flywheel-interactive-session` instead; construction types run under

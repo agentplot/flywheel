@@ -21,8 +21,8 @@ turns out to need something built to answer it, report that the next
 batch should be a prototype.
 
 Most research batches edit no files: read, comment, report. The worktree
-you launch with is for the close — folded answers and a round-close
-plan, if you have one — and costs nothing at teardown if unchanged.
+you launch with is for the close — folded answers and a dispatch plan,
+if you have one — and costs nothing at teardown if unchanged.
 
 ## The finding
 
@@ -48,13 +48,15 @@ is a queued item: write down exactly what the fix would be (that is worth
 a lot to whoever lands it), file it, and keep investigating. Neither is a
 reason to stop.
 
-## Close with a round-close plan
+## Close with a dispatch plan
 
-A batch with a next round to propose ends with a round-close plan — the
-protocol is the shared copy at `skills/_reference/round-close.md`: the
-`close/` files, the lavish page, the exclusive routing, the apply order,
-the failure discipline. Nothing reaches GitHub before the operator
-approves, and a session with nothing to propose settles as today.
+A batch with a next round or construction to propose ends with a
+dispatch plan — the protocol is the shared copy at
+`skills/_reference/dispatch-plan.md`: the `close/` payload drafted as
+outcomes settle, the lavish page, the exclusive routing across intent
+and bolt containers, the apply order, the failure discipline. Nothing
+reaches GitHub before the operator approves, and a session with nothing
+to propose settles as today.
 
 ## On the tracker
 

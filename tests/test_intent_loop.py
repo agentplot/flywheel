@@ -616,7 +616,7 @@ class SessionSpecTest(unittest.TestCase):
              "research": "opus[1m]", "prototype": "opus", "writeback": "opus"})
 
     def test_every_dispatch_is_an_operator_round_with_a_worktree(self):
-        # No per-type flags: any session may end with a round-close plan,
+        # No per-type flags: any session may end with a dispatch plan,
         # so every dispatch supervises as an operator round and launches
         # in a worktree. The spec carries what the type table no longer
         # can.
