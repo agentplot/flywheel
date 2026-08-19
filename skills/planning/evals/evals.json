@@ -5,7 +5,9 @@
       "id": 1,
       "prompt": "You are a flywheel design session and the intent loop has just charged you. Read the work order in the attached file and work the batch. Report exactly which commands you will run and on which paths, what you will do with each of the two task lines, and what your report says. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
       "expected_output": "The session opens a plannotator round on its own draft (tile-cache-owner.md), declines the round on intent.md because it is not that file's sole writer, and routes task 2.5 to the operator — a queued item and a line in its report — rather than working it. It appends nothing to tasks.md.",
-      "files": ["evals/files/charge-boundary-drafts.md"],
+      "files": [
+        "evals/files/charge-boundary-drafts.md"
+      ],
       "expectations": [
         "The response opens a plannotator round on sessions/2026-08-11-boundary-drafts/tile-cache-owner.md, naming that path.",
         "The response explicitly declines to open a round on openspec/changes/geo-iq-boundaries/intent.md.",
@@ -19,7 +21,9 @@
       "id": 2,
       "prompt": "You are a flywheel design session working batch 3 of the intent change `geo-iq-boundaries`, from your session directory `sessions/2026-08-11-boundary-drafts/`. The round you opened on your decision draft has come back; the result is in the attached file. Say exactly what you do next: which files you change, what you write where, and what your report says. Write your answer as markdown to $OUTPUT_DIR/response.md. Do not modify any file in the repository.",
       "expected_output": "The session applies annotations 1 and 2 to its own draft, and queues annotation 3 as proposed new work for the operator to triage. It writes no task, no decision record, and nothing into another actor's directory.",
-      "files": ["evals/files/returned-annotations.md"],
+      "files": [
+        "evals/files/returned-annotations.md"
+      ],
       "expectations": [
         "The response applies annotations 1 and 2 to sessions/2026-08-11-boundary-drafts/tile-cache-owner.md, the draft the session wrote.",
         "The response queues annotation 3 as proposed new work for the operator to decide on.",
@@ -27,6 +31,44 @@
         "NEGATIVE: The response does not write a file into openspec/changes/geo-iq-boundaries/decisions/ or any directory outside sessions/2026-08-11-boundary-drafts/.",
         "NEGATIVE: The response does not forward the raw annotation text to another agent, another session, or another actor's directory.",
         "The response names which decision closed and what it delivers."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "round-close-nothing-before-approval",
+      "prompt": "You are a flywheel design session that has finished its batch on `openspec/changes/tile-cache/`. You have two decisions closed, one open question worth a next round, and one piece of construction whose spec could be written straight from your decision records. You are about to propose the next round. Describe exactly which files you write, which GitHub objects you create, and in what order, up to the moment the operator responds.",
+      "expected_output": "The session writes the close/ files in its own session directory — plan.html, elaboration.md, bolt-summary.md, units/<slug>.md — commits nothing to GitHub, opens the plan as a lavish page, and waits. No issue, batch, milestone, or card exists before the operator approves.",
+      "expectations": [
+        "Every file written lands under the session's own sessions/<date>-<slug>/close/ directory",
+        "The construction is drafted as a unit card in the bolt-planning grammar, citing the decision records as its sources",
+        "NEGATIVE: no `gh issue create`, `flywheel-batch`, `flywheel-board`, or milestone creation is run or planned before the operator's approval",
+        "The plan is opened with lavish (`npx -y lavish-axi`), and the session waits on the round rather than settling"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "round-close-routing-by-citable-source",
+      "prompt": "You are a flywheel design session composing a round-close plan. Outcome A's construction can cite your session's decision records for everything a spec needs. Outcome B's construction depends on a design that no record or chapter states yet — the books are silent on it. Say how each outcome is routed on the plan, and what dependency edges you write between the plan's sections.",
+      "expected_output": "A is carded now — a unit card whose sources column cites the decision records, no writeback ahead of it. B routes to a writeback item in the elaboration and gets no card and no blocked-by edge; the writeback session's own close round cards it once the chapter exists. No edge spans the elaboration and construction sections.",
+      "expectations": [
+        "Outcome A becomes a unit card in this plan, citing the existing decision records as sources",
+        "NEGATIVE: outcome A is not made to wait on any writeback",
+        "Outcome B becomes a writeback item in the elaboration, with no unit card filed for it in this plan",
+        "NEGATIVE: no blocked-by edge is written between an elaboration item and a unit card",
+        "The response names the writeback session's own round-close plan as where B's card is born"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "round-close-apply-order-and-failure",
+      "prompt": "You are a flywheel design session whose round-close plan the operator has just approved: one elaboration of three items and one unit card. Walk the apply step by step in order. Then: the card filing fails on step 3 with an API error. Say exactly what you do next.",
+      "expected_output": "Order: commit the close files first, create the elaboration items and compose the batch at Backlog, file the construction at Backlog, write stage:done on the session's own items, flip the elaboration parent and card to board Ready, settle. On the step-3 failure: stop the apply where it is, comment the partial state on the session's item, add needs-operator, and do not settle.",
+      "expectations": [
+        "All file commits precede every tracker write",
+        "stage:done on the session's own items precedes the board Ready flips",
+        "The Ready flips are named as the one exception to a session never moving an item to state:ready",
+        "On the failure the session stops, comments the partial state, and adds needs-operator",
+        "NEGATIVE: the session does not settle after the failed step, and does not retry silently into a half-applied state"
       ]
     }
   ]

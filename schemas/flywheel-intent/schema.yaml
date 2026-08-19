@@ -1,5 +1,5 @@
 name: flywheel-intent
-version: 3
+version: 4
 description: Flywheel outer loop - one change per intent; decisions, questions
   and session records in git; work items, their states and the
   release queue on the org's tracker
@@ -121,11 +121,17 @@ artifacts:
       Each directory opens with `README.md`: the work order, what the
       session produced (reports, decision drafts, prototype notes - all
       real committed files, here and nowhere else), and what it delivered.
+      A session that ends with a round-close plan writes it under
+      `close/` in this directory - `plan.html` (the surface),
+      `elaboration.md`, `bolt-summary.md`, `units/<slug>.md` - per the
+      plugin's `skills/_reference/round-close.md`; the page renders the
+      markdown files, and the apply posts them verbatim.
       The session comments each item it worked; the loop merges the
       session's branch and closes items on the evidence, once the
       OPERATOR has marked the session done on the tracker. Completion is
       never inferred from a round artifact - a plannotator or lavish
-      round may be worked as many times as the operator wants.
+      round, or a round-close plan, may be worked as many times as the
+      operator wants.
 
       A closed session directory is never rewritten - it is the trail. When
       later work revises what a session decided, the decision record moves;

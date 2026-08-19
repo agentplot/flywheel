@@ -38,13 +38,16 @@ the design books and the context map, and handing settled slices on.
 a raw idea
   → dispatch routes it, and files the intent
   → a design session works a batch of its tasks
-  → a decision record, plus the books and the map
-  → a handoff — batched, named, drafted to the point of one question
+  → decision records in the change
+  → a round-close plan — the next round and the direct construction,
+    approved in one gesture, applied by the session
 ```
 
 A task is filed under the session type that will run it, so the line says
-both what the work is and who does it. The six design types, chosen by
-what you will actually do with the material:
+both what the work is and who does it. The five design types, chosen by
+what you will actually do with the material — and any of them may end
+with a round-close plan that chains the next session on your one
+approval:
 
 | type | the session it spawns |
 |---|---|
@@ -52,8 +55,7 @@ what you will actually do with the material:
 | **planning** | puts drafts the session wrote through plannotator for your annotations |
 | **research** | answers a factual question by reading code, docs, and behaviour |
 | **prototype** | settles a fact a throwaway can prove faster than an argument can |
-| **writeback** | rewrites chapters and moves the map — no approval sought, because the books are the loop's own scope |
-| **handoff** | composes the release request and carries the receipt — the one type behind your approval |
+| **writeback** | rewrites chapters and moves the map, and its close is where a chapter becomes construction cards |
 
 Open questions live as records with state, not as a task type: a question
 closes into a decision, and the decision's consequences become tasks.

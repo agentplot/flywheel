@@ -3,8 +3,8 @@
 ## Purpose
 The agent profiles a flywheel design session runs under — the identity that
 is in place before the first prompt and survives compaction, split by
-whether the session builds a lavish surface, carrying edit scope and
-nothing more.
+whether the session's batch work builds a lavish surface, carrying edit
+scope and nothing more.
 ## Requirements
 ### Requirement: Two design-session profiles
 
@@ -47,20 +47,24 @@ are not intended as Task-tool subagents.
 
 Every session type SHALL run under one of the three host profiles, and
 the assignment SHALL follow one two-part question: which loop is this,
-and does the session build a lavish surface? Construction — all seven
-types — SHALL run under `flywheel-construction-session`. Design that
-builds a lavish surface is interactive design and SHALL run under
-`flywheel-interactive-session`; design that does not — planning,
-research, prototype, writeback — SHALL run under
+and does the session's BATCH WORK build a lavish surface? Construction —
+all seven
+types — SHALL run under `flywheel-construction-session`. Design whose
+batch work builds a lavish surface is interactive design and SHALL run
+under `flywheel-interactive-session`; design whose batch work does not —
+planning, research, prototype, writeback — SHALL run under
 `flywheel-design-session`.
 
-Of the four types the default profile hosts, **only the planning type opens
-a plannotator round**. Prototype, research, and writeback sessions
-open none: a prototype delivers a finding note, a research session delivers
-its report, and a writeback session rewrites chapters — none of which the
-session puts in front of the operator for annotation. For those three the
-profile contributes identity and edit scope only. No further design profile
-SHALL be created for them.
+The round-close plan any design session may end with
+(`skills/_reference/round-close.md`) is NOT part of the basis: its lavish
+page belongs to the close, not to the batch work, and counting it would
+collapse every type into the interactive profile. Of the four types the
+default profile hosts, **only the planning type opens a plannotator round
+over its batch work**. Prototype, research, and writeback batch work
+opens none: a prototype delivers a finding note, a research session
+delivers its report, and a writeback session rewrites chapters — none of
+which the session puts in front of the operator for annotation. No
+further design profile SHALL be created for them.
 
 This question is the assignment's only basis. No profile, skill, or schema
 instruction SHALL offer a second one — not the task type, not the surface
@@ -77,19 +81,21 @@ type.
 #### Scenario: A writeback session is charged
 
 - **WHEN** an intent conductor charges a batch of book-chapter rewrites,
-  which uses neither plannotator nor lavish
+  whose batch work uses neither plannotator nor lavish
 - **THEN** it launches `flywheel-design-session` with the writeback type
-  named in the work order, and the session rewrites chapters and runs the gates
-  without opening a review round — the profile is carrying identity and
-  edit scope and nothing else
+  named in the work order, and the session rewrites chapters and runs the
+  gates without opening a review round on them — a round-close plan at its
+  end, if it has one to propose, does not change which profile hosted it
 
 #### Scenario: A prototype session considers annotating its finding
 
 - **WHEN** a prototype session has written `prototypes/<slug>.md` and could
   open a round on it, since it is a file the session itself wrote
 - **THEN** it opens none and delivers the finding to its conductor, because
-  only the planning type opens rounds — if the operator should annotate what
-  the prototype proved, the conductor charges a planning-type session for it
+  only the planning type opens batch-work rounds — a round-close plan
+  routes outcomes and is not an annotation surface; if the operator should
+  annotate what the prototype proved, the conductor charges a
+  planning-type session for it
 
 #### Scenario: An agent looks for a third profile
 

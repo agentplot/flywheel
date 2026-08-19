@@ -61,21 +61,48 @@ its conductor.
 - **THEN** it reports that as the next batch's type rather than switching
   surfaces inside its own run
 
-### Requirement: A session without file edits runs without a worktree
+### Requirement: Every design session launches with a worktree
 
-A session whose batch edits no files — most research, any read-and-
-verdict batch that reports rather than commits — SHALL be launched
-without a worktree and SHALL deliver through comments and its report
-alone. A worktree exists to isolate file edits, and a session that makes
-none has nothing to isolate.
+Every design session SHALL be launched in its own worktree on its own
+`sess/*` branch, whether or not its batch work edits files: any session
+may fold answers into `decisions/` and write its `close/` directory at
+its end, and an unchanged worktree costs nothing at teardown. A research
+batch that only reads still delivers its findings as comments and its
+report; the worktree is for the close.
 
 #### Scenario: A research batch only reads
 
 - **WHEN** a research session's batch answers questions from code and
   docs without editing a file
-- **THEN** it runs in the conductor's launch directory with no worktree,
-  no branch, and no merge, and delivers its findings as comments and a
-  report
+- **THEN** it still launches in its own worktree, delivers its findings
+  as comments and a report, and its unchanged branch merges as a no-op
+  at teardown
+
+### Requirement: Any design type may end with a round-close plan
+
+Every design type skill SHALL point at the shared round-close protocol
+(`skills/_reference/round-close.md`) as the way a session with a next
+round to propose ends: real files in the session directory's `close/`, a
+lavish page over them, one operator approval, and the session applying
+the word in the protocol's order before settling. A session with nothing
+to propose SHALL settle as today, and the loop's compose guard and the
+operator's board flip SHALL remain the fallback path. The protocol SHALL
+live in the one shared reference and SHALL NOT be restated in any type
+skill.
+
+#### Scenario: A session has a next round to propose
+
+- **WHEN** a design session of any type finishes its batch holding
+  outcomes that warrant a next elaboration or direct construction
+- **THEN** it writes the `close/` files, opens the plan as a lavish page,
+  and applies the operator's approval per the protocol before settling
+
+#### Scenario: A session has nothing to propose
+
+- **WHEN** a design session finishes its batch with no next round worth
+  proposing
+- **THEN** it settles as today, with no close directory and no round, and
+  orphan queued items reach the board through the loop's compose guard
 
 ### Requirement: Each type's output has one home
 
