@@ -160,11 +160,16 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
 </script>
 
 <!-- ============== FILL REGION 2: the plan data ==============
-     badge: the type or bolt type. badgeClass by kind —
-       writeback badge-warning · research badge-info · planning
-       badge-secondary · interactive badge-primary · prototype
-       badge-neutral · bolt-default badge-accent · bolt-quick
-       badge-success · other bolt types badge-accent.
+     badgeClass by kind — writeback badge-warning · research badge-info
+       · planning badge-secondary · interactive badge-primary ·
+       prototype badge-neutral · bolt-default badge-accent ·
+       bolt-quick badge-success · other bolt types badge-accent.
+     members[].badge: the item's type. units[].type: the session's
+       chosen bolt type — it seeds the unit's type dropdown, and an
+       override lands in the payload for the apply to write into the
+       card's Type: line before filing.
+     units[].changes: slug + delivers per change row, shown at a
+       glance under the unit (the full card stays behind full text).
      question: true puts the inline-answer input on the row.
      An empty members[] or units[] hides that whole section. -->
 <script id="plan-data" type="application/json">
@@ -194,14 +199,22 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   "bolt": "bolt/round-close-protocol",
   "bolt_stats": "2 units · 4 changes · ~2.5 days",
   "units": [
-    { "key": "unit: round-close-protocol", "badge": "bolt-default", "badgeClass": "badge-accent",
+    { "key": "unit: round-close-protocol", "type": "bolt-default", "badgeClass": "badge-accent",
       "title": "Unit: round-close-protocol — 3 changes · ~2 days",
       "oneliner": "The close contract in profiles and skills; tracker moves proven on a scratch milestone",
-      "srcId": "src-unit-round-close-protocol" },
-    { "key": "unit: context-map-tool-move", "badge": "bolt-quick", "badgeClass": "badge-success",
+      "srcId": "src-unit-round-close-protocol",
+      "changes": [
+        { "slug": "close-contract-prose", "delivers": "the round-close section in both session profiles and the five type skills" },
+        { "slug": "apply-invocations", "delivers": "the batch, board and stage moves exercised against a scratch milestone" },
+        { "slug": "close-round-evals", "delivers": "eval cases pinning nothing-before-approval and the failure path" }
+      ] },
+    { "key": "unit: context-map-tool-move", "type": "bolt-quick", "badgeClass": "badge-success",
       "title": "Unit: context-map-tool-move — 1 change · ~0.5 days",
       "oneliner": "The map checker moves into the plugin's tools/; gates point at the plugin copy",
-      "srcId": "src-unit-context-map-tool-move" }
+      "srcId": "src-unit-context-map-tool-move",
+      "changes": [
+        { "slug": "map-tool-into-plugin", "delivers": "tools/context-map/ in the plugin, gates and writeback skill pointing at it" }
+      ] }
   ],
   "left_out": [
     "The willdan-blueprints removal half of the context-map move — that org's tracker owns it. Listed so silence about it is never approval."
@@ -249,6 +262,9 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   }
 
   const state = {};
+  const unitTypes = {};
+  const BOLT_TYPES = ["bolt-default", "bolt-quick", "bolt-direct",
+                      "bolt-adversarial", "bolt-plan"];
   function selectFor(key, routes) {
     const sel = document.createElement("select");
     sel.className = "select select-sm w-full";
@@ -258,13 +274,14 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     return sel;
   }
 
-  // One row = badge · title + one-liner + collapsed full text · control.
+  // One row = badge · title + one-liner (+ change list) + collapsed full
+  // text · controls.
   function row(item, routes) {
     const r = document.createElement("div");
     r.className = "row";
     const b = document.createElement("span");
     b.className = "badge badge-sm " + item.badgeClass;
-    b.textContent = item.badge;
+    b.textContent = item.badge || item.type;
     const mid = document.createElement("div");
     const t = document.createElement("div");
     t.className = "text-sm font-semibold leading-snug";
@@ -272,13 +289,28 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     const o = document.createElement("div");
     o.className = "text-xs opacity-55 mt-0.5";
     o.textContent = item.oneliner;
+    mid.append(t, o);
+    if (item.changes) {
+      // The unit's change rows, visible at a glance.
+      const ul = document.createElement("ul");
+      ul.className = "mt-1.5 space-y-0.5";
+      for (const c of item.changes) {
+        const li = document.createElement("li");
+        li.className = "text-xs flex gap-2 items-baseline";
+        li.innerHTML = `<code class="shrink-0 opacity-80"></code><span class="opacity-55"></span>`;
+        li.children[0].textContent = c.slug;
+        li.children[1].textContent = c.delivers;
+        ul.append(li);
+      }
+      mid.append(ul);
+    }
     const det = document.createElement("details");
     det.className = "mt-1";
     const sum = document.createElement("summary");
     sum.className = "text-xs opacity-50 hover:opacity-80";
     sum.textContent = "full text";
     det.append(sum, render(md(item.srcId)));
-    mid.append(t, o, det);
+    mid.append(det);
     if (item.question) {
       const inp = document.createElement("input");
       inp.className = "input input-sm w-full mt-2";
@@ -288,7 +320,22 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       mid.append(inp);
     }
     const ctl = document.createElement("div");
+    ctl.className = "space-y-1.5";
     ctl.append(selectFor(item.key, routes));
+    if (item.type) {
+      // The session's chosen bolt type, overridable — the override is
+      // written into the card's Type: line at apply.
+      const tsel = document.createElement("select");
+      tsel.className = "select select-sm w-full";
+      for (const bt of BOLT_TYPES) tsel.append(new Option(bt, bt));
+      tsel.value = item.type;
+      unitTypes[item.key] = { chosen: item.type, suggested: item.type };
+      tsel.addEventListener("change", () => {
+        unitTypes[item.key].chosen = tsel.value;
+        preview();
+      });
+      ctl.append(tsel);
+    }
     r.append(b, mid, ctl);
     return r;
   }
@@ -312,24 +359,31 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       const a = inp.value.trim();
       if (a) { map[inp.dataset.answerFor] = "answered now"; answers[inp.dataset.answerFor] = a; }
     }
-    return { map, answers };
+    const types = {};
+    for (const [k, t] of Object.entries(unitTypes)) types[k] = t.chosen;
+    return { map, answers, types };
   }
   function preview() {
-    const { map, answers } = payload();
+    const { map, answers, types } = payload();
     document.getElementById("preview").textContent =
-      "on approve → " + Object.entries(map).map(([k, v]) => `${k}: ${v}`).join(" · ")
+      "on approve → " + Object.entries(map).map(([k, v]) =>
+        `${k}: ${v}` + (types[k] && types[k] !== unitTypes[k].suggested
+                        ? ` as ${types[k]}` : "")).join(" · ")
       + Object.entries(answers).map(([k, a]) => `\nanswer (${k}): ${a}`).join("");
   }
 
   document.getElementById("approve").addEventListener("click", () => {
-    const { map, answers } = payload();
+    const { map, answers, types } = payload();
+    const overrides = Object.entries(types)
+      .filter(([k, t]) => t !== unitTypes[k].suggested);
     const lines = Object.entries(map).map(([k, v]) => `${k} -> ${v}`).join("; ");
     window.lavish.queuePrompt(
       "APPROVE the round-close plan with this routing: " + lines
+      + overrides.map(([k, t]) => `. Type override for '${k}': ${t} — write it into the card's Type: line before filing`).join("")
       + Object.entries(answers).map(([k, a]) => `. Inline answer for '${k}': "${a}"`).join("")
       + ". Carry it out in the protocol's order.",
       { tag: "approval", text: "Approve: " + lines,
-        data: { decision: "approve", routing: map, answers } });
+        data: { decision: "approve", routing: map, answers, unit_types: types } });
     window.lavish.sendQueuedPrompts();
     document.getElementById("status").textContent = "Approval sent.";
   });

@@ -68,6 +68,15 @@ them. The page is built to glance, not to read:
 - **Full text folds away**: the rendered markdown sits behind a
   disclosure on its row; the bolt summary compresses to a stat line
   (units · changes · days) over its unit rows.
+- **A unit shows its changes at a glance**: each change row's slug and
+  one-line delivers, visible under the unit without expanding —
+  approving a unit is approving its changes, so they are never hidden
+  behind the disclosure.
+- **The unit's bolt type is a control, defaulted**: the session
+  chooses the type with its own judgment and the dropdown seeds with
+  that choice; an override rides the approval payload and the apply
+  writes it into the card's `Type:` line before filing. The round
+  corrects the ceremony choice without a send-back.
 - **The payload is always visible**: a fixed bar shows exactly what
   Approve will send, live-updated on every control change, beside the
   Approve and send-back controls. A changed control that could be
