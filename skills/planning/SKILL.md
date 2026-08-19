@@ -40,6 +40,14 @@ travel through your report as proposed items, never as raw relays.
 If `plannotator` does not resolve on `PATH`, report the shortfall and
 stop — a round the operator never saw produces annotations nobody made.
 
+## Close with a round-close plan
+
+A batch with a next round to propose ends with a round-close plan — the
+protocol is the shared copy at `skills/_reference/round-close.md`: the
+`close/` files, the lavish page, the exclusive routing, the apply order,
+the failure discipline. Nothing reaches GitHub before the operator
+approves, and a session with nothing to propose settles as today.
+
 ## On the tracker
 
 The object-graph rules are the shared copy at

@@ -20,8 +20,9 @@ prints, a request against an API you are characterizing. If the question
 turns out to need something built to answer it, report that the next
 batch should be a prototype.
 
-Most research sessions edit no files and need no worktree: read, comment,
-report.
+Most research batches edit no files: read, comment, report. The worktree
+you launch with is for the close — folded answers and a round-close
+plan, if you have one — and costs nothing at teardown if unchanged.
 
 ## The finding
 
@@ -46,6 +47,14 @@ it in your worktree, note it in your report. Anything beyond that scope
 is a queued item: write down exactly what the fix would be (that is worth
 a lot to whoever lands it), file it, and keep investigating. Neither is a
 reason to stop.
+
+## Close with a round-close plan
+
+A batch with a next round to propose ends with a round-close plan — the
+protocol is the shared copy at `skills/_reference/round-close.md`: the
+`close/` files, the lavish page, the exclusive routing, the apply order,
+the failure discipline. Nothing reaches GitHub before the operator
+approves, and a session with nothing to propose settles as today.
 
 ## On the tracker
 

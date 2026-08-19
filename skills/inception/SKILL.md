@@ -40,8 +40,11 @@ or by a work order, queue a question rather than inventing structure.
   as items of their own.
 - **The lifecycle** is `state:queued → state:ready → state:in-progress`,
   ending closed with a `closed:*` reason — done, declined, superseded,
-  parked. Anyone queues; only the operator's word makes an item ready;
-  an item's progress is its comment history.
+  parked. Anyone queues; only the operator's word makes an item ready —
+  the board flip, or the approval of a round-close plan, which the
+  session that ran the round applies
+  (`skills/_reference/round-close.md`); an item's progress is its
+  comment history.
 - **A batch** is a parent issue whose sub-issues are the batch,
   composed with `flywheel-batch`, sitting in the Project at Status
   **Backlog**. Its kind is what approving it authorizes: a **unit**
@@ -132,6 +135,7 @@ directly, and dispatch relays nothing for them.
 | a sentence | an inline question | no — keep working on what it does not gate |
 | margin notes on a document that exists | `plannotator annotate <file>` | yes |
 | a choice across coupled decisions | a lavish page | yes |
+| approval of a session's proposed next round | the round-close plan (`skills/_reference/round-close.md`) | yes — it is the session's last act |
 
 Escalation runs one way: take the cheapest channel that can carry the
 answer, and never demote a question back down or re-ask it. **The sole
@@ -226,7 +230,9 @@ belongs to a session or to the operator.
 - **At the queue**, one guard, then wait. Compose the orphan queued
   design items into a proposed batch (`flywheel-batch`) at Status
   **Backlog** — composing is not releasing — and report one line per
-  batch and unbatched item. Construction work is never an intent
+  batch and unbatched item. A session applying an approved round-close
+  plan composes its own batch the same way and flips it Ready itself;
+  the guard only ever sees what no session proposed. Construction work is never an intent
   item: it is born as bolt plan cards — the planner's, a session's,
   or the operator's — released by approval, and the loop never
   writes a bolt change's artifacts. Moving a batch to Ready is the

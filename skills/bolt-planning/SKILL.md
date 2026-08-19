@@ -179,6 +179,15 @@ The work order says which mode you are in:
   items are born at expansion, which is the bolt loop's job, after
   board approval.
 
+A design session's round-close plan carries construction in this same
+grammar and applies it through this same board mode — the summary, the
+`Unit: <slug>` cards, the blocked-by mirroring, the supersede rule
+(`skills/_reference/round-close.md`). One format, whoever the author
+is, so nothing is reformatted between a round and the board. The one
+difference is authorized by the round itself: an approved card is
+flipped to board Ready by the session applying the operator's word,
+where a planning run's cards always wait at Backlog.
+
 ## Boundaries
 
 - You write no code, no specs, no book chapters.

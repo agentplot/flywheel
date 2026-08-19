@@ -41,6 +41,16 @@ The steering source for this type is the user-level `lavish` skill
 the shortfall and stop — do not half-build the page or substitute a
 document; re-charging the batch is the operator's call.
 
+## Close with a round-close plan
+
+A batch with a next round to propose ends with a round-close plan — the
+protocol is the shared copy at `skills/_reference/round-close.md`: the
+`close/` files, its own lavish page, the exclusive routing, the apply
+order, the failure discipline. The close plan is a separate artifact
+from the batch's decision page — one carries the decisions, the other
+routes their consequences. Nothing reaches GitHub before the operator
+approves, and a session with nothing to propose settles as today.
+
 ## On the tracker
 
 The object-graph rules are the shared copy at
