@@ -1,27 +1,31 @@
-# Decision: the writeback type narrows to repair
+# Decision: the writeback type carries the destination write
 
 ## Decision
 
-`type:writeback` survives, narrowed to book work that is itself the
-work: repairing a contradiction the books already hold, restructuring
-chapters, catch-up writes beyond a settling session's worktree (#320's
-shape). It is never the tail of a fresh settlement — that write is the
-settling session's own close — and a repair item rides a chained round
-like any other item. The type keeps its skill's chapter discipline;
-the skill reframes from "decisions have closed and the books do not say
-so yet" to book maintenance.
+`type:writeback` is the standard destination-write type. A settlement's
+chapter, map move, or other destination write is a writeback item in
+the settling session's next elaboration — proposed on its round-close
+plan, released by the round's one approval — and book work that is
+itself the work rides the same type: repairing a contradiction the
+books already hold, restructuring chapters, catch-up writes for
+settlements that predate the chain. The type keeps its skill's chapter
+discipline. What it never is is a stranded tail: no settlement's write
+waits on a future batch nobody has composed, because the close that
+made the write due is the close that proposes it.
 
 ## Context
 
 - Chapter: the flywheel book at `agentplot/blueprints` (write rides
-  #320's writeback)
+  this intent's chained writeback)
 - Produced by: sessions/2026-08-18-chaining-and-map-home/session-chaining-dx-draft.md,
-  annotated by the operator 2026-08-18 — closing the half of #312's
-  decision 2 that waited on the chaining design
+  annotated by the operator 2026-08-18; revised by the operator
+  2026-08-18 in the round-close design round — the destination write
+  moved out of the settling session's close and back onto this type,
+  so the narrowing to repair-only was revised away with it
 
 ## Consequences
 
-- Assertion to queue: reframe `skills/writeback/SKILL.md` to
-  repair/catch-up and extract the chapter-writing discipline to a
-  shared reference the session profiles also cite; drop `writeback`
-  from the decision template's default consequence line.
+- `skills/writeback/SKILL.md` keeps its destination-write frame and
+  gains the close-round section every design type carries.
+- The decision template's default consequence line keeps naming the
+  writeback item a settlement queues.
