@@ -62,11 +62,11 @@
       "id": 5,
       "name": "dispatch-plan-apply-order-and-failure",
       "prompt": "You are a flywheel design session whose dispatch plan the operator has just approved: one elaboration of three items and one unit card. Walk the apply step by step in order. Then: the card filing fails on step 3 with an API error. Say exactly what you do next.",
-      "expected_output": "Order: commit the close files first, create the elaboration items and compose the batch at Backlog, file the construction at Backlog, write stage:done on the session's own items, flip the elaboration parent and card to board Ready, settle. On the step-3 failure: stop the apply where it is, comment the partial state on the session's item, add needs-operator, and do not settle.",
+      "expected_output": "Order: commit the close files first, create the elaboration items and compose the batch at Backlog, file the construction at Backlog, write stage:done on the session's own items, move the elaboration parent and card to board Ready, settle. On the step-3 failure: stop the apply where it is, comment the partial state on the session's item, add needs-operator, and do not settle.",
       "expectations": [
         "All file commits precede every tracker write",
-        "stage:done on the session's own items precedes the board Ready flips",
-        "The Ready flips are named as the one exception to a session never moving an item to state:ready",
+        "stage:done on the session's own items precedes every move to board Ready",
+        "The moves to Ready are named as the one exception to a session never moving an item to state:ready",
         "On the failure the session stops, comments the partial state, and adds needs-operator",
         "NEGATIVE: the session does not settle after the failed step, and does not retry silently into a half-applied state"
       ]

@@ -87,8 +87,8 @@ round or construction to propose ends: real files in the session
 directory's `close/`, a lavish page over them, one operator approval,
 and the session applying the word in the protocol's order before
 settling. A session with nothing to propose SHALL settle as today, and
-the loop's compose guard and the operator's board flip SHALL remain the
-fallback path. The protocol SHALL live in the one shared reference and
+the loop's compose guard and the operator's board approval SHALL remain
+the fallback path. The protocol SHALL live in the one shared reference and
 SHALL NOT be restated in any type skill.
 
 #### Scenario: A session has a next round to propose

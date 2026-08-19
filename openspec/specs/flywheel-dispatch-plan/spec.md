@@ -154,24 +154,24 @@ per bolt container, at Backlog: reuse the open bolt's milestone or
 create the new one with the summary as its description, then
 bolt-planning's board mode, superseding only cards this plan explicitly
 replaces; (4) write `stage:done` on the items the session carries —
-dispatch carries none; (5) flip every approved elaboration parent and
+dispatch carries none; (5) move every approved elaboration parent and
 card to board Ready, including cards folded onto an open running bolt,
 which the live loop expands mid-flight; (6) settle. `stage:done` SHALL
-precede every Ready flip; an apply interrupted before its Ready flips
-leaves batches at Backlog, which the operator's ordinary board flip
+precede every move to Ready; an apply interrupted before step 5 leaves
+batches at Backlog, which the operator's ordinary board approval
 finishes, per container independently.
 
 Step 5 is the one exception to an actor never moving an item to
 `state:ready`: applying the operator's explicit approval given in a
 round the actor itself ran.
 
-#### Scenario: The loop restarts between the flips
+#### Scenario: The loop restarts mid-apply
 
 - **WHEN** a loop process restarts after the apply's `stage:done` writes
-  and before its Ready flips
+  and before its moves to Ready
 - **THEN** the loop collects and merges the session's finished branch
-  before anything newly released could dispatch, and the batches wait at
-  Backlog for a board flip
+  before anything newly approved could dispatch, and the batches wait at
+  Backlog for the operator's board approval
 
 #### Scenario: An apply step fails
 
@@ -189,8 +189,8 @@ and re-open. After an apply, a plan-proposed elaboration or card that a
 later iteration replaces wholesale SHALL close `closed:superseded` with
 a successor pointer, and smaller changes SHALL amend the open Backlog
 batch in place. The plan is an option: a session with nothing to propose
-settles as today, and the compose guard and board flip remain the
-release path for whatever no plan proposed.
+settles as today, and the compose guard and the operator's board
+approval remain the path for whatever no plan proposed.
 
 #### Scenario: A later round replaces an applied plan's batch
 
