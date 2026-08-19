@@ -41,9 +41,9 @@ or by a work order, queue a question rather than inventing structure.
 - **The lifecycle** is `state:queued → state:ready → state:in-progress`,
   ending closed with a `closed:*` reason — done, declined, superseded,
   parked. Anyone queues; only the operator's word makes an item ready —
-  the board flip, or the approval of a round-close plan, which the
-  session that ran the round applies
-  (`skills/_reference/round-close.md`); an item's progress is its
+  the board flip, or the approval of a dispatch plan, which the actor
+  that ran the round applies
+  (`skills/_reference/dispatch-plan.md`); an item's progress is its
   comment history.
 - **A batch** is a parent issue whose sub-issues are the batch,
   composed with `flywheel-batch`, sitting in the Project at Status
@@ -135,7 +135,7 @@ directly, and dispatch relays nothing for them.
 | a sentence | an inline question | no — keep working on what it does not gate |
 | margin notes on a document that exists | `plannotator annotate <file>` | yes |
 | a choice across coupled decisions | a lavish page | yes |
-| approval of a session's proposed next round | the round-close plan (`skills/_reference/round-close.md`) | yes — it is the session's last act |
+| approval of a proposed routing — next round, new intents, construction | the dispatch plan (`skills/_reference/dispatch-plan.md`) | yes — it is the session's last act |
 
 Escalation runs one way: take the cheapest channel that can carry the
 answer, and never demote a question back down or re-ask it. **The sole
@@ -158,29 +158,35 @@ copy.
 ## Dispatch
 
 The standing singleton, and a pure GitHub-and-relay actor: no repo
-checkout, no file writes — everything dispatch produces lands on the
-tracker, and the records are written from it there. Five routes for a
-raw idea — say which you chose:
+checkout, no records — everything dispatch produces lands on the
+tracker, and the records are written from it there. Its one file write
+is the triage plan's ephemeral surface under the org folder's untracked
+scratch (`<org>/.flywheel/plans/<date>-triage/plan.html`).
 
-1. **New intent** — dedupe against the open `intent/*` milestones, then
-   create the milestone and its originating item, assigned to the
-   developer whose word settles it.
-2. **Question on an existing intent** — an idea that arrives
-   design-shaped becomes a queued item on that intent's milestone,
-   joining an elaboration for the operator to approve.
-3. **Item on a running bolt** — construction-scoped work a live bolt
-   covers: queue it on the bolt's milestone, where it is inert to
-   machinery until an author — the planner, dispatch on the operator's
-   dictation, or the operator — folds it into a plan card.
-4. **Dictated card** — the operator states construction work exactly:
-   author a plan card, the same artifact the bolt planner files.
-   Create the `bolt/<slug>` milestone when no open bolt fits, file one
-   `plan`-labeled card titled `Unit: <slug>` on it, its body a unit
-   document — a task table with one change per row, the unit's type,
-   its price — at board Backlog with the fleet's Team. No work items,
-   no `state:*` labels, and never Status Ready: the word that
-   authorizes filing the card is not the gesture that starts the work.
-5. **Dropped** — say so; record nothing.
+**Intake and routing are two acts.** A raw idea lands as an open,
+unmilestoned issue — anyone files one, and dispatch files what reaches
+it as prose, one issue per idea, so nothing lives only in a chat
+scroll. Those unmilestoned issues are the triage inbox, and an absent
+operator loses nothing: unrouted ideas wait there. Routing is proposed
+through a **triage plan** — the shared protocol at
+`skills/_reference/dispatch-plan.md` — placing each idea as a row under
+a container: a new intent (several ideas may split into several
+new-intent containers in one plan), a question on an existing intent's
+elaboration, an item or unit card on an open bolt — folded in where its
+deliverable is served, per `bolt-planning`'s rule — or drop. Nothing
+the plan proposes exists before the operator approves; the approval, on
+the page or as the Discord digest's reply, is applied in the protocol's
+order, and that apply is the one time dispatch writes board Status
+Ready.
+
+**The operator's own dictation skips the plan** and is applied
+directly, the dictated card included: dispatch authors the plan card
+exactly as the bolt planner files it — `Unit: <slug>`, label `plan`,
+the unit-document body, at board Backlog with the fleet's Team —
+creating the `bolt/<slug>` milestone when no open bolt fits. On
+dictation: no work items, no `state:*` labels, and never Status Ready —
+the word that authorizes filing a card is not the gesture that starts
+the work.
 
 Loops are started by `flywheel server`, never by dispatch.
 
@@ -230,7 +236,7 @@ belongs to a session or to the operator.
 - **At the queue**, one guard, then wait. Compose the orphan queued
   design items into a proposed batch (`flywheel-batch`) at Status
   **Backlog** — composing is not releasing — and report one line per
-  batch and unbatched item. A session applying an approved round-close
+  batch and unbatched item. A session applying an approved dispatch
   plan composes its own batch the same way and flips it Ready itself;
   the guard only ever sees what no session proposed. Construction work is never an intent
   item: it is born as bolt plan cards — the planner's, a session's,
