@@ -747,6 +747,17 @@ def launch_agent(name: str, profile: str, model: str | None, cwd: Path,
     return True
 
 
+def state_dir_token(state_dir: Path) -> str | None:
+    """The org bot token from the state dir's .env, or None."""
+    try:
+        for line in (state_dir / ".env").read_text().splitlines():
+            if line.startswith("DISCORD_BOT_TOKEN="):
+                return line.partition("=")[2].strip() or None
+    except OSError:
+        return None
+    return None
+
+
 def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
     """Start the org's dispatch agent from the manifest's `dispatch:` block.
 
@@ -794,6 +805,15 @@ def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
             state_dir = (manifest["root"] / state_dir).resolve()
         state_dir.mkdir(parents=True, exist_ok=True)
         env_map["DISCORD_STATE_DIR"] = str(state_dir)
+        # The discord plugin prefers the process environment over the
+        # state dir's .env, and a pane inherits the herdr daemon's
+        # environment — which can carry a personal bot token from the
+        # operator's shell (measured: dispatch connected as the wrong
+        # bot). The org token is injected explicitly so the state dir's
+        # word wins over anything inherited.
+        token = state_dir_token(state_dir)
+        if token:
+            env_map.setdefault("DISCORD_BOT_TOKEN", token)
     claude_args = (("--channels", block["channels"])
                    if block.get("channels") else ())
     ok = launch_agent("dispatch", "flywheel-dispatch", block.get("model"),
