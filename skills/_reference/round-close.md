@@ -50,7 +50,27 @@ Four fixed sections, in order:
 
 Every row is a proposal with a routing control already set to the
 session's default — the round corrects choices, it never supplies
-them. If `npx -y lavish-axi` fails opaquely and the installed-copy
+them. The page is built to glance, not to read:
+
+- **One row per proposal**: a type badge with a distinct color per
+  type, a bold title, a one-line summary in plain words, and the
+  row's control — never a wall of same-weight prose, and never a
+  control in a separate list the operator has to match back to its
+  proposal by memory.
+- **Full text folds away**: the rendered markdown sits behind a
+  disclosure on its row; the bolt summary compresses to a stat line
+  (units · changes · days) over its unit rows.
+- **The payload is always visible**: a fixed bar shows exactly what
+  Approve will send, live-updated on every control change, beside the
+  Approve and send-back controls. A changed control that could be
+  silently lost is a broken page.
+- **A row's control offers only the routes that make sense for it**:
+  a design item offers next round / hold / drop, and typing an answer
+  into a question row takes the `answered` path; a unit offers file
+  the card / hold / drop. "This needs more design first" is a
+  send-back of the plan with a note, never a routing value.
+
+If `npx -y lavish-axi` fails opaquely and the installed-copy
 fallback in the `lavish` skill also fails, report the shortfall and
 settle without a round: the committed `close/` files still say what
 the session proposed, and the fallback path carries the work.
