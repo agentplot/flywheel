@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""The dispatch MCP server command — logic in _flywheel_dispatch_mcp."""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _flywheel_dispatch_mcp as mcp  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(mcp.main(sys.argv[1:]))

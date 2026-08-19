@@ -1,0 +1,5 @@
+{
+  "dispatch": {
+    "command": "${CLAUDE_PLUGIN_ROOT}/bin/flywheel-dispatch-mcp"
+  }
+}

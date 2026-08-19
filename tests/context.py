@@ -18,6 +18,7 @@ FIXTURES = ROOT / "workflows" / "fixtures"
 if str(BIN) not in sys.path:
     sys.path.insert(0, str(BIN))
 
+import _flywheel_dispatch_mcp as dispatch_mcp  # noqa: E402
 import _flywheel_herdr as herdr            # noqa: E402
 import _flywheel_inbox as inbox            # noqa: E402
 import _flywheel_intent as intent          # noqa: E402
@@ -25,5 +26,5 @@ import _flywheel_ledger as ledger          # noqa: E402
 import _flywheel_manifest as manifest_mod  # noqa: E402
 import _flywheel_sessions as sessions      # noqa: E402
 
-__all__ = ["ROOT", "BIN", "FIXTURES", "herdr", "inbox", "intent", "ledger",
-           "manifest_mod", "sessions"]
+__all__ = ["ROOT", "BIN", "FIXTURES", "dispatch_mcp", "herdr", "inbox",
+           "intent", "ledger", "manifest_mod", "sessions"]
