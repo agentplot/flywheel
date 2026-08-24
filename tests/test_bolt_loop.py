@@ -717,6 +717,7 @@ class CycleTest(unittest.TestCase):
     def test_a_failing_guard_halts_the_run_rather_than_looping(self):
         tracker = FakeTracker(Snapshot(milestone="bolt/x"))
         program = a_loop(tracker, runner=ScriptedRunner(states=[WaitState.GONE]),
+                         repo_dir="/nowhere-at-all",
                          bolt_worktree="/nowhere-at-all")
         report = program.run(land=False)
         self.assertTrue(report.halted)
@@ -2653,6 +2654,31 @@ class ScaffoldCharterTest(unittest.TestCase):
             self.assertFalse((self.change_dir(tmp) / "bolt.md").exists(),
                              "and the tree is untouched")
 
+    def test_the_scaffold_session_runs_in_the_records_repo(self):
+        # The record is born on the records repo's main; the session's cwd
+        # is `repo_dir`, never a construction worktree.
+        with tempfile.TemporaryDirectory() as tmp:
+            runner = SettlingScaffold(self.fresh_dir(tmp))
+            program = self.loop_over(tmp, runner=runner)
+            program.params.bolt_worktree = "/somewhere-else"
+            program.guard_scaffold([])
+            self.assertEqual(runner.launched[0].cwd, str(tmp))
+
+    def test_a_records_checkout_off_main_pauses_the_scaffold(self):
+        # Records commit on main. A checkout parked on another branch is
+        # refused — a commit there would pollute the operator's branch.
+        with tempfile.TemporaryDirectory() as tmp:
+            shell = FakeShell(answers={
+                ("git", "rev-parse", "--abbrev-ref", "HEAD"):
+                    Result(0, "feature-branch\n")})
+            program = a_loop(FakeTracker(), runner=ScriptedRunner(),
+                             shell=shell, repo_dir=str(tmp),
+                             bolt_worktree=str(tmp))
+            failure = program.guard_scaffold([])
+            self.assertIsNotNone(failure)
+            self.assertIn("feature-branch", failure)
+            self.assertIn("checked", failure)
+
     def test_dry_run_still_only_reports_what_it_would_scaffold(self):
         with tempfile.TemporaryDirectory() as tmp:
             runner = ScriptedRunner()
@@ -3021,7 +3047,7 @@ Landing: pr
         change = Path(tmp) / "openspec" / "changes" / "x"
         change.mkdir(parents=True, exist_ok=True)
         (change / "bolt.md").write_text(text)
-        return a_loop(FakeTracker(), bolt_worktree=str(tmp))
+        return a_loop(FakeTracker(), repo_dir=str(tmp), bolt_worktree=str(tmp))
 
     def test_a_charter_that_states_its_own_criteria_is_read_from_disk(self):
         # 7.5: its own charter, written here, rather than a repo path that

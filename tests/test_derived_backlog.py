@@ -918,33 +918,33 @@ class CharterTest(unittest.TestCase):
         them HEAD also carries — defaulting to all of them, and set
         explicitly where a test wants the torn-write case.
         """
-        # The bolt's worktree is NOT the main one — `repo_dir` is where a
-        # fresh process starts and `guard_topology` is what moves it. Two
-        # distinct paths, or "the commit ran in the bolt's worktree" is a
-        # claim no assertion here could fail.
+        # The records repo (`repo_dir`) is NOT the bolt's worktree. The
+        # record lives under `repo_dir` on its main branch; construction
+        # branches live elsewhere — two distinct paths, or "the commit ran
+        # in the records repo" is a claim no assertion here could fail.
         main = Path(tmp) / "main"
-        main.mkdir()
+        (main / "openspec" / "changes" / "observer-rework").mkdir(parents=True)
         tree = Path(tmp) / "tree"
-        (tree / "openspec" / "changes" / "observer-rework").mkdir(parents=True)
-        record = tree / self.REL
+        tree.mkdir()
+        record = main / self.REL
         if charter is not None:
             record.write_text(charter)
         head = {self.REL: charter} if charter else {}
         sealed = {s for s, _ in units} if at_head is None else set(at_head)
         for slug, body in units:
-            path = tree / self.rel(slug)
+            path = main / self.rel(slug)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body)
             if slug in sealed:
                 head[self.rel(slug)] = body
-        git = FakeGit(tree, head=head, fail_commit=fail_commit)
+        git = FakeGit(main, head=head, fail_commit=fail_commit)
         snapshot = bolt.FixtureTracker(fixture(tmp, items)).snapshot(
             self.MILESTONE)
         params = bolt.BoltParams(slug="observer-rework", repo_dir=str(main),
                                  bolt_worktree=str(tree))
         loop = bolt.BoltLoop(params, tracker or NotTheFixtureTracker(),
                              run=git)
-        return loop, git, record, snapshot, tree
+        return loop, git, record, snapshot, main
 
     def two_units(self):
         return [unit_item(11, "observer-rework"),
@@ -1002,9 +1002,9 @@ class CharterTest(unittest.TestCase):
                              "only the file this pass wrote")
             self.assertEqual(len(actions), 1)
 
-    def test_every_git_call_runs_in_the_bolts_worktree(self):
-        # "committed to the branch that carries the bolt's record" is a
-        # statement about WHERE, and nothing else here observes it.
+    def test_every_git_call_runs_in_the_records_repo(self):
+        # "committed on the records repo's main" is a statement about
+        # WHERE, and nothing else here observes it.
         with tempfile.TemporaryDirectory() as tmp:
             loop, git, record, snap, tree = self.setup(tmp, self.two_units())
             loop.guard_charter(snap, [])
@@ -1013,7 +1013,7 @@ class CharterTest(unittest.TestCase):
                                 loop.params.repo_dir,
                                 "or this assertion proves nothing")
             for argv, cwd in git.calls:
-                self.assertEqual(cwd, loop.params.bolt_worktree, str(argv))
+                self.assertEqual(cwd, loop.params.repo_dir, str(argv))
 
     # -- idempotency, keyed on HEAD ---------------------------------------
 
@@ -1127,9 +1127,8 @@ class CharterTest(unittest.TestCase):
             self.assertEqual(git.of("commit"), [])
 
     def test_a_fixture_run_never_writes_the_operators_checkout(self):
-        # `guard_topology` skips itself under a fixture tracker, so
-        # `bolt_worktree` is still `repo_dir` — the operator's own tree, on
-        # whatever branch is out.
+        # A fixture run exercises the tracker's filters; `repo_dir` under
+        # a fixture is the operator's own tree, and nothing writes it.
         with tempfile.TemporaryDirectory() as tmp:
             tracker = bolt.FixtureTracker(fixture(tmp, self.two_units()))
             loop, git, record, snap, tree = self.setup(

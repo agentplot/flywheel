@@ -958,7 +958,7 @@ class BoltParams:
         self.bolt_worktree = self.bolt_worktree or self.repo_dir
         self.config = self.config or LoopConfig(name=self.type_name)
         self.change_id = self.change_id or inbox.resolve_change_id(
-            Path(self.bolt_worktree) / "openspec" / "changes", self.milestone)
+            Path(self.repo_dir) / "openspec" / "changes", self.milestone)
 
     @property
     def milestone(self):
@@ -966,7 +966,10 @@ class BoltParams:
 
     @property
     def change_dir(self):
-        return Path(self.bolt_worktree) / "openspec" / "changes" / self.change_id
+        """The bolt's record, in the RECORDS repo — `repo_dir`, on its
+        main branch. Construction branches live in the built repos the
+        units name; the record never rides them."""
+        return Path(self.repo_dir) / "openspec" / "changes" / self.change_id
 
 
 class BoltLoop:
@@ -1672,6 +1675,26 @@ class BoltLoop:
     CHARTER_SECTIONS = ("## Scope", "## Sources", "## Repos",
                         "## Merge criteria")
 
+    def records_checkout(self):
+        """The records repo must be ON its main branch before a record is
+        committed into it: records live on main, and a commit onto
+        whatever the operator happens to have checked out would pollute
+        their branch. Returns None when the write may proceed, else the
+        pause reason. A checkout that answers no branch name (not a git
+        repo — fixtures, tests) is not refused: there is no branch to
+        pollute."""
+        proc = self.git("rev-parse", "--abbrev-ref", "HEAD",
+                        cwd=self.params.repo_dir)
+        name = (proc.stdout or "").strip()
+        if proc.returncode != 0 or not name:
+            return None
+        if name != self.params.main_branch:
+            return (f"the records repo {self.params.repo_dir} is checked "
+                    f"out on {name}, and records commit on "
+                    f"{self.params.main_branch} — no record is written "
+                    f"until the checkout is back on it")
+        return None
+
     def guard_scaffold(self, actions):
         """0 — charter-if-missing.
 
@@ -1804,9 +1827,10 @@ class BoltLoop:
             f"milestone carries unit cards. Each approved unit is its own "
             f"artifact at units/<slug>.md, and the loop writes those itself at "
             f"expansion — write none of them.\n\n"
-            f"Commit by pathspec, in THIS worktree on the "
-            f"branch already checked out — never create a branch or worktree; "
-            f"the loop cuts the bolt branch after you settle. Do not start any other work, "
+            f"Commit by pathspec, in THIS checkout on "
+            f"{self.params.main_branch} — the record lives on the records "
+            f"repo's main, never on a construction branch; create no branch "
+            f"and no worktree. Do not start any other work, "
             f"and do not touch the items. Deliver by settling.")
         invocation, framing = (
             (f"/opsx:continue {self.params.change_id}",
@@ -1822,9 +1846,12 @@ class BoltLoop:
             (f"/opsx:new {self.params.change_id}",
              f"Scaffold the bolt record for bolt/{self.params.slug} and bind "
              f"the {self.params.type_name} schema.\n\n"))
+        held = self.records_checkout()
+        if held:
+            return f"scaffold: {held}"
         order = sessions.work_order(invocation, framing + charter)
         outcome = self.drive("scaffold", self.spec_for(
-            "scaffold", name, self.params.bolt_worktree, order))
+            "scaffold", name, self.params.repo_dir, order))
         if not outcome.ok:
             return f"scaffold: {outcome.status} — {outcome.detail}"
         if not self.params.change_dir.exists():
@@ -1883,7 +1910,8 @@ class BoltLoop:
         not is precisely the torn write this guard exists to repair, and a
         listing cannot tell the two apart.
         """
-        listed = self.git("ls-tree", "-r", "--name-only", "HEAD", "--", rel_dir)
+        listed = self.git("ls-tree", "-r", "--name-only", "HEAD", "--", rel_dir,
+                          cwd=self.params.repo_dir)
         if listed.returncode != 0:
             return set()
         return {line.rsplit("/", 1)[-1]
@@ -1905,13 +1933,13 @@ class BoltLoop:
         subsections in the same file as the bolt's, where the criteria
         reader could find the wrong one.
 
-        **Ordered after `guard_topology`, not folded into `_expand_card`.**
-        Expansion runs at -1, before the bolt branch or its worktree exist
-        on a fresh process, so a git write from there would land on
-        whatever branch `repo_dir` has checked out. By 0.6
-        `params.bolt_worktree` names the bolt branch's worktree and the
-        write lands where the bolt's record lives. It also keeps
-        expansion's failure modes to one — the tracker's — rather than two.
+        **The write lands on the records repo's main**, by pathspec — the
+        record lives beside the books, never on a construction branch.
+        `records_checkout` refuses the commit while the records checkout
+        is off its main branch, so a torn state pauses rather than
+        polluting whatever the operator has checked out. Kept out of
+        `_expand_card` so expansion's failure modes stay one — the
+        tracker's — rather than two.
 
         **The test is the record's COMMITTED state, not a stored flag and
         not the working tree.** The loop is stateless by construction and
@@ -2000,12 +2028,14 @@ class BoltLoop:
         if not wanted:
             return pause
         if isinstance(self.tracker, FixtureTracker):
-            # `guard_topology` skips itself under a fixture too, so
-            # `bolt_worktree` is still `repo_dir` — the OPERATOR'S checkout,
-            # on whatever branch happens to be out. A fixture run exercises
-            # the tracker's filters; it never writes anyone's tree. Naming
-            # the unit is a read of the tracker, so the pause still travels.
+            # A fixture run exercises the tracker's filters; it never
+            # writes anyone's tree — `repo_dir` under a fixture is the
+            # OPERATOR'S checkout. Naming the unit is a read of the
+            # tracker, so the pause still travels.
             return pause
+        held = self.records_checkout()
+        if held:
+            return f"charter: {held}"
         self.ledger.expect(f"charter:{self.params.slug}",
                            f"{rel_dir} missing {named}",
                            f"one commit adding {named}")
@@ -2017,13 +2047,13 @@ class BoltLoop:
                 continue     # a torn write: the content stays, the commit re-runs
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body.strip() + "\n")
-        # By pathspec, on the branch the bolt's record lives on. Never `-a`
-        # and never `add -A`: a session's uncommitted work may share this
-        # worktree, and a tree-wide stage would sweep it into this commit.
-        self.git("add", "--", *paths)
+        # By pathspec, on the records repo's main. Never `-a` and never
+        # `add -A`: other work may share this checkout, and a tree-wide
+        # stage would sweep it into this commit.
+        self.git("add", "--", *paths, cwd=self.params.repo_dir)
         committed = self.git("commit", "-m",
-                             f"charter: unit {named} on {self.params.bolt_branch}",
-                             "--", *paths)
+                             f"charter: unit {named} for {self.params.milestone}",
+                             "--", *paths, cwd=self.params.repo_dir)
         if committed.returncode != 0:
             tail = " ".join((committed.stderr or committed.stdout or "").split())
             return (f"charter: {rel_dir} gained {named} but the commit failed; "
