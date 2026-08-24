@@ -927,7 +927,6 @@ class BoltParams:
     org: str = "agentplot"
     repo: str = "flywheel"
     repo_dir: str = "."
-    bolt_worktree: str = None
     bolt_branch: str = None
     main_branch: str = "main"
     type_name: str = "bolt-quick"
@@ -962,7 +961,6 @@ class BoltParams:
         if not self.slug:
             raise LoopError("a bolt loop needs its slug — the milestone is bolt/<slug>")
         self.bolt_branch = self.bolt_branch or f"{inbox.BOLT_PREFIX}{self.slug}"
-        self.bolt_worktree = self.bolt_worktree or self.repo_dir
         self.config = self.config or LoopConfig(name=self.type_name)
         self.change_id = self.change_id or inbox.resolve_change_id(
             Path(self.repo_dir) / "openspec" / "changes", self.milestone)
@@ -995,6 +993,13 @@ class BoltLoop:
         #: Per-unit type configs from the unit card's Type line, cached;
         #: the bolt's bound type is the fallback.
         self._unit_configs = {}
+        #: Per-unit binding — (system name, {"repo", "book"}) — resolved
+        #: from the card's System: line against params.bindings; cached by
+        #: the unit parent the way the type configs are.
+        self._unit_bindings = {}
+        #: Built repo path -> the bolt branch's worktree there, cut lazily
+        #: by `ensure_bolt_worktree` as batches resolve to repos.
+        self._bolt_worktrees = {}
         #: The construction path in force for the batch being driven —
         #: the driven unit's type's, else the bolt's bound type's.
         self.active_plan_mode = bool(params.config and params.config.plan)
@@ -1028,11 +1033,19 @@ class BoltLoop:
         return self._run(argv, cwd=str(cwd) if cwd else None)
 
     def git(self, *args, cwd=None):
-        return self.shell(["git", *args], cwd=cwd or self.params.bolt_worktree)
+        return self.shell(["git", *args], cwd=cwd or self.params.repo_dir)
 
-    def _wt_rows(self):
-        out = self.shell(["wt", "list", "--format", "json"],
-                         cwd=self.params.repo_dir)
+    def _sole_repo(self):
+        """The one bound built repo, where exactly one binding exists —
+        the default a directly-invoked stage runs against (hand runs and
+        tests, where the sole binding is synthesized from repo_dir)."""
+        bindings = self.params.bindings or {}
+        if len(bindings) == 1:
+            return next(iter(bindings.values()))["repo"]
+        return self.params.repo_dir
+
+    def _wt_rows(self, repo):
+        out = self.shell(["wt", "list", "--format", "json"], cwd=repo)
         if out.returncode != 0:
             return None
         try:
@@ -1041,15 +1054,17 @@ class BoltLoop:
             return None
         return rows if isinstance(rows, list) else None
 
-    def worktree_for(self, branch, base):
+    def worktree_for(self, branch, base, repo=None):
         """The loop is the worktree orchestrator — worktrunk's agent-handoff
         pattern: the orchestrator creates the worktree and the session is
         born inside it. No order ever tells a session to run `wt switch`.
+        `repo` is the BUILT repo the branch belongs to.
 
         Idempotent: an existing worktree for the branch is adopted by path.
         Returns (path, created); (None, False) when wt cannot provide one.
         """
-        rows = self._wt_rows()
+        repo = repo or self._sole_repo()
+        rows = self._wt_rows(repo)
         for row in rows or ():
             if row.get("branch") == branch and row.get("path"):
                 return row["path"], False
@@ -1058,42 +1073,41 @@ class BoltLoop:
         # a worktree to an existing branch; `--create` is only for a branch
         # not born yet, and errors on one that is.
         exists = self.git("rev-parse", "--verify", "--quiet", branch,
-                          cwd=self.params.repo_dir).returncode == 0
+                          cwd=repo).returncode == 0
         argv = (["wt", "switch", branch, "--no-cd"] if exists else
                 ["wt", "switch", "--create", branch, "--base", base, "--no-cd"])
-        made = self.shell(argv, cwd=self.params.repo_dir)
+        made = self.shell(argv, cwd=repo)
         if made.returncode != 0:
             return None, False
         if not exists:
-            self.record_base(branch, base)
-        rows = self._wt_rows()
+            self.record_base(branch, base, repo)
+        rows = self._wt_rows(repo)
         for row in rows or ():
             if row.get("branch") == branch and row.get("path"):
                 return row["path"], True
         return None, False
 
-    def record_base(self, branch, base):
+    def record_base(self, branch, base, repo):
         """The cut point, recorded where git keeps durable facts — a ref,
         written once at creation. `branch_advanced` reads it to tell an
         empty branch from a merged one, which bare ancestry cannot."""
-        sha = (self.git("rev-parse", base,
-                        cwd=self.params.repo_dir).stdout or "").strip()
+        sha = (self.git("rev-parse", base, cwd=repo).stdout or "").strip()
         if sha:
             self.git("update-ref", f"refs/flywheel/base/{branch}", sha,
-                     cwd=self.params.repo_dir)
+                     cwd=repo)
 
-    def branch_base(self, branch):
+    def branch_base(self, branch, repo):
         """The recorded cut point; merge-base with main when the branch
         predates the refs. The fallback reads a merged-but-unrecorded
         branch as empty — the safe direction, since re-driving green work
         costs a no-op session and a false "merged" costs a false landing."""
         ref = self.git("rev-parse", "--verify", "--quiet",
-                       f"refs/flywheel/base/{branch}", cwd=self.params.repo_dir)
+                       f"refs/flywheel/base/{branch}", cwd=repo)
         sha = (ref.stdout or "").strip()
         if ref.returncode == 0 and sha:
             return sha
         fallback = self.git("merge-base", branch, self.params.main_branch,
-                            cwd=self.params.repo_dir)
+                            cwd=repo)
         return (fallback.stdout or "").strip() or None
 
     def _any_commits(self, spec, cwd=None):
@@ -1102,34 +1116,54 @@ class BoltLoop:
         out = (proc.stdout or "").strip()
         return out.isdigit() and int(out) > 0
 
-    def branch_advanced(self, branch):
+    def branch_advanced(self, branch, repo):
         """Commits beyond the cut point — the fact that makes ancestry mean
         something. An empty branch's tip is an ancestor of everything it
         was cut from, so bare ancestry reads it as merged, landed and done
         (#164, observed live); an empty branch is "nothing to merge",
         never "merged"."""
-        base = self.branch_base(branch)
+        base = self.branch_base(branch, repo)
         if not base:
             return False
-        return self._any_commits(f"{base}..{branch}", cwd=self.params.repo_dir)
+        return self._any_commits(f"{base}..{branch}", cwd=repo)
 
-    def batch_merged(self, batch):
+    def batch_merged(self, batch, repo):
         """Git's answer to "does this batch still need driving": a build
         branch that advanced past its cut point and is fully an ancestor
         of the bolt branch awaits only the landing. A branch that does not
         exist is work not yet started; one that never advanced is work
         never done."""
         branch = f"build/{batch.slug}"
-        if self.git("rev-parse", "--verify", "--quiet", branch).returncode != 0:
+        if self.git("rev-parse", "--verify", "--quiet", branch,
+                    cwd=repo).returncode != 0:
             return False
-        if not self.branch_advanced(branch):
+        if not self.branch_advanced(branch, repo):
             return False
         return self.git("merge-base", "--is-ancestor", branch,
-                        self.params.bolt_branch).returncode == 0
+                        self.params.bolt_branch, cwd=repo).returncode == 0
 
-    def batch_worktree(self, batch):
+    def ensure_bolt_worktree(self, repo):
+        """The bolt branch and its worktree in one built repo, cut lazily
+        — the first batch that resolves to a repo is what cuts
+        `bolt/<slug>` there, so a bolt spans exactly the repos its units
+        name and a restarted loop re-adopts by path. The loop's to do, a
+        session's never (worktrunk's agent-handoff pattern)."""
+        if repo not in self._bolt_worktrees:
+            path, created = self.worktree_for(self.params.bolt_branch,
+                                              self.params.main_branch, repo)
+            if path is None:
+                return None
+            self._bolt_worktrees[repo] = path
+            if created:
+                self._log(f"cut {self.params.bolt_branch} and its worktree "
+                          f"in {repo}")
+        return self._bolt_worktrees[repo]
+
+    def batch_worktree(self, batch, repo):
+        if self.ensure_bolt_worktree(repo) is None:
+            return None
         path, _created = self.worktree_for(f"build/{batch.slug}",
-                                           self.params.bolt_branch)
+                                           self.params.bolt_branch, repo)
         return path
 
     # -- objective checks: the world, not a report -------------------------
@@ -1145,15 +1179,17 @@ class BoltLoop:
                           cwd=cwd or self.params.repo_dir)
         return proc.returncode == 0
 
-    def branch_has_commits(self, branch):
-        return self._any_commits(f"{self.params.bolt_branch}..{branch}")
+    def branch_has_commits(self, branch, repo):
+        return self._any_commits(f"{self.params.bolt_branch}..{branch}",
+                                 cwd=repo)
 
-    def branch_merged(self, branch, target=None):
+    def branch_merged(self, branch, repo, target=None):
         target = target or self.params.bolt_branch
-        return self.git("merge-base", "--is-ancestor", branch, target).returncode == 0
+        return self.git("merge-base", "--is-ancestor", branch, target,
+                        cwd=repo).returncode == 0
 
-    def head_sha(self, ref):
-        return (self.git("rev-parse", ref).stdout or "").strip()
+    def head_sha(self, ref, repo):
+        return (self.git("rev-parse", ref, cwd=repo).stdout or "").strip()
 
     def clear_channel(self, cwd, rel):
         """Delete a file channel before the session that writes it runs."""
@@ -1169,7 +1205,7 @@ class BoltLoop:
         except OSError:
             return None
 
-    def deliverables(self, batch, change=None):
+    def deliverables(self, batch, repo, change=None):
         """What "done" means for a construction session, checked on disk.
 
         Completion is objective — settle plus the deliverable contract:
@@ -1181,21 +1217,21 @@ class BoltLoop:
         """
         missing = []
         if change and not self.change_validates(
-                change, cwd=self.batch_worktree(batch)):
+                change, cwd=self.batch_worktree(batch, repo)):
             missing.append(f"`openspec validate {change} --strict` is not green")
-        if not self.branch_has_commits(f"build/{batch.slug}"):
+        if not self.branch_has_commits(f"build/{batch.slug}", repo):
             missing.append(f"no commit on build/{batch.slug} beyond {self.params.bolt_branch}")
         return missing
 
     # -- the tracker side of a session ------------------------------------
 
-    def mark_verified(self, batch):
+    def mark_verified(self, batch, repo):
         """Record the clean verdict on the items, bound to the branch head.
 
         Same shape as the launch marker: a machine-readable comment, read
         back as code. A restarted loop trusts it exactly while the branch
         sha still matches — one commit later and the verdict is spent."""
-        sha = self.head_sha(f"build/{batch.slug}")
+        sha = self.head_sha(f"build/{batch.slug}", repo)
         if not sha:
             return
         for number in batch.numbers:
@@ -1365,17 +1401,16 @@ class BoltLoop:
         result, and the STOP condition is built on exactly that.
         """
         actions = []
-        # -1 expand, 0 scaffold, 0.5 topology, 0.6 charter, 1 flip-consume,
-        # 2 route, 3 stages.
+        # -1 expand, 0 scaffold, 0.5 charter, 1 flip-consume, 2 route,
+        # 3 stages. There is no topology guard: the bolt branch is cut
+        # lazily, per built repo, by the first batch that resolves there
+        # (`ensure_bolt_worktree`) — records need no branch to exist.
         expanded = self.guard_expand(snapshot, actions)
         if expanded is not None:
             return actions, expanded
         scaffolded = self.guard_scaffold(actions)
         if scaffolded is not None:
             return actions, scaffolded
-        topology = self.guard_topology(actions)
-        if topology is not None:
-            return actions, topology
         charter = self.guard_charter(snapshot, actions)
         if charter is not None:
             return actions, charter
@@ -1436,9 +1471,13 @@ class BoltLoop:
             return
         for batch in analyse(items, snapshot, self.params.slug):
             branch = f"build/{batch.slug}"
-            if self.batch_merged(batch):
+            binding = self.unit_binding(batch, snapshot)
+            if binding is None:
+                continue        # unresolvable repo; the drive is what pauses
+            repo = binding[1]["repo"]
+            if self.batch_merged(batch, repo):
                 target = inbox.STAGE_MERGED
-            elif self.branch_has_commits(branch):
+            elif self.branch_has_commits(branch, repo):
                 target = inbox.STAGE_BUILT
             else:
                 continue                # the tree witnesses nothing; write nothing
@@ -1475,7 +1514,7 @@ class BoltLoop:
                 # numbers it closed and skips an item already closed with the
                 # reason, so an unconditional append here would record a write
                 # on every cycle for an item nothing had touched.
-                if self.close_merged([item]):
+                if self.close_merged([item], repo):
                     actions.append(f"#{item.number} closed {inbox.CLOSED_MERGED} "
                                    f"(re-derived from {branch})")
 
@@ -1883,30 +1922,6 @@ class BoltLoop:
             f"scaffolded openspec/changes/{self.params.change_id}")
         return None
 
-    def guard_topology(self, actions):
-        """0.5 — the bolt branch and its worktree are the loop's to cut.
-
-        The record is born on main at scaffold; cutting `bolt/<slug>` from
-        it is the first topological act, and it is the LOOP'S — a session
-        never creates a worktree (worktrunk's agent-handoff pattern).
-        Idempotent: an existing worktree is adopted by path, so this writes
-        nothing on a second cycle. Skipped on --dry-run and under a
-        fixture tracker; wt's canonical path wins even over an explicit
-        --bolt-worktree, because adoption-by-path is what a restarted
-        stateless loop relies on.
-        """
-        if self.dry_run or isinstance(self.tracker, FixtureTracker):
-            return None
-        path, created = self.worktree_for(self.params.bolt_branch,
-                                          self.params.main_branch)
-        if path is None:
-            return (f"topology: wt could not provide {self.params.bolt_branch} "
-                    f"and its worktree")
-        self.params.bolt_worktree = path
-        if created:
-            actions.append(f"cut {self.params.bolt_branch} and its worktree")
-        return None
-
     def units_dir(self):
         """`openspec/changes/<slug>/units` — one file per approved unit."""
         return self.params.change_dir / "units"
@@ -2166,7 +2181,7 @@ class BoltLoop:
         match = re.search(r"Landing:\s*(merge|pr)\b", self.merge_criteria() or "", re.I)
         return match.group(1).lower() if match else "merge"
 
-    def spec_stage(self, batch):
+    def spec_stage(self, batch, repo=None, book=None):
         """The type's strategy, run as prompts on one spec session.
 
         `ff` is one command; `new+ff` lands the proposal first; `new+continue`
@@ -2177,12 +2192,13 @@ class BoltLoop:
         if self.active_plan_mode:
             return StageOutcome("spec", "skipped",
                                 "plan-mode path: the approved plan is the spec")
+        repo = repo or self._sole_repo()
         change = batch.change or batch.slug
-        cwd = self.batch_worktree(batch)
+        cwd = self.batch_worktree(batch, repo)
         if cwd is None:
             return StageOutcome("spec", "failed",
                                 f"wt could not provide build/{batch.slug} "
-                                f"from {self.params.bolt_branch}")
+                                f"from {self.params.bolt_branch} in {repo}")
         # A resumed batch whose change already validates needs no spec
         # session — green is green, and re-driving one costs a session per
         # restart for work that is provably done.
@@ -2191,7 +2207,8 @@ class BoltLoop:
                                 "the change already validates — nothing to spec")
         name = session_name("spec-writing", change)
         invocations = list(self.params.config.invocations)
-        order = sessions.work_order(f"{invocations[0]} {change}", self.spec_brief(batch, change))
+        order = sessions.work_order(f"{invocations[0]} {change}",
+                                    self.spec_brief(batch, change, book))
         outcome = self.drive("spec", self.spec_for(
             "spec", name, cwd, order), batch.numbers, close=False)
         runner, handle = self.runner("spec"), outcome.handle
@@ -2213,16 +2230,17 @@ class BoltLoop:
             self.runner("spec").close(outcome.handle)
         return outcome
 
-    def spec_brief(self, batch, change):
+    def spec_brief(self, batch, change, book_dir=None):
         items = ", ".join(f"#{n}" for n in batch.numbers)
         records = ", ".join(sorted({i.record for i in batch.items if i.record})) or (
             "the item bodies themselves — the item body IS the proposal")
-        book = (f"The design book lives at {self.params.book_dir} — the "
+        book_dir = book_dir or self.params.book_dir
+        book = (f"The design book lives at {book_dir} — the "
                 f"items' chapter citations (books/flywheel/src/...) resolve "
                 f"under its repo root. READ the cited chapters before "
                 f"writing: the spec derives from the chapters as they are "
                 f"NOW, not from the item's summary of them. "
-                if self.params.book_dir else "")
+                if book_dir else "")
         return (
             f"Spec for {items} on milestone {self.params.milestone}.\n\n"
             + book +
@@ -2235,25 +2253,28 @@ class BoltLoop:
             f"Record what you specced as a comment on each item. Commit by pathspec; "
             f"do not merge and do not push — the loop merges. Deliver by settling.")
 
-    def build_stage(self, batch):
+    def build_stage(self, batch, repo=None):
         """`/opsx:apply`, or the plan-mode path where the bolt declares it."""
+        repo = repo or self._sole_repo()
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
-        if not self.active_plan_mode and not self.deliverables(batch, change):
+        if not self.active_plan_mode and not self.deliverables(batch, repo,
+                                                               change):
             # Symmetric with spec's already-validates skip — but a commit on
             # the branch proves only that something was committed, and a
             # spec session's planning artifacts satisfy that alone (observed
             # live on #260: build skipped over zero implementation). The
             # build's witness is the change's own task list: every box
             # checked, or the build still owes work.
-            tasks = (Path(self.batch_worktree(batch) or self.params.repo_dir)
+            tasks = (Path(self.batch_worktree(batch, repo)
+                          or self.params.repo_dir)
                      / "openspec" / "changes" / change / "tasks.md")
             unchecked = tasks.exists() and "- [ ]" in tasks.read_text()
             if not unchecked:
                 return StageOutcome("build", "done",
                                     "already built — the tree proves it")
         if self.active_plan_mode:
-            outcome = self.plan_mode_build(batch, name)
+            outcome = self.plan_mode_build(batch, name, repo)
         else:
             # The order is the command and the commit rule, nothing else:
             # the session is launched IN the build worktree, the slug alone
@@ -2265,22 +2286,24 @@ class BoltLoop:
                 "Commit by pathspec (git add -- <your paths>; "
                 "git commit -- <your paths>); never -a, never add -A. "
                 "Do not merge and do not push."))
-            cwd = self.batch_worktree(batch)
+            cwd = self.batch_worktree(batch, repo)
             if cwd is None:
                 return StageOutcome("build", "failed",
-                                    f"wt could not provide build/{batch.slug}")
+                                    f"wt could not provide build/{batch.slug}"
+                                    f" in {repo}")
             outcome = self.drive("build", self.spec_for(
                 "build", name, cwd, order), batch.numbers, close=False)
         if not outcome.ok:
             return outcome
-        missing = self.deliverables(batch,
+        missing = self.deliverables(batch, repo,
                                     change=None if self.active_plan_mode else change)
         if missing:
-            outcome = self.reprompt_deliverables(batch, outcome, missing)
+            outcome = self.reprompt_deliverables(batch, outcome, missing, repo)
         return outcome
 
-    def reprompt_deliverables(self, batch, outcome, missing):
+    def reprompt_deliverables(self, batch, outcome, missing, repo=None):
         """Settle without deliverables is ONE re-prompt, then needs-operator."""
+        repo = repo or self._sole_repo()
         runner, handle = self.runner("build"), outcome.handle
         told = "; ".join(missing)
         if handle is None:
@@ -2307,7 +2330,7 @@ class BoltLoop:
         again = self.settle("build", runner, handle, batch.numbers, origin, close=False)
         if not again.ok:
             return again
-        still = self.deliverables(batch,
+        still = self.deliverables(batch, repo,
                                   change=None if self.active_plan_mode else
                                   (batch.change or batch.slug))
         if still:
@@ -2317,7 +2340,7 @@ class BoltLoop:
             return StageOutcome("build", "paused", f"no deliverables: {'; '.join(still)}")
         return again
 
-    def plan_mode_build(self, batch, name):
+    def plan_mode_build(self, batch, name, repo=None):
         """The plan-mode path: the approved plan is the spec surrogate.
 
         The session is started in `--permission-mode plan` and settles at
@@ -2326,9 +2349,11 @@ class BoltLoop:
         the loop drives the dialog keys with the verdict it gets back. Two
         returns on one batch and the loop pauses rather than bouncing again.
         """
-        order = sessions.work_order("/flywheel:build", self.plan_brief(batch))
+        repo = repo or self._sole_repo()
+        order = sessions.work_order("/flywheel:build",
+                                    self.plan_brief(batch, repo))
         runner = self.runner("build")
-        cwd = self.batch_worktree(batch)
+        cwd = self.batch_worktree(batch, repo)
         if cwd is None:
             return StageOutcome("build", "failed",
                                 f"wt could not provide build/{batch.slug}")
@@ -2370,8 +2395,9 @@ class BoltLoop:
                 return outcome                  # a real permission ask, not a plan
             return outcome                      # settled finished
 
-    def plan_brief(self, batch):
+    def plan_brief(self, batch, repo=None):
         items = ", ".join(f"#{n}" for n in batch.numbers)
+        repo = repo or self.params.repo_dir
         return (
             f"PLAN-MODE PATH — read this before the skill's own steps. This bolt "
             f"writes NO spec-driven change for these items, so there is no change id "
@@ -2381,7 +2407,7 @@ class BoltLoop:
             f"Each item's BODY IS ITS CLAIM. Read the bodies from the tracker and the "
             f"decision records they cite, and derive the work from those, never from a "
             f"restatement.\n\n"
-            f"Worktree: in \"{self.params.repo_dir}\" run  wt switch --create "
+            f"Worktree: in \"{repo}\" run  wt switch --create "
             f"build/{batch.slug} --base {self.params.bolt_branch} --no-cd  and work "
             f"there. Re-read from disk every neighbour your plan claims something "
             f"about, at build time.\n\n"
@@ -2420,7 +2446,7 @@ class BoltLoop:
             return "unreadable", "the approver's verdict was unreadable"
         return match.group("verdict").lower(), match.group("why").strip()
 
-    def verify_stage(self, batch, build):
+    def verify_stage(self, batch, build, repo=None):
         """`/opsx:verify` -> a findings file -> the review's ruling.
 
         Verify runs vanilla and writes what it found to a file the loop
@@ -2433,10 +2459,11 @@ class BoltLoop:
         if self.active_plan_mode:
             return StageOutcome("verify", "skipped",
                                 "plan-mode path: there is no change to verify against")
+        repo = repo or self._sole_repo()
         change = batch.change or batch.slug
         name = session_name("verify", batch.slug)
-        cwd = self.batch_worktree(batch) or self.params.repo_dir
-        branch_sha = self.head_sha(f"build/{batch.slug}")
+        cwd = self.batch_worktree(batch, repo) or self.params.repo_dir
+        branch_sha = self.head_sha(f"build/{batch.slug}", repo)
         if branch_sha and self.verified_at(batch.numbers) == branch_sha:
             # The verdict is durable and the branch has not moved: a
             # restarted loop re-buys no judgment it already recorded.
@@ -2466,7 +2493,7 @@ class BoltLoop:
                 # ends here. The session stays resumable by its id.
                 if build.handle is not None:
                     self.runner("build").close(build.handle)
-                self.mark_verified(batch)
+                self.mark_verified(batch, repo)
                 return StageOutcome("verify", "done", "verify is clean")
             if clean:
                 report = (f"Verify reported no findings, but `openspec "
@@ -2475,7 +2502,7 @@ class BoltLoop:
             if ruling["action"] == "proceed":
                 if build.handle is not None:
                     self.runner("build").close(build.handle)
-                self.mark_verified(batch)
+                self.mark_verified(batch, repo)
                 return StageOutcome(
                     "verify", "done",
                     f"review ruled proceed: {ruling.get('reason', '')}".strip())
@@ -2488,7 +2515,7 @@ class BoltLoop:
             prompt = ruling.get("prompt") or (
                 f"Verify raised these findings against what you built. Go fix "
                 f"them — no new scope.\n\n{report}")
-            fixed = self.go_fix(batch, build, prompt)
+            fixed = self.go_fix(batch, build, prompt, repo)
             if not fixed.ok:
                 return fixed
         self.pause(batch.numbers, (
@@ -2540,7 +2567,7 @@ class BoltLoop:
                     "reason": f"no readable ruling at {REVIEW_RULING}"}
         return ruling
 
-    def go_fix(self, batch, build, prompt):
+    def go_fix(self, batch, build, prompt, repo=None):
         """The review's prompt — to the same build session, warm.
 
         The prompt arrives verbatim from the review's ruling (or the
@@ -2549,10 +2576,11 @@ class BoltLoop:
         deterministic session id resumes the same conversation in a fresh
         pane — the pane is disposable, the session is durable (#178). A
         gone pane is never a reason to pause."""
+        repo = repo or self._sole_repo()
         runner, handle = self.runner("build"), build.handle
         if handle is None:
             name = session_name("build", batch.slug)
-            cwd = self.batch_worktree(batch) or self.params.repo_dir
+            cwd = self.batch_worktree(batch, repo) or self.params.repo_dir
             spec = self.spec_for("build", name, cwd, sessions.work_order(
                 f"Fix verify findings for {batch.change or batch.slug}", prompt))
             try:
@@ -2581,7 +2609,7 @@ class BoltLoop:
                 f"open and waiting.\n\n{outcome.report}"))
         return outcome
 
-    def merge_stage(self, batch, build=None):
+    def merge_stage(self, batch, repo=None, build=None):
         """Merge-back through the gate — a static step, no session.
 
         Merging is bookkeeping: the command is fixed, the gate is the
@@ -2599,19 +2627,24 @@ class BoltLoop:
         a sibling moved under this branch — an agent seat is reserved
         for that, stubbed today to a pause the operator works by hand.
         """
+        repo = repo or self._sole_repo()
         branch = f"build/{batch.slug}"
-        if self.batch_merged(batch):
+        if self.batch_merged(batch, repo):
             return StageOutcome("merge", "done", f"{branch} is already merged")
+        bolt_worktree = self.ensure_bolt_worktree(repo)
+        if bolt_worktree is None:
+            return StageOutcome("merge", "failed",
+                                f"wt could not provide {self.params.bolt_branch} "
+                                f"in {repo}")
         output = ""
         for attempt in range(MAX_FIX_ROUNDS + 1):
             proc = self.shell(["wt", "merge", branch, "--no-remove"],
-                              cwd=self.params.bolt_worktree)
+                              cwd=bolt_worktree)
             if proc.returncode == 0:
                 break
             output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
             if "conflict" in output.lower():
-                self.shell(["git", "merge", "--abort"],
-                           cwd=self.params.bolt_worktree)
+                self.shell(["git", "merge", "--abort"], cwd=bolt_worktree)
                 self.pause(batch.numbers, (
                     f"The merge of {branch} hit conflicts — a sibling moved "
                     f"under it. The loop aborted the merge and paused the "
@@ -2627,10 +2660,11 @@ class BoltLoop:
             fixed = self.go_fix(
                 batch, build or StageOutcome("build", "done"),
                 (f"The merge gate is red for {branch}. Fix exactly what it "
-                 f"names — no new scope — and commit by pathspec.\n\n{output}"))
+                 f"names — no new scope — and commit by pathspec.\n\n{output}"),
+                repo)
             if not fixed.ok:
                 return fixed
-        if not self.branch_merged(branch):
+        if not self.branch_merged(branch, repo):
             return StageOutcome("merge", "failed",
                                 f"{branch} is not an ancestor of "
                                 f"{self.params.bolt_branch} after wt merge")
@@ -2640,18 +2674,18 @@ class BoltLoop:
             # Archive on green is a loop write now, like every other piece
             # of bookkeeping. A failed archive never un-merges the branch.
             archived = self.shell(["openspec", "archive", change, "--yes"],
-                                  cwd=self.params.bolt_worktree)
+                                  cwd=bolt_worktree)
             if archived.returncode == 0:
                 self.shell(["git", "add", "-A", "openspec"],
-                           cwd=self.params.bolt_worktree)
+                           cwd=bolt_worktree)
                 self.shell(["git", "commit", "-m",
                             f"chore(openspec): archive {change}"],
-                           cwd=self.params.bolt_worktree)
+                           cwd=bolt_worktree)
             else:
                 note = " (openspec archive failed; left for hand cleanup)"
         return StageOutcome("merge", "done", f"{branch} merged{note}")
 
-    def close_merged(self, items, sha=None):
+    def close_merged(self, items, repo=None, sha=None):
         """Close these work items `closed:merged`, with the SHA.
 
         The unit parent's progress bar is GitHub's own and counts CLOSED
@@ -2673,7 +2707,8 @@ class BoltLoop:
         `closed_with` reads both fields from the one payload `has_label`
         was already fetching, so the correction costs nothing.
         """
-        sha = sha or self.head_sha(self.params.bolt_branch)
+        sha = sha or (self.head_sha(self.params.bolt_branch, repo)
+                      if repo else "")
         closed = []
         for item in items:
             if self.tracker.closed_with(item.number, inbox.CLOSED_MERGED):
@@ -2686,6 +2721,54 @@ class BoltLoop:
                 reason=inbox.CLOSED_MERGED)
             closed.append(item.number)
         return closed
+
+    def landing_repos(self, snapshot):
+        """The built repos this landing serves, in binding-name order.
+
+        Two sources, unioned: every repo a unit parent's `System:` line
+        resolves to (the tracker's answer), and every binding whose bolt
+        branch advanced past its cut point (git's answer — a restart
+        where a card was edited since still lands what was built). A repo
+        whose bolt branch never advanced is skipped, not failed: a
+        multi-repo bolt whose second repo saw no units yet has nothing to
+        land there. Returns ([(system, repo)], None), or ((), reason)
+        when a unit parent's repo cannot be resolved — landing over a
+        guess is how code lands in the wrong repo.
+        """
+        bindings = self.params.bindings or {}
+        found = {}
+        for item in snapshot.on(self.params.milestone):
+            if not item.is_container or inbox.UNIT not in item.labels:
+                continue
+            system = inbox.PlanCard(number=item.number,
+                                    body=item.body or "").system
+            if system and system in bindings:
+                found[system] = bindings[system]["repo"]
+            elif len(bindings) == 1:
+                name, binding = next(iter(bindings.items()))
+                found[name] = binding["repo"]
+            else:
+                names = ", ".join(sorted(bindings)) or "none"
+                return (), (
+                    f"The landing cannot resolve unit #{item.number}'s "
+                    f"built repo"
+                    + (f": `System: {system}` matches no fleet binding"
+                       if system else ": the card carries no `System:` "
+                       "line and the fleet holds more than one binding")
+                    + f" (bindings: {names}). Nothing landed.")
+        if not found and len(bindings) == 1:
+            name, binding = next(iter(bindings.items()))
+            found[name] = binding["repo"]
+        for name, binding in bindings.items():
+            if name in found:
+                continue
+            repo = binding["repo"]
+            if self.git("rev-parse", "--verify", "--quiet",
+                        self.params.bolt_branch, cwd=repo).returncode == 0                     and self.branch_advanced(self.params.bolt_branch, repo):
+                found[name] = repo
+        advanced = [(name, repo) for name, repo in sorted(found.items())
+                    if self.branch_advanced(self.params.bolt_branch, repo)]
+        return advanced, None
 
     def land_stage(self, snapshot):
         """Landing per bolt.md: the criteria, then the mode, then closure.
@@ -2757,51 +2840,80 @@ class BoltLoop:
                 f"bolt-level `## Merge criteria` section with a body. Nothing "
                 f"was verified, nothing reached {self.params.main_branch}, "
                 f"nothing closed")
-        if not self.branch_advanced(self.params.bolt_branch):
+        repos, unresolved = self.landing_repos(snapshot)
+        if unresolved:
+            self.pause(numbers, unresolved)
+            return StageOutcome("land", "paused", unresolved)
+        if not repos:
             return StageOutcome("land", "failed",
                                 f"{self.params.bolt_branch} carries no work "
-                                f"beyond its cut point — nothing to land, "
-                                f"nothing closed")
-        name = session_name("land", self.params.slug)
-        order = sessions.work_order(
-            f"Land bolt/{self.params.slug} per its bolt.md.",
-            (f"Read openspec/changes/{self.params.change_id}/bolt.md on "
-             f"{self.params.bolt_branch} and VERIFY every one of its Merge criteria on "
-             f"that branch, by running them, not by reading the code. If any fails: "
-             f"land NOTHING and report the failing criterion.\n\n"
-             + (f"Its Landing line reads merge: land {self.params.bolt_branch} on "
-                f"{self.params.main_branch} through the gate (wt merge, never --yes / "
-                f"--no-hooks / --no-verify), one writer to main at a time.\n\n"
-                if mode == "merge" else
-                f"Its Landing line reads pr: push {self.params.bolt_branch} and open a "
-                f"pull request to {self.params.main_branch} (gh pr create); report its "
-                f"URL. Close nothing — the items close when the PR merges.\n\n")
-             + f"On a failing criterion: create ONE fix item, born state:ready on this "
-               f"bolt, unless an open fix item for that criterion already exists — then "
-               f"report and stop. A criterion failing AGAIN after its fix landed is the "
-               f"andon cord: write the andon marker on the item and settle, never "
-               f"another item.\n\nDeliver by settling."))
-        outcome = self.drive("land", self.spec_for(
-            "land", name, self.params.repo_dir, order), numbers)
-        if not outcome.ok:
-            return outcome
+                                f"beyond its cut point in any bound repo — "
+                                f"nothing to land, nothing closed")
+        charter_path = str(self.params.change_dir / "bolt.md")
+        landed, reports = [], []
+        for system, repo in repos:
+            # Idempotent resume: a repo whose bolt branch is already an
+            # ancestor of its main landed on an earlier attempt.
+            if self.branch_merged(self.params.bolt_branch, repo,
+                                  self.params.main_branch):
+                landed.append((system, self.head_sha(self.params.main_branch,
+                                                     repo)))
+                continue
+            suffix = f"-{system}" if len(repos) > 1 and system else ""
+            name = session_name("land", f"{self.params.slug}{suffix}")
+            order = sessions.work_order(
+                f"Land bolt/{self.params.slug} per its bolt.md.",
+                (f"The bolt's charter lives at {charter_path} (the records "
+                 f"repo). Read it and VERIFY every one of its Merge criteria "
+                 f"that exercises THIS repo, on {self.params.bolt_branch} "
+                 f"here, by running them, not by reading the code. If any "
+                 f"fails: land NOTHING and report the failing criterion.\n\n"
+                 + (f"Its Landing line reads merge: land {self.params.bolt_branch} on "
+                    f"{self.params.main_branch} through the gate (wt merge, never --yes / "
+                    f"--no-hooks / --no-verify), one writer to main at a time.\n\n"
+                    if mode == "merge" else
+                    f"Its Landing line reads pr: push {self.params.bolt_branch} and open a "
+                    f"pull request to {self.params.main_branch} (gh pr create); report its "
+                    f"URL. Close nothing — the items close when the PR merges.\n\n")
+                 + f"On a failing criterion: create ONE fix item, born state:ready on this "
+                   f"bolt, unless an open fix item for that criterion already exists — then "
+                   f"report and stop. A criterion failing AGAIN after its fix landed is the "
+                   f"andon cord: write the andon marker on the item and settle, never "
+                   f"another item.\n\nDeliver by settling."))
+            outcome = self.drive("land", self.spec_for(
+                "land", name, repo, order), numbers)
+            if not outcome.ok:
+                return outcome
+            reports.append(outcome.report or "")
+            if mode == "pr":
+                continue
+            if not self.branch_merged(self.params.bolt_branch, repo,
+                                      self.params.main_branch):
+                done = ", ".join(f"{s}:{sha}" for s, sha in landed if s)
+                paused, found = self.andon(numbers)
+                if found:
+                    self.pause([paused], f"The landing session raised the andon cord: "
+                                         f"{found.reason}")
+                    return StageOutcome("land", "paused",
+                                        f"andon on #{paused}: {found.reason}")
+                if self._landing_attempts >= MAX_LANDING_ATTEMPTS:
+                    self.pause(numbers, (
+                        "The landing failed twice in one run; the loop "
+                        "paused the bolt rather than birthing another item."
+                        + (f" Already landed: {done}." if done else "")))
+                    return StageOutcome("land", "paused", "landing failed twice")
+                return StageOutcome(
+                    "land", "failed",
+                    f"{self.params.bolt_branch} did not land on "
+                    f"{self.params.main_branch} in {repo}"
+                    + (f" (already landed: {done})" if done else ""),
+                    report=outcome.report)
+            landed.append((system, self.head_sha(self.params.main_branch,
+                                                 repo)))
         if mode == "pr":
             return StageOutcome("land", "done", "pull request opened; nothing closed",
-                                report=outcome.report)
-        if not self.branch_merged(self.params.bolt_branch, self.params.main_branch):
-            paused, found = self.andon(numbers)
-            if found:
-                self.pause([paused], f"The landing session raised the andon cord: "
-                                     f"{found.reason}")
-                return StageOutcome("land", "paused", f"andon on #{paused}: {found.reason}")
-            if self._landing_attempts >= MAX_LANDING_ATTEMPTS:
-                self.pause(numbers, "The landing failed twice in one run; the loop "
-                                    "paused the bolt rather than birthing another item.")
-                return StageOutcome("land", "paused", "landing failed twice")
-            return StageOutcome("land", "failed",
-                                f"{self.params.bolt_branch} did not land on "
-                                f"{self.params.main_branch}", report=outcome.report)
-        sha = self.head_sha(self.params.main_branch)
+                                report="\n".join(r for r in reports if r))
+        sha = ", ".join(f"{s}:{v}" if s else v for s, v in landed)
         for item in items:
             if item.is_container:
                 continue
@@ -2819,7 +2931,8 @@ class BoltLoop:
                     else None,
                 now=inbox.CLOSED_DONE)
         self.close_unit_parents(snapshot, items, sha)
-        return StageOutcome("land", "done", f"landed as {sha}", report=outcome.report)
+        return StageOutcome("land", "done", f"landed as {sha}",
+                            report="\n".join(r for r in reports if r))
 
     def close_unit_parents(self, snapshot, items, sha):
         """Close the units this landing finishes. Containers only.
@@ -2870,11 +2983,71 @@ class BoltLoop:
             self.tracker.close(
                 number,
                 f"The release this unit carries is finished: "
-                f"bolt/{self.params.slug} landed on {self.params.main_branch} as "
-                f"{sha}, and every work item it released is closed:done.",
+                f"bolt/{self.params.slug} landed as {sha}, and every work "
+                f"item it released is closed:done.",
                 reason=inbox.CLOSED_DONE)
 
     # -- the cycle ---------------------------------------------------------
+
+    def unit_binding(self, batch, snapshot):
+        """The fleet binding the batch builds against: (system name,
+        {"repo", "book"}), or None where it cannot be resolved.
+
+        The unit card's `System:` line is the key — the same structured
+        line board mode files under the card's title — matched against
+        `params.bindings`, the map the server serialized from fleet.yaml.
+        The parent card is read first (the approval froze it); an item
+        body carrying its own `System:` line wins over the parent, so a
+        future expansion may make items self-describing without touching
+        this. A sole binding is the fallback for a card naming none —
+        today's single-repo fleet, and every hand run. Several bindings
+        and no resolvable name is None: the caller pauses, because
+        guessing a repo is guessing where code lands.
+        """
+        key = batch.slug
+        if key in self._unit_bindings:
+            return self._unit_bindings[key]
+        system = None
+        for item in batch.items:
+            found = inbox.PlanCard(number=item.number, body=item.body or "").system
+            if found:
+                system = found
+                break
+        if system is None and snapshot is not None:
+            parent = next((snapshot.item(n).parent_batch for n in batch.numbers
+                           if snapshot.item(n) is not None
+                           and snapshot.item(n).parent_batch), None)
+            card = snapshot.item(parent) if parent else None
+            if card is not None:
+                system = inbox.PlanCard(number=card.number,
+                                        body=card.body or "").system
+        bindings = self.params.bindings or {}
+        if system and system in bindings:
+            resolved = (system, bindings[system])
+        elif system is None and len(bindings) == 1:
+            resolved = next(iter(bindings.items()))
+        else:
+            resolved = None
+        self._unit_bindings[key] = resolved
+        return resolved
+
+    def unresolvable_repo(self, batch, snapshot):
+        """The pause reason for a batch whose built repo cannot be named."""
+        system = None
+        parent = next((snapshot.item(n).parent_batch for n in batch.numbers
+                       if snapshot.item(n) is not None
+                       and snapshot.item(n).parent_batch), None)
+        card = snapshot.item(parent) if parent else None
+        if card is not None:
+            system = inbox.PlanCard(number=card.number,
+                                    body=card.body or "").system
+        names = ", ".join(sorted(self.params.bindings or {})) or "none"
+        return (f"The unit's built repo cannot be resolved: its card "
+                + (f"names `System: {system}`, which no fleet binding "
+                   f"carries" if system else "carries no `System:` line "
+                   f"and the fleet holds more than one binding")
+                + f" (bindings: {names}). Set the card's System line to a "
+                f"binding name — nothing is driven on a guessed repo.")
 
     def unit_config(self, batch, snapshot):
         """The type the batch runs under: its unit's, else the bolt's.
@@ -2987,8 +3160,14 @@ class BoltLoop:
                 "nothing to work this cycle")
             return result
         batches = analyse(tuple(work) + tuple(resume), snapshot, self.params.slug)
-        done = [b for b in batches if self.batch_merged(b)]
-        batches = [b for b in batches if b not in done]
+        resolved, unresolvable = [], []
+        for batch in batches:
+            binding = self.unit_binding(batch, snapshot)
+            (resolved if binding else unresolvable).append((batch, binding))
+        done = [b for b, binding in resolved
+                if self.batch_merged(b, binding[1]["repo"])]
+        resolved = [(b, binding) for b, binding in resolved if b not in done]
+        batches = [b for b, _ in resolved] + [b for b, _ in unresolvable]
         if done:
             # merged-awaiting-landing: nothing to drive, and a restarted
             # process must still reach for the landing it never saw happen.
@@ -3005,10 +3184,17 @@ class BoltLoop:
                 for b in batches)
             result.stopped = "dry run — nothing launched, nothing written"
             return result
-        self.ledger.write_plan(self.drive_plan(batches))
+        self.ledger.write_plan(self.drive_plan([b for b, _ in resolved]))
         outcomes = []
         merged = 0
-        for batch in batches:
+        for batch, _none in unresolvable:
+            reason = self.unresolvable_repo(batch, snapshot)
+            self.pause(batch.numbers, reason)
+            self.ledger.note(f"unresolvable repo — "
+                             + ", ".join(f"#{n}" for n in batch.numbers))
+            outcomes.append(StageOutcome("batch", "paused", reason))
+        for batch, binding in resolved:
+            repo, book = binding[1]["repo"], binding[1].get("book")
             paused, found = self.andon(batch.numbers)
             if found:
                 self.pause([paused], f"A session raised the andon cord: {found.reason}")
@@ -3027,7 +3213,7 @@ class BoltLoop:
             self.active_plan_mode = config.plan
             if config.runs("spec"):
                 spec = self._drive(batch, "spec",
-                                   lambda: self.spec_stage(batch))
+                                   lambda: self.spec_stage(batch, repo, book))
                 outcomes.append(spec)
                 if not spec.ok:
                     continue
@@ -3041,7 +3227,7 @@ class BoltLoop:
                                  "the type declares no build stage")
             if config.runs("build"):
                 build = self._drive(batch, "build",
-                                    lambda: self.build_stage(batch))
+                                    lambda: self.build_stage(batch, repo))
                 outcomes.append(build)
                 if not build.ok:
                     continue
@@ -3053,13 +3239,14 @@ class BoltLoop:
                     # The tracker comment is the loop's — bookkeeping was
                     # never the builder's job, and the work order no longer
                     # points the session at the tracker at all.
-                    sha = self.head_sha(f"build/{batch.slug}")
+                    sha = self.head_sha(f"build/{batch.slug}", repo)
                     for n in batch.numbers:
                         self.tracker.comment(
                             n, f"Built on build/{batch.slug} as {sha}.")
             if config.runs("verify"):
                 verify = self._drive(batch, "verify",
-                                     lambda: self.verify_stage(batch, build))
+                                     lambda: self.verify_stage(batch, build,
+                                                               repo))
                 outcomes.append(verify)
                 if not verify.ok:
                     continue
@@ -3070,7 +3257,8 @@ class BoltLoop:
                     self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
             if config.runs("merge"):
                 merge = self._drive(batch, "merge",
-                                    lambda: self.merge_stage(batch, build))
+                                    lambda: self.merge_stage(batch, repo,
+                                                             build))
                 outcomes.append(merge)
                 if merge.ran:
                     # merge_stage returns done only on ancestry git confirmed.
@@ -3079,7 +3267,7 @@ class BoltLoop:
                     # so a stage that later learns to skip cannot quietly
                     # start labelling itself.
                     self.set_stage(batch.numbers, inbox.STAGE_MERGED)
-                    self.close_merged(batch.items)
+                    self.close_merged(batch.items, repo)
                     merged += 1
                     self._merged += 1
         result.outcomes = tuple(outcomes)

@@ -237,8 +237,7 @@ TREE = Path(_TREE.name)
 
 def a_loop(tracker, runner=None, shell=None, clock=None, plan=False,
            strategy="ff", ledger=None, **overrides):
-    fields = dict(slug="x", org="o", repo="r", repo_dir=str(TREE),
-                  bolt_worktree=str(TREE), type_name="bolt-quick",
+    fields = dict(slug="x", org="o", repo="r", repo_dir=str(TREE), type_name="bolt-quick",
                   config=loop.LoopConfig(name="bolt-quick", strategy=strategy,
                                          mode="plan" if plan else "spec"))
     fields.update(overrides)
@@ -717,8 +716,7 @@ class CycleTest(unittest.TestCase):
     def test_a_failing_guard_halts_the_run_rather_than_looping(self):
         tracker = FakeTracker(Snapshot(milestone="bolt/x"))
         program = a_loop(tracker, runner=ScriptedRunner(states=[WaitState.GONE]),
-                         repo_dir="/nowhere-at-all",
-                         bolt_worktree="/nowhere-at-all")
+                         repo_dir="/nowhere-at-all")
         report = program.run(land=False)
         self.assertTrue(report.halted)
         self.assertEqual(len(report.cycles), 1, "a failing cycle never loops")
@@ -1022,8 +1020,7 @@ class StageTest(unittest.TestCase):
         runner = ScriptedRunner()
         build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
             name="build-add-thing", runner="fake"))
-        outcome = a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(
-            self.batch(1), build)
+        outcome = a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(self.batch(1), build=build)
         self.assertEqual(outcome.status, "done", "green on the retry")
         self.assertTrue(any("the books check failed" in prompt
                             for _, prompt in runner.sent))
@@ -1034,7 +1031,7 @@ class StageTest(unittest.TestCase):
         tracker = FakeTracker()
         build = loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
             name="build-add-thing", runner="fake"))
-        outcome = a_loop(tracker, shell=shell).merge_stage(self.batch(1), build)
+        outcome = a_loop(tracker, shell=shell).merge_stage(self.batch(1), build=build)
         self.assertEqual(outcome.status, "paused")
         self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
 
@@ -2037,7 +2034,7 @@ class MergeCloseTest(unittest.TestCase):
         program = a_loop(tracker, shell=self.shell())
         program.close_merged([
             item(1, inbox.IN_PROGRESS),
-            item(2, inbox.IN_PROGRESS)])
+            item(2, inbox.IN_PROGRESS)], repo=str(TREE))
         self.assertEqual(tracker.reasons, [(1, inbox.CLOSED_MERGED),
                                            (2, inbox.CLOSED_MERGED)])
         self.assertTrue(all("abc1234" in w[2] for w in tracker.writes
@@ -2369,7 +2366,7 @@ class ScaffoldCharterTest(unittest.TestCase):
 
     def loop_over(self, tmp, runner=None, description="", dry_run=False):
         program = a_loop(FakeTracker(), runner=runner or ScriptedRunner(),
-                         repo_dir=str(tmp), bolt_worktree=str(tmp),
+                         repo_dir=str(tmp),
                          description=description)
         program.dry_run = dry_run
         return program
@@ -2660,7 +2657,6 @@ class ScaffoldCharterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runner = SettlingScaffold(self.fresh_dir(tmp))
             program = self.loop_over(tmp, runner=runner)
-            program.params.bolt_worktree = "/somewhere-else"
             program.guard_scaffold([])
             self.assertEqual(runner.launched[0].cwd, str(tmp))
 
@@ -2672,8 +2668,7 @@ class ScaffoldCharterTest(unittest.TestCase):
                 ("git", "rev-parse", "--abbrev-ref", "HEAD"):
                     Result(0, "feature-branch\n")})
             program = a_loop(FakeTracker(), runner=ScriptedRunner(),
-                             shell=shell, repo_dir=str(tmp),
-                             bolt_worktree=str(tmp))
+                             shell=shell, repo_dir=str(tmp))
             failure = program.guard_scaffold([])
             self.assertIsNotNone(failure)
             self.assertIn("feature-branch", failure)
@@ -2812,7 +2807,7 @@ class LandingCharterTest(unittest.TestCase):
         tracker = FakeTracker(snapshot or self.snapshot())
         runner = ScriptedRunner()
         program = a_loop(tracker, runner=runner, shell=shell,
-                         repo_dir=str(tmp), bolt_worktree=str(tmp))
+                         repo_dir=str(tmp))
         return program, tracker, runner
 
     def refused(self, tmp, charter):
@@ -3047,7 +3042,7 @@ Landing: pr
         change = Path(tmp) / "openspec" / "changes" / "x"
         change.mkdir(parents=True, exist_ok=True)
         (change / "bolt.md").write_text(text)
-        return a_loop(FakeTracker(), repo_dir=str(tmp), bolt_worktree=str(tmp))
+        return a_loop(FakeTracker(), repo_dir=str(tmp))
 
     def test_a_charter_that_states_its_own_criteria_is_read_from_disk(self):
         # 7.5: its own charter, written here, rather than a repo path that
@@ -3092,7 +3087,7 @@ Landing: pr
                 items=[item(1, inbox.IN_PROGRESS)],
                 milestone="bolt/x")
             program = a_loop(FakeTracker(snapshot), shell=shell,
-                             repo_dir=str(tmp), bolt_worktree=str(tmp))
+                             repo_dir=str(tmp))
             outcome = program.land_stage(snapshot)
             self.assertEqual(outcome.status, "failed", outcome.detail)
             self.assertIn("merge criteria could not be read", outcome.detail)
@@ -3265,6 +3260,128 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class UnitRepoTest(unittest.TestCase):
+    """The unit card's System line resolves the batch's built repo through
+    the fleet bindings — and nothing is driven on a guessed repo."""
+
+    BINDINGS = {"alpha": {"repo": "/repos/alpha", "book": "/books/alpha"},
+                "beta": {"repo": "/repos/beta", "book": "/books/beta"}}
+
+    def loop_with(self, body, bindings=None):
+        snapshot = Snapshot(
+            items=[item(1, inbox.READY, parent_batch=9),
+                   item(9, inbox.UNIT, body=body)],
+            batches=[Batch(number=9, kind=inbox.UNIT, sub_issues=(1,),
+                           milestone="bolt/x")])
+        program = a_loop(
+            FakeTracker(snapshot),
+            bindings=dict(bindings if bindings is not None else self.BINDINGS))
+        batch = loop.WorkBatch(
+            slug="c", items=(item(1, inbox.READY, parent_batch=9),))
+        return program, batch, snapshot
+
+    def test_the_system_line_resolves_the_binding(self):
+        program, batch, snap = self.loop_with(
+            "System: beta\n\nType: `bolt-quick` · Price: 1 change")
+        name, binding = program.unit_binding(batch, snap)
+        self.assertEqual((name, binding["repo"]), ("beta", "/repos/beta"))
+
+    def test_a_sole_binding_is_the_fallback_for_a_card_naming_none(self):
+        program, batch, snap = self.loop_with(
+            "no structured line here",
+            bindings={"alpha": self.BINDINGS["alpha"]})
+        name, binding = program.unit_binding(batch, snap)
+        self.assertEqual(binding["repo"], "/repos/alpha")
+
+    def test_many_bindings_and_no_system_line_is_unresolvable(self):
+        program, batch, snap = self.loop_with("no structured line here")
+        self.assertIsNone(program.unit_binding(batch, snap))
+        reason = program.unresolvable_repo(batch, snap)
+        self.assertIn("System", reason)
+        self.assertIn("alpha", reason)
+        self.assertIn("beta", reason)
+
+    def test_an_unknown_system_is_unresolvable_never_guessed(self):
+        program, batch, snap = self.loop_with("System: gamma")
+        self.assertIsNone(program.unit_binding(batch, snap))
+
+    def test_an_unresolvable_batch_pauses_and_drives_nothing(self):
+        snapshot = Snapshot(
+            items=[item(1, inbox.READY, parent_batch=9),
+                   item(9, inbox.UNIT, body="no system named")],
+            batches=[Batch(number=9, kind=inbox.UNIT, sub_issues=(1,),
+                           milestone="bolt/x")])
+        tracker = FakeTracker(snapshot)
+        runner = ScriptedRunner()
+        program = a_loop(tracker, runner=runner,
+                         bindings=dict(self.BINDINGS))
+        result = program.cycle(1)
+        self.assertTrue(any(o.status == "paused" for o in result.outcomes))
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+        self.assertEqual(runner.launched, [], "nothing driven on a guess")
+
+    def test_the_batch_worktree_is_cut_in_the_resolved_repo(self):
+        shell = FakeShell()
+        program = a_loop(FakeTracker(), shell=shell,
+                         bindings=dict(self.BINDINGS))
+        program.batch_worktree(loop.WorkBatch(slug="c", items=()),
+                               "/repos/beta")
+        wt_cwds = {cwd for argv, cwd in shell.calls if argv[0] == "wt"}
+        self.assertEqual(wt_cwds, {"/repos/beta"})
+
+
+class LandingReposTest(unittest.TestCase):
+    """One landing per involved built repo: the tracker names the repos
+    through the unit parents' System lines, git catches the rest, and a
+    repo whose bolt branch never advanced is skipped."""
+
+    BINDINGS = {"alpha": {"repo": "/repos/alpha", "book": "/b"},
+                "beta": {"repo": "/repos/beta", "book": "/b"}}
+
+    def shell_advancing(self, advanced):
+        def run(argv, cwd=None, env=None, timeout=None):
+            argv = tuple(argv)
+            if argv[:2] == ("git", "rev-parse"):
+                return Result(0, "abc1234\n")
+            if argv[:2] == ("git", "rev-list"):
+                return Result(0, "3\n" if cwd in advanced else "0\n")
+            return Result(0)
+        return run
+
+    def snapshot(self, *bodies):
+        items = [item(9 + i, inbox.UNIT, body=body)
+                 for i, body in enumerate(bodies)]
+        return Snapshot(items=items, milestone="bolt/x")
+
+    def test_every_named_repo_lands_in_binding_order(self):
+        program = a_loop(FakeTracker(),
+                         shell=self.shell_advancing({"/repos/alpha",
+                                                     "/repos/beta"}),
+                         bindings=dict(self.BINDINGS))
+        repos, reason = program.landing_repos(
+            self.snapshot("System: beta", "System: alpha"))
+        self.assertIsNone(reason)
+        self.assertEqual(repos, [("alpha", "/repos/alpha"),
+                                 ("beta", "/repos/beta")])
+
+    def test_a_repo_that_never_advanced_is_skipped_not_failed(self):
+        program = a_loop(FakeTracker(),
+                         shell=self.shell_advancing({"/repos/alpha"}),
+                         bindings=dict(self.BINDINGS))
+        repos, reason = program.landing_repos(
+            self.snapshot("System: alpha", "System: beta"))
+        self.assertIsNone(reason)
+        self.assertEqual(repos, [("alpha", "/repos/alpha")])
+
+    def test_an_unresolvable_unit_parent_refuses_the_landing(self):
+        program = a_loop(FakeTracker(),
+                         shell=self.shell_advancing({"/repos/alpha"}),
+                         bindings=dict(self.BINDINGS))
+        repos, reason = program.landing_repos(self.snapshot("no system"))
+        self.assertEqual(repos, ())
+        self.assertIn("System", reason)
+
+
 class BuildWitnessTest(unittest.TestCase):
     """A commit on the branch is not the build's witness — the change's own
     task list is: every box checked, or the build still owes work (observed
@@ -3278,7 +3395,7 @@ class BuildWitnessTest(unittest.TestCase):
         runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 4)
         shell = FakeShell({("git", "rev-list"): Result(0, "3\n")})
         program = a_loop(FakeTracker(), runner=runner, shell=shell)
-        program.batch_worktree = lambda b: tmp
+        program.batch_worktree = lambda b, repo=None: tmp
         return program, runner
 
     def test_unchecked_tasks_mean_the_build_still_runs(self):

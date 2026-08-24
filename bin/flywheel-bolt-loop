@@ -43,8 +43,6 @@ def parse_args(argv=None):
                         help="the fleet's book bindings as JSON: system "
                              "name -> {repo, book} paths; a unit's System: "
                              "line resolves its built repo here")
-    parser.add_argument("--bolt-worktree", default=None,
-                        help="the bolt branch's worktree (default: --repo-dir)")
     parser.add_argument("--bolt-branch", default=None,
                         help="default: bolt/<slug>")
     parser.add_argument("--main-branch", default="main")
@@ -74,7 +72,6 @@ def parse_args(argv=None):
 
 def build_loop(args):
     repo_dir = str(Path(args.repo_dir).resolve())
-    worktree = str(Path(args.bolt_worktree).resolve()) if args.bolt_worktree else repo_dir
 
     if args.fixture:
         tracker = loop.FixtureTracker(args.fixture, write_back=not args.dry_run)
@@ -85,7 +82,7 @@ def build_loop(args):
         milestone = tracker.milestone(f"{inbox.BOLT_PREFIX}{args.slug}")
         description = (milestone or {}).get("description", "")
 
-    changes_root = Path(worktree) / "openspec" / "changes"
+    changes_root = Path(repo_dir) / "openspec" / "changes"
     change_id = inbox.resolve_change_id(changes_root,
                                         f"{inbox.BOLT_PREFIX}{args.slug}")
     binding = loop.read_binding(changes_root / change_id)
@@ -97,7 +94,7 @@ def build_loop(args):
     bindings = json.loads(args.bindings_json) if args.bindings_json else None
     params = loop.BoltParams(
         slug=args.slug, org=args.org, repo=args.repo, repo_dir=repo_dir,
-        bolt_worktree=worktree, bolt_branch=args.bolt_branch,
+        bolt_branch=args.bolt_branch,
         main_branch=args.main_branch, type_name=type_name,
         book_dir=args.book, change_id=change_id, bindings=bindings,
         config=config,

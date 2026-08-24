@@ -874,9 +874,9 @@ class NotTheFixtureTracker:
 
     `guard_charter` reads nothing off the tracker object — the snapshot
     carries the units — but it refuses to touch git when the tracker IS a
-    `FixtureTracker`, because `guard_topology` skips itself there and
-    `bolt_worktree` would still be the operator's own checkout. So these
-    tests must not hand it one.
+    `FixtureTracker`: a fixture run exercises the tracker's filters and
+    never writes the operator's checkout. So these tests must not hand
+    it one.
     """
 
 
@@ -940,8 +940,7 @@ class CharterTest(unittest.TestCase):
         git = FakeGit(main, head=head, fail_commit=fail_commit)
         snapshot = bolt.FixtureTracker(fixture(tmp, items)).snapshot(
             self.MILESTONE)
-        params = bolt.BoltParams(slug="observer-rework", repo_dir=str(main),
-                                 bolt_worktree=str(tree))
+        params = bolt.BoltParams(slug="observer-rework", repo_dir=str(main))
         loop = bolt.BoltLoop(params, tracker or NotTheFixtureTracker(),
                              run=git)
         return loop, git, record, snapshot, main
@@ -1009,9 +1008,6 @@ class CharterTest(unittest.TestCase):
             loop, git, record, snap, tree = self.setup(tmp, self.two_units())
             loop.guard_charter(snap, [])
             self.assertTrue(git.calls)
-            self.assertNotEqual(loop.params.bolt_worktree,
-                                loop.params.repo_dir,
-                                "or this assertion proves nothing")
             for argv, cwd in git.calls:
                 self.assertEqual(cwd, loop.params.repo_dir, str(argv))
 
@@ -1152,10 +1148,10 @@ class CharterTest(unittest.TestCase):
             self.assertIn("would write", actions[0])
             self.assertIn("second-unit.md", actions[0])
 
-    def test_the_charter_guard_runs_after_topology_names_the_worktree(self):
-        # design.md makes this a Decision, and every other test here calls
-        # guard_charter directly with `bolt_worktree` already set — so a
-        # reorder would commit into the MAIN worktree with the suite green.
+    def test_the_charter_guard_runs_after_expand_and_scaffold(self):
+        # Every other test here calls guard_charter directly, so the
+        # guards' order is asserted once: expansion births the units and
+        # the scaffold births the change directory the charter writes into.
         with tempfile.TemporaryDirectory() as tmp:
             tracker = bolt.FixtureTracker(fixture(tmp, [unit_item(11)]))
             loop, git, record, snap, tree = self.setup(
@@ -1170,13 +1166,13 @@ class CharterTest(unittest.TestCase):
                     return original(*a, **kw)
                 setattr(loop, name, call)
 
-            for name in ("guard_expand", "guard_scaffold", "guard_topology",
+            for name in ("guard_expand", "guard_scaffold",
                          "guard_charter", "guard_flip_consume",
                          "guard_stages"):
                 watch(name)
             loop.guards(snap)
-            self.assertEqual(seen[:4], ["guard_expand", "guard_scaffold",
-                                        "guard_topology", "guard_charter"])
+            self.assertEqual(seen[:3], ["guard_expand", "guard_scaffold",
+                                        "guard_charter"])
 
     # -- a unit title that parses no slug ---------------------------------
     #
