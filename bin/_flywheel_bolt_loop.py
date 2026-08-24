@@ -945,6 +945,13 @@ class BoltParams:
     #: items' chapter citations resolve. Sessions cannot read a chapter
     #: they cannot find.
     book_dir: str = None
+    #: The fleet's book bindings: system name -> {"repo": <built repo
+    #: path>, "book": <book path>}. A unit card's `System:` line resolves
+    #: its built repo here; a sole binding is the fallback for a card
+    #: naming none. Absent (a hand run, a fixture), a sole binding is
+    #: synthesized from `repo_dir` and `--book`, which is today's
+    #: single-repo behavior exactly.
+    bindings: dict = None
     #: The openspec change id the bolt's record lives under —
     #: kind-prefixed (`bolt-<slug>`) for a record scaffolded now, the bare
     #: slug for one that predates the prefix (`resolve_change_id` adopts an
@@ -959,6 +966,8 @@ class BoltParams:
         self.config = self.config or LoopConfig(name=self.type_name)
         self.change_id = self.change_id or inbox.resolve_change_id(
             Path(self.repo_dir) / "openspec" / "changes", self.milestone)
+        self.bindings = self.bindings or {
+            "": {"repo": str(self.repo_dir), "book": self.book_dir}}
 
     @property
     def milestone(self):

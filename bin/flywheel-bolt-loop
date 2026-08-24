@@ -37,7 +37,12 @@ def parse_args(argv=None):
     parser.add_argument("--project", default="Flywheel",
                         help="the org Project whose Status lane carries the approval")
     parser.add_argument("--repo-dir", default=".",
-                        help="the built repo's main checkout")
+                        help="the records repo checkout — where "
+                             "openspec/changes/ holds the bolt's record")
+    parser.add_argument("--bindings-json", default=None,
+                        help="the fleet's book bindings as JSON: system "
+                             "name -> {repo, book} paths; a unit's System: "
+                             "line resolves its built repo here")
     parser.add_argument("--bolt-worktree", default=None,
                         help="the bolt branch's worktree (default: --repo-dir)")
     parser.add_argument("--bolt-branch", default=None,
@@ -45,7 +50,8 @@ def parse_args(argv=None):
     parser.add_argument("--main-branch", default="main")
     parser.add_argument("--book", default=None,
                         help="the design book's checkout, where chapter "
-                             "citations resolve (from the fleet binding)")
+                             "citations resolve — the hand-run fallback "
+                             "when --bindings-json is absent")
     parser.add_argument("--type", dest="type_name", default=None,
                         help="bolt type; default: the change's own binding")
     parser.add_argument("--fixture", default=None,
@@ -88,11 +94,12 @@ def build_loop(args):
         binding, loop.load_type(type_name, repo_dir).validate())
 
 
+    bindings = json.loads(args.bindings_json) if args.bindings_json else None
     params = loop.BoltParams(
         slug=args.slug, org=args.org, repo=args.repo, repo_dir=repo_dir,
         bolt_worktree=worktree, bolt_branch=args.bolt_branch,
         main_branch=args.main_branch, type_name=type_name,
-        book_dir=args.book, change_id=change_id,
+        book_dir=args.book, change_id=change_id, bindings=bindings,
         config=config,
         description=description)
 

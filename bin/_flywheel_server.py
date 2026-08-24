@@ -380,21 +380,6 @@ class Server:
             table.setdefault(milestone, team)
         return {**other, **ready}
 
-    def bolt_worktree(self, slug):
-        """The worktree sitting on `bolt/<slug>`, read from git, or None."""
-        branch = f"{inbox.BOLT_PREFIX}{slug}"
-        out = self.run(["git", "worktree", "list", "--porcelain"],
-                       cwd=str(self.config.loops_cwd))
-        if getattr(out, "returncode", 1) != 0:
-            return None
-        path = None
-        for line in (out.stdout or "").splitlines():
-            if line.startswith("worktree "):
-                path = line[len("worktree "):].strip()
-            elif line.strip() == f"branch refs/heads/{branch}" and path:
-                return path
-        return None
-
     def argv_for(self, job):
         """The loop process's command line.
 
@@ -403,6 +388,15 @@ class Server:
         `stage:done` — and has no parameter selecting between candidates, so
         a daemon cannot answer that question on the operator's behalf by
         accident or otherwise.
+
+        `--repo-dir` is the RECORDS repo — `loops_cwd`, where the
+        milestone's openspec change lives. A bolt job also gets the
+        fleet's book bindings as one JSON argument, system name → built
+        repo and book paths: the loop resolves each unit's built repo from
+        its card's `System:` line against this map, so the manifest stays
+        the server's to read and the loop never opens fleet.yaml. The bolt
+        branch and its worktrees are the loop's to cut and adopt, in the
+        built repos — the server passes no worktree.
         """
         slug = inbox.milestone_slug(job.milestone) or ""
         kind = milestone_kind(job.milestone)
@@ -411,32 +405,14 @@ class Server:
                 "--org", self.config.org, "--repo", self.config.repo,
                 "--project", self.config.project,
                 "--repo-dir", str(self.config.loops_cwd)]
-        if kind == "bolt":
-            worktree = self.bolt_worktree(slug)
-            if worktree:
-                argv += ["--bolt-worktree", worktree]
-            book = self.bound_book()
-            if book:
-                argv += ["--book", book]
+        if kind == "bolt" and self.config.books:
+            bindings = {name: {"repo": str(b["repo"]), "book": str(b["book"])}
+                        for name, b in self.config.books.items()
+                        if b.get("repo") and b.get("book")}
+            if bindings:
+                argv += ["--bindings-json",
+                         json.dumps(bindings, sort_keys=True)]
         return tuple(argv)
-
-    def bound_book(self):
-        """The design book bound to the repo the loops run in.
-
-        Chapter citations in work items resolve under it; a spec session
-        that cannot find the book writes from the item's summary instead,
-        which is how a stale card's text outlives the chapters (#260).
-        """
-        bindings = [b for b in (self.config.books or {}).values()
-                    if b.get("book")]
-        for binding in bindings:
-            repo = binding.get("repo")
-            if repo and self.config.loops_cwd and str(
-                    self.config.loops_cwd).endswith(str(repo).rstrip("/")):
-                return str(binding["book"])
-        if len(bindings) == 1:
-            return str(bindings[0]["book"])
-        return None
 
     # -- the pass ----------------------------------------------------------
 

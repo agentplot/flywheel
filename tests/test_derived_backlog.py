@@ -1567,15 +1567,18 @@ class BookPathTest(unittest.TestCase):
     """Chapter citations resolve under the bound book, and the spec brief
     says so — a session cannot read a chapter it cannot find (#260)."""
 
-    def test_the_server_passes_the_bound_book_to_bolt_loops(self):
+    def test_the_server_passes_the_bindings_to_bolt_loops(self):
         config = server.ServerConfig(
             books={"flywheel": {"book": "/books/flywheel", "repo": "/r"}})
         daemon = server.Server(config, tracker=RecordingTracker(),
                                clock=lambda: 0.0, log=lambda m: None)
-        daemon.bolt_worktree = lambda slug: None
         argv = daemon.argv_for(inbox.Job("bolt/x", "run", "why"))
-        self.assertIn("--book", argv)
-        self.assertEqual(argv[argv.index("--book") + 1], "/books/flywheel")
+        self.assertIn("--bindings-json", argv)
+        bindings = json.loads(argv[argv.index("--bindings-json") + 1])
+        self.assertEqual(bindings, {"flywheel": {"repo": "/r",
+                                                 "book": "/books/flywheel"}})
+        intent_argv = daemon.argv_for(inbox.Job("intent/x", "run", "why"))
+        self.assertNotIn("--bindings-json", intent_argv)
 
     def test_the_spec_brief_names_the_book_and_orders_the_read(self):
         params = bolt.BoltParams(slug="x", repo_dir=".",

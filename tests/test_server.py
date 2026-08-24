@@ -263,13 +263,12 @@ class ArgvTest(unittest.TestCase):
         self.assertEqual(argv[0], "/bin-dir/flywheel-intent-loop")
         self.assertEqual(argv[argv.index("--slug") + 1], "kit-lift")
 
-    def test_the_bolt_branchs_worktree_is_read_from_git_when_it_exists(self):
-        porcelain = ("worktree /w/main\nHEAD abc\nbranch refs/heads/main\n\n"
-                     "worktree /w/bolt-x\nHEAD def\n"
-                     "branch refs/heads/bolt/x\n")
-        box = a_server(run=FakeRun({("git", "worktree"): Result(0, porcelain)}))
-        argv = box.argv_for(Job("bolt/x", "run"))
-        self.assertEqual(argv[argv.index("--bolt-worktree") + 1], "/w/bolt-x")
+    def test_the_server_passes_no_worktree_and_no_book(self):
+        # The bolt branch and its worktrees are the loop's to cut and
+        # adopt, per built repo; the book rides in the bindings.
+        argv = a_server().argv_for(Job("bolt/x", "run"))
+        self.assertNotIn("--bolt-worktree", argv)
+        self.assertNotIn("--book", argv)
 
     def test_no_completion_signal_is_ever_invented(self):
         # R1 is open. The intent loop is built to run every stage up to
