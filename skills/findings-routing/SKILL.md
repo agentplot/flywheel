@@ -43,7 +43,7 @@ The containers you may propose, and what each route does at apply:
 You run on the repo that owns the bolt change. Write the payload under
 the bolt's own change directory —
 
-    openspec/changes/<bolt>/sessions/<date>-findings-routing/close/
+    openspec/changes/bolt-<slug>/sessions/<date>-findings-routing/close/
 
 — the same file shapes the protocol names, and commit it by pathspec
 before any tracker write, pushing what you commit: your directory is a

@@ -7,7 +7,7 @@
 - [intent slug or plan card] — [task text]
 
 ## Repos
-- [repo] · bolt branch `bolt/[slug]` · worktree `~/.herdr/worktrees/[repo]/bolt-[slug]`
+- [system] · bolt branch `bolt/[slug]`
 
 ## Merge criteria
 [Acceptance suites green on the bolt branch; no verify stage runs on this

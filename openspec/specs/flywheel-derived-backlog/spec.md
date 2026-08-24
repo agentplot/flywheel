@@ -10,13 +10,39 @@ fleet homes — naming the design book's checkout path, the built
 repo's checkout path, the Team a filed plan card carries, and
 optionally the settle window in minutes (default 90). The server
 reads the bindings at start; a system without a binding gets no
-planning runs.
+planning runs. The bindings are also construction's repo map: the
+server SHALL pass them to each bolt loop as one JSON argument
+(`--bindings-json`, system name → repo and book paths), and the loop
+SHALL resolve each unit's built repo from its card's `System:` line
+against that map — the sole binding as the fallback for a card naming
+none, and a pause (never a guess) where several bindings leave a card
+unplaceable. The loop never reads the manifest itself.
 
 #### Scenario: binding read
 
 - **WHEN** the manifest carries `books: {flywheel: {book: B, repo: R, team: T}}`
 - **THEN** the server's config holds the binding and the reconcile
   pass evaluates it
+
+#### Scenario: the bindings reach the bolt loop
+
+- **WHEN** the server starts a loop for a `bolt/*` milestone
+- **THEN** its argv carries `--bindings-json` with every binding's
+  repo and book paths, and no worktree or book flag beside it
+
+#### Scenario: a unit resolves its built repo
+
+- **WHEN** a unit card carries `System: flywheel` and the bindings map
+  holds `flywheel`
+- **THEN** that unit's bolt branch and build worktrees are cut in the
+  `flywheel` binding's repo
+
+#### Scenario: an unplaceable card pauses
+
+- **WHEN** the fleet holds several bindings and a unit card carries no
+  resolvable `System:` line
+- **THEN** the loop pauses the unit's items with `needs-operator` and
+  drives nothing for them
 
 ### Requirement: Unapproved plan cards are marked stale
 
@@ -446,7 +472,9 @@ serves every unit on the milestone.
 
 ### Requirement: The bolt's charter is the bolt's own statement
 
-`openspec/changes/<slug>/bolt.md` is the bolt's charter and carries the
+The bolt's change directory's `bolt.md` (under
+`openspec/changes/bolt-<slug>/` in the records repo, on its main
+branch) is the bolt's charter and carries the
 bolt-level statement alone: the delivery, the unit sequence and price,
 and the merge criteria the landing verifies. It SHALL carry the sections
 the bound `bolt-*` schema's `bolt.md` template names — scope, sources,
@@ -536,8 +564,8 @@ its default on a charter that said nothing.
 
 #### Scenario: a change directory that exists without a charter
 
-- **WHEN** a pass finds `openspec/changes/<slug>/` present and
-  `openspec/changes/<slug>/bolt.md` absent
+- **WHEN** a pass finds the bolt's change directory present and its
+  `bolt.md` absent
 - **THEN** a session is driven to write the charter into that change,
   ordered through the invocation that adds an artifact to an existing
   change and asked for the same four sections, `Landing:` line and
@@ -588,12 +616,15 @@ its default on a charter that said nothing.
 A plan document is mutable state on the tracker while its card is
 unapproved. The operator's approval freezes it, and expansion is what
 makes it durable prose in git. The loop SHALL write each expanded unit's
-plan document to `openspec/changes/<slug>/units/<unit-slug>.md` —
-verbatim from the body of the card the operator approved, one file per
-approved unit, named by the slug the card's title carries. The write
-SHALL be committed to the bolt's change directory on the branch that
-carries the bolt's record — main only before the bolt branch is cut, the
-bolt branch after.
+plan document to the bolt's change directory (`units/<unit-slug>.md`
+under `openspec/changes/bolt-<slug>/`, or the bare-slug directory a
+record that predates the prefix already uses) — verbatim from the body
+of the card the operator approved, one file per approved unit, named by
+the slug the card's title carries. The write SHALL be committed by
+pathspec on the RECORDS repo's main branch: the record lives beside the
+books, never on a construction branch, and a records checkout parked
+off main pauses the pass rather than committing onto the operator's
+branch.
 
 The unit artifacts are not written into the charter. `bolt.md` is the
 bolt's statement and a unit file is the approval's, and neither is

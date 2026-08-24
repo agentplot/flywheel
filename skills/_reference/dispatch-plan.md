@@ -136,7 +136,7 @@ takes the round loses nothing.
 worktree of the repo that owns the bolt change, and its plan is real
 files like a design session's, under the bolt's own change directory:
 
-    openspec/changes/<bolt>/sessions/<date>-findings-routing/close/
+    openspec/changes/bolt-<slug>/sessions/<date>-findings-routing/close/
 
 with the same file shapes as above. The rows it routes are the queued
 items themselves — like dispatch's intake, they pre-exist as the inbox
@@ -173,7 +173,10 @@ every control. Per row, one route:
   container's elaboration, or a unit card on a bolt container in
   bolt-planning's grammar. On a bolt row the unit's type is a seeded,
   overridable control — an override is written into the card's `Type:`
-  line before filing.
+  line before filing. The row's system rides beside it — seeded in the
+  payload, rendered on the row, written into the card's `System:` line
+  at filing (how construction resolves the unit's built repo); a wrong
+  system is corrected by annotation or send-back.
 - **backlog** — filed `state:queued` on the container's milestone, out
   of this round; the board's word for parked work.
 - **drop** — not filed at all.
@@ -269,7 +272,12 @@ the operator's board approval. Steps an origin lacks are skipped.
    unit with its `units/<slug>.md` body verbatim, `builds on` mirrored
    as blocked-by between cards, and cards this plan explicitly replaces
    closed `closed:superseded` — never other unapproved cards that
-   happen to share the milestone.
+   happen to share the milestone. Every card body carries its two
+   machine-read lines before filing: `System: <name>` under the title
+   (the fleet binding the bolt loop resolves the unit's built repo
+   through) and the `Type:` line, with any round override written in —
+   a card missing either builds on the fleet's sole binding and the
+   bolt's bound type, which is a fallback, not a filing convention.
 4. **Own items** — `flywheel-stage <n> … --stage stage:done` on each
    item the session carries, per the existing contract. Dispatch
    carries none; its triage plan skips this step.

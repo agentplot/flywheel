@@ -65,9 +65,14 @@ gaps as items rather than improvising around them.
 ## Topology
 
 One bolt branch + worktree per involved built repo (`bolt/<slug>`),
-alive for the bolt's lifetime. Sessions build on nested worktrees off
-the bolt branch — concurrent when items are independent, serial when
-they share contracts. Building directly on the bolt branch is legal only
+alive for the bolt's lifetime, cut lazily as units resolve to repos: a
+unit card's `System:` line names the fleet binding, and
+`fleet.yaml` `books.<name>.repo` is where that unit's construction
+runs. The bolt's RECORDS — `bolt.md`, `units/*.md`, under
+`openspec/changes/bolt-<slug>/` — live in the records repo on its main
+branch, never on a construction branch. Sessions build on nested
+worktrees off the bolt branch — concurrent when items are independent,
+serial when they share contracts. Building directly on the bolt branch is legal only
 for a bolt with a single small item. Batch acceptance after 2–3
 merge-backs by default; a batch of one for high-risk changes.
 

@@ -138,7 +138,13 @@ named loop configuration, and the construction path is part of it:
   `openspec/specs/` and is invisible to future planning runs.
 
 Nothing machine-read lives on the milestone: the summary is prose,
-and the loop reads the type from the unit card at drive time.
+and the loop reads the type from the unit card at drive time. The
+card's `System: <name>` line is machine-read the same way: it names
+the fleet binding (`fleet.yaml` `books.<name>`), and construction
+resolves the unit's BUILT REPO through it — `books.<name>.repo` on the
+machine the loop runs on. A card naming no system builds on the
+fleet's sole binding; a fleet holding several bindings pauses an
+unplaceable card for the operator rather than guessing a repo.
 
 ```markdown
 # Unit: <slug>

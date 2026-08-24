@@ -158,7 +158,9 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
        rendered as a header select), and `stats`.
      rows: intent rows carry badge/badgeClass (the item's type);
        question: true puts the inline-answer input on the row. Bolt rows
-       carry type (seeds the overridable dropdown) and changes[] (slug +
+       carry type (seeds the overridable dropdown), system (the fleet
+       binding whose built repo the unit's construction runs in — written
+       into the card's System: line at apply), and changes[] (slug +
        delivers per change row, visible at a glance — approving a unit
        is approving its changes, so they are never hidden).
      badgeClass by kind — writeback badge-warning · research badge-info
@@ -195,7 +197,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       "stats": "1 unit · 2 changes · ~1.5 days",
       "srcId": "src-bolt-plan-generalization",
       "rows": [
-        { "key": "unit: plan-protocol", "type": "bolt-default", "badgeClass": "badge-accent",
+        { "key": "unit: plan-protocol", "type": "bolt-default", "system": "flywheel", "badgeClass": "badge-accent",
           "title": "Unit: plan-protocol — 2 changes · ~1.5 days",
           "oneliner": "The generalized reference and template; the digest grammar proven on a scratch milestone",
           "srcId": "src-unit-plan-protocol",
@@ -366,6 +368,15 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
         preview();
       });
       ctl.append(tsel);
+      if (item.system) {
+        // The fleet binding the unit builds against — written into the
+        // card's System: line at apply. Correcting it is an annotation
+        // or a send-back, not a control.
+        const sys = document.createElement("div");
+        sys.className = "text-xs opacity-60 mt-1";
+        sys.textContent = `system: ${item.system}`;
+        ctl.append(sys);
+      }
     }
     r.append(b, mid, ctl);
     return r;

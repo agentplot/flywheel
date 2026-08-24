@@ -73,10 +73,13 @@ artifacts:
       1. **Scope** - what this bolt builds, in one paragraph.
       2. **Sources** - the plans and intents this bolt serves;
          work folded in later is appended here with dates.
-      3. **Repos** - one line per involved built repo: repo · bolt branch
-         name (`bolt/<slug>`) · worktree path. Bolt branches live for the
-         length of the bolt; construction work runs on nested worktrees
-         off them.
+      3. **Repos** - one line per involved built repo: the fleet binding's
+         System name · bolt branch name (`bolt/<slug>`). No paths — where
+         a repo lives is fleet.yaml's, machine-local, never the
+         record's. Bolt branches live for the length of the bolt;
+         construction work runs on nested worktrees off them. When a
+         bolt spans repos, each merge criterion names the repo it
+         exercises.
       4. **Merge criteria** - what "thorough enough to land on main" means
          for this bolt: the acceptance suites that must be green on the
          bolt branch, review requirements, and any repo-specific gates.

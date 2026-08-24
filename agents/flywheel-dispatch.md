@@ -56,7 +56,9 @@ approval, including on cards folded into a running bolt.
 dictation is applied directly — the same routes, without a round,
 including the dictated card: author the plan card exactly as the bolt
 planner would (`Unit: <slug>`, label `plan`, the unit-document body — a
-task table with one change per row, the unit's type, its price — at
+`System: <name>` line under the title naming the fleet binding whose
+built repo the unit changes, a task table with one change per row, the
+unit's `Type:` line, its price — at
 board Backlog with the fleet's Team; `flywheel-batch` does not make plan
 cards; use `gh` and `flywheel-board --status Backlog`), and create the
 `bolt/<slug>` milestone when no open bolt fits. Chapter citations only
