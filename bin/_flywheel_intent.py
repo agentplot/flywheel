@@ -50,7 +50,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,
+from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,  # noqa: E501
+                             resolve_change_id,
                              IN_PROGRESS, NEEDS_OPERATOR, QUEUED, READY,
                              STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
                              STATUS_BACKLOG, Tracker,
@@ -501,7 +502,7 @@ def session_order(batch, config):
     nums = ", ".join(f"#{n}" for n in batch.numbers)
     invocation = f"{batch.type} session for intent {config.slug} - items {nums}"
     brief = "\n".join([
-        f"Change: {config.slug}. Session type: {batch.type}. "
+        f"Change: {config.change_id}. Session type: {batch.type}. "
         f"Items: {nums}.",
         "",
         config.goal or (
@@ -510,7 +511,7 @@ def session_order(batch, config):
         ),
         "",
         f"Your session directory is "
-        f"openspec/changes/{config.slug}/sessions/<date>-<topic>/ and you are "
+        f"openspec/changes/{config.change_id}/sessions/<date>-<topic>/ and you are "
         "its sole writer. Write your records (decisions, questions, "
         "the session README) in your worktree; queue your own "
         "discoveries as items — whoever finds queues; comment each item you "
@@ -726,6 +727,14 @@ class Config:
     @property
     def milestone(self):
         return f"{INTENT_PREFIX}{self.slug}"
+
+    @property
+    def change_id(self):
+        """The openspec change id the intent's record lives under —
+        kind-prefixed (`intent-<slug>`) unless a bare-slug directory
+        predates the prefix, which is adopted rather than renamed."""
+        return resolve_change_id(
+            Path(self.repo_dir) / "openspec" / "changes", self.milestone)
 
     @property
     def batch_cmd(self):

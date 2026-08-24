@@ -417,7 +417,9 @@ class ArchiveTest(unittest.TestCase):
             ("git", "status"): Result(0, " M openspec/specs/x/spec.md\n"),
         })
         self.assertTrue(a_server(run=run).archive(self.want(), Snapshot()))
-        self.assertTrue(run.ran("openspec", "archive", "a", "--yes", "--json"))
+        # No bare-slug directory exists under loops_cwd, so the archive
+        # targets the kind-prefixed change id.
+        self.assertTrue(run.ran("openspec", "archive", "bolt-a", "--yes", "--json"))
         self.assertTrue(run.ran("git", "commit"))
         commits = [argv for argv, _ in run.calls if argv[:2] == ("git", "commit")]
         self.assertEqual(commits[0][-2:], ("--", "openspec/"),

@@ -2374,7 +2374,13 @@ class ScaffoldCharterTest(unittest.TestCase):
         return program
 
     def change_dir(self, tmp):
+        # A bare-slug directory made BEFORE the loop is built is adopted
+        # (no rename of a live change); a fresh scaffold gets the
+        # kind-prefixed id.
         return Path(tmp) / "openspec" / "changes" / "x"
+
+    def fresh_dir(self, tmp):
+        return Path(tmp) / "openspec" / "changes" / "bolt-x"
 
     # -- what the order says (5.1) ----------------------------------------
 
@@ -2390,7 +2396,7 @@ class ScaffoldCharterTest(unittest.TestCase):
                 self.assertIn(heading, order, heading)
             self.assertIn("Landing: merge", order)
             self.assertIn("Landing: pr", order)
-            self.assertIn("openspec instructions bolt --change x", order,
+            self.assertIn("openspec instructions bolt --change bolt-x", order,
                           "the template stays the authority for the content")
             self.assertIn("Carve the loop's boundaries. Three units, ~9 items.",
                           order, "the description is the charter's stated source")
@@ -2444,12 +2450,12 @@ class ScaffoldCharterTest(unittest.TestCase):
 
     def test_a_unit_only_charter_fails_the_guard_by_name(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runner = SettlingScaffold(self.change_dir(tmp), charter=UNIT_ONLY)
+            runner = SettlingScaffold(self.fresh_dir(tmp), charter=UNIT_ONLY)
             program = self.loop_over(tmp, runner=runner)
             actions = []
             failure = program.guard_scaffold(actions)
             self.assertIsNotNone(failure, "a settle is no longer the whole test")
-            self.assertIn("openspec/changes/x/bolt.md", failure)
+            self.assertIn("openspec/changes/bolt-x/bolt.md", failure)
             self.assertIn("## Merge criteria", failure)
             self.assertIn("## Scope", failure)
             self.assertEqual(actions, [],
@@ -2466,25 +2472,25 @@ class ScaffoldCharterTest(unittest.TestCase):
 
     def test_a_session_that_wrote_no_charter_at_all_fails_it(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runner = SettlingScaffold(self.change_dir(tmp), charter=None)
+            runner = SettlingScaffold(self.fresh_dir(tmp), charter=None)
             program = self.loop_over(tmp, runner=runner)
             failure = program.guard_scaffold([])
             self.assertIsNotNone(failure)
-            self.assertIn("openspec/changes/x/bolt.md", failure)
+            self.assertIn("openspec/changes/bolt-x/bolt.md", failure)
 
     def test_a_charter_with_merge_criteria_passes_and_records_its_action(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runner = SettlingScaffold(self.change_dir(tmp))
+            runner = SettlingScaffold(self.fresh_dir(tmp))
             program = self.loop_over(tmp, runner=runner)
             actions = []
             self.assertIsNone(program.guard_scaffold(actions))
-            self.assertEqual(actions, ["scaffolded openspec/changes/x"])
+            self.assertEqual(actions, ["scaffolded openspec/changes/bolt-x"])
 
     def test_the_check_is_the_landings_own_reader(self):
         # Not a second regex: "the guard passed" and "the landing can read
         # it" must be the same question, asked once.
         with tempfile.TemporaryDirectory() as tmp:
-            runner = SettlingScaffold(self.change_dir(tmp))
+            runner = SettlingScaffold(self.fresh_dir(tmp))
             program = self.loop_over(tmp, runner=runner)
             seen = []
             real = program.merge_criteria
@@ -2571,8 +2577,8 @@ class ScaffoldCharterTest(unittest.TestCase):
         for pre_made in (False, True):
             with tempfile.TemporaryDirectory() as tmp:
                 if pre_made:
-                    self.change_dir(tmp).mkdir(parents=True)
-                runner = SettlingScaffold(self.change_dir(tmp))
+                    self.fresh_dir(tmp).mkdir(parents=True)
+                runner = SettlingScaffold(self.fresh_dir(tmp))
                 self.loop_over(tmp, runner=runner,
                                description="Three units, ~9 items.").guard_scaffold([])
                 order = runner.launched[0].order
@@ -2593,8 +2599,8 @@ class ScaffoldCharterTest(unittest.TestCase):
         def failure_from(pre_made, charter):
             with tempfile.TemporaryDirectory() as tmp:
                 if pre_made:
-                    self.change_dir(tmp).mkdir(parents=True)
-                runner = SettlingScaffold(self.change_dir(tmp), charter=charter)
+                    self.fresh_dir(tmp).mkdir(parents=True)
+                runner = SettlingScaffold(self.fresh_dir(tmp), charter=charter)
                 program = self.loop_over(tmp, runner=runner)
                 actions = []
                 failure = program.guard_scaffold(actions)
@@ -2606,7 +2612,7 @@ class ScaffoldCharterTest(unittest.TestCase):
         continuing = failure_from(True, None)
         self.assertIsNotNone(continuing, "the check runs on both paths")
         self.assertEqual(creating, continuing)
-        self.assertIn("openspec/changes/x/bolt.md", continuing)
+        self.assertIn("openspec/changes/bolt-x/bolt.md", continuing)
         self.assertIn("## Merge criteria", continuing)
         self.assertIn("## Scope", continuing)
         bodyless = failure_from(
@@ -2655,7 +2661,7 @@ class ScaffoldCharterTest(unittest.TestCase):
             self.assertIsNone(program.guard_scaffold(actions))
             self.assertEqual(runner.launched, [])
             self.assertEqual(len(actions), 1)
-            self.assertIn("would scaffold openspec/changes/x", actions[0])
+            self.assertIn("would scaffold openspec/changes/bolt-x", actions[0])
 
 
 class BoltParamsDescriptionTest(unittest.TestCase):

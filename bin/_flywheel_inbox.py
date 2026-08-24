@@ -116,6 +116,32 @@ def milestone_slug(milestone):
     return None
 
 
+def change_id(milestone):
+    """The kind-prefixed openspec change id a milestone's record uses:
+    `bolt/loop-server` -> `bolt-loop-server`, `intent/x` -> `intent-x`.
+    The prefix keeps the two kinds apart at a glance in the records
+    repo's openspec/changes/. None for anything else."""
+    for prefix in MILESTONE_PREFIXES:
+        if milestone and milestone.startswith(prefix):
+            return prefix.rstrip("/") + "-" + milestone[len(prefix):]
+    return None
+
+
+def resolve_change_id(changes_root, milestone):
+    """The change id a milestone's record actually lives under.
+
+    An existing bare-slug directory is adopted — renaming a live change
+    would rewrite openspec bookkeeping under open sessions — so only
+    records scaffolded after the prefix landed carry it."""
+    slug = milestone_slug(milestone)
+    prefixed = change_id(milestone)
+    if slug is None:
+        return None
+    if changes_root is not None and (Path(changes_root) / slug).is_dir():
+        return slug
+    return prefixed
+
+
 # ---------------------------------------------------------------------------
 # The objects
 # ---------------------------------------------------------------------------
@@ -587,7 +613,7 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
         slug = milestone_slug(milestone)
         if slug is None:
             continue
-        if changes is None or (changes / slug).exists():
+        if changes is None or (changes / resolve_change_id(changes, milestone)).exists():
             add(milestone, "archive", "closed milestone, change still in openspec/changes/")
 
     return sorted(jobs.values(), key=lambda j: (j.milestone, j.kind))

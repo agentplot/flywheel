@@ -945,6 +945,11 @@ class BoltParams:
     #: items' chapter citations resolve. Sessions cannot read a chapter
     #: they cannot find.
     book_dir: str = None
+    #: The openspec change id the bolt's record lives under —
+    #: kind-prefixed (`bolt-<slug>`) for a record scaffolded now, the bare
+    #: slug for one that predates the prefix (`resolve_change_id` adopts an
+    #: existing directory rather than renaming a live change).
+    change_id: str = None
 
     def __post_init__(self):
         if not self.slug:
@@ -952,6 +957,8 @@ class BoltParams:
         self.bolt_branch = self.bolt_branch or f"{inbox.BOLT_PREFIX}{self.slug}"
         self.bolt_worktree = self.bolt_worktree or self.repo_dir
         self.config = self.config or LoopConfig(name=self.type_name)
+        self.change_id = self.change_id or inbox.resolve_change_id(
+            Path(self.bolt_worktree) / "openspec" / "changes", self.milestone)
 
     @property
     def milestone(self):
@@ -959,7 +966,7 @@ class BoltParams:
 
     @property
     def change_dir(self):
-        return Path(self.bolt_worktree) / "openspec" / "changes" / self.slug
+        return Path(self.bolt_worktree) / "openspec" / "changes" / self.change_id
 
 
 class BoltLoop:
@@ -1765,9 +1772,9 @@ class BoltLoop:
         if self.dry_run:
             actions.append(
                 (f"would write the charter into openspec/changes/"
-                 f"{self.params.slug}, which exists carrying no bolt.md"
+                 f"{self.params.change_id}, which exists carrying no bolt.md"
                  if continuing else
-                 f"would scaffold openspec/changes/{self.params.slug}")
+                 f"would scaffold openspec/changes/{self.params.change_id}")
                 + f" ({self.params.type_name})")
             return None
         name = session_name("scaffold", self.params.slug)
@@ -1783,7 +1790,7 @@ class BoltLoop:
             f"`Landing: merge` or `Landing: pr` line. State that line even if "
             f"the rendered template does not show one: a landing mode that was "
             f"defaulted is not a mode that was declared. Run `openspec "
-            f"instructions bolt --change {self.params.slug}` for what belongs "
+            f"instructions bolt --change {self.params.change_id}` for what belongs "
             f"under each heading — that template is the authority for their "
             f"content.\n\n"
             + (f"Write those sections from this bolt milestone's description, "
@@ -1802,9 +1809,9 @@ class BoltLoop:
             f"the loop cuts the bolt branch after you settle. Do not start any other work, "
             f"and do not touch the items. Deliver by settling.")
         invocation, framing = (
-            (f"/opsx:continue {self.params.slug}",
+            (f"/opsx:continue {self.params.change_id}",
              f"The bolt record for bolt/{self.params.slug} already exists at "
-             f"openspec/changes/{self.params.slug}, and its charter is what is "
+             f"openspec/changes/{self.params.change_id}, and its charter is what is "
              f"owed: there is no bolt.md in it. Add that one artifact to the "
              f"change that is there — do not create a change and do not "
              f"scaffold a second one. That change should be bound to the "
@@ -1812,7 +1819,7 @@ class BoltLoop:
              f"write, and bind it if it is not, because a change bound to some "
              f"other schema has no bolt artifact to continue to.\n\n")
             if continuing else
-            (f"/opsx:new {self.params.slug}",
+            (f"/opsx:new {self.params.change_id}",
              f"Scaffold the bolt record for bolt/{self.params.slug} and bind "
              f"the {self.params.type_name} schema.\n\n"))
         order = sessions.work_order(invocation, framing + charter)
@@ -1823,21 +1830,21 @@ class BoltLoop:
         if not self.params.change_dir.exists():
             tail = " ".join((outcome.report or "").split())[-300:]
             return (f"scaffold: the session settled but "
-                    f"openspec/changes/{self.params.slug} is still missing"
+                    f"openspec/changes/{self.params.change_id} is still missing"
                     + (f" — its report: {tail}" if tail else ""))
         # The reader, not a second regex. A separate parser here would be a
         # second definition of "what does this charter say", and two readers
         # disagreeing about that is the failure this change exists to close.
         if not self.merge_criteria():
             return (f"scaffold: the session settled but "
-                    f"openspec/changes/{self.params.slug}/bolt.md carries no "
+                    f"openspec/changes/{self.params.change_id}/bolt.md carries no "
                     f"bolt-level `## Merge criteria` section with a body — a "
                     f"charter opens with {sections}, and the landing reads the "
                     f"merge criteria to know what to verify")
         actions.append(
-            f"wrote the charter into openspec/changes/{self.params.slug}"
+            f"wrote the charter into openspec/changes/{self.params.change_id}"
             if continuing else
-            f"scaffolded openspec/changes/{self.params.slug}")
+            f"scaffolded openspec/changes/{self.params.change_id}")
         return None
 
     def guard_topology(self, actions):
@@ -1949,7 +1956,7 @@ class BoltLoop:
         """
         if not self.params.change_dir.exists():
             return None      # nothing to write into; the scaffold owes it
-        rel_dir = f"openspec/changes/{self.params.slug}/units"
+        rel_dir = f"openspec/changes/{self.params.change_id}/units"
         sealed = self._committed_units(rel_dir)
         wanted = []
         unnameable = []
@@ -2706,7 +2713,7 @@ class BoltLoop:
             # answers `""` to all three, and the refusal is the same one.
             return StageOutcome(
                 "land", "failed",
-                f"openspec/changes/{self.params.slug}/bolt.md — its merge "
+                f"openspec/changes/{self.params.change_id}/bolt.md — its merge "
                 f"criteria could not be read: the charter carries no "
                 f"bolt-level `## Merge criteria` section with a body. Nothing "
                 f"was verified, nothing reached {self.params.main_branch}, "
@@ -2719,7 +2726,7 @@ class BoltLoop:
         name = session_name("land", self.params.slug)
         order = sessions.work_order(
             f"Land bolt/{self.params.slug} per its bolt.md.",
-            (f"Read openspec/changes/{self.params.slug}/bolt.md on "
+            (f"Read openspec/changes/{self.params.change_id}/bolt.md on "
              f"{self.params.bolt_branch} and VERIFY every one of its Merge criteria on "
              f"that branch, by running them, not by reading the code. If any fails: "
              f"land NOTHING and report the failing criterion.\n\n"
@@ -3199,7 +3206,7 @@ class BoltLoop:
                 "inbox waits.",
                 "",
                 f"Your plan directory is openspec/changes/"
-                f"{self.params.slug}/sessions/<date>-findings-routing/ "
+                f"{self.params.change_id}/sessions/<date>-findings-routing/ "
                 "and you are its sole writer; commit by pathspec and "
                 "push.",
             ]))

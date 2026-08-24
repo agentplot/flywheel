@@ -696,5 +696,37 @@ class ApprovalWakesTheLoopTest(unittest.TestCase):
                          "a changed reason is what releases a held loop")
 
 
+class ChangeIdTest(unittest.TestCase):
+    """A milestone's record lives under a kind-prefixed change id, and an
+    existing bare-slug directory is adopted rather than renamed."""
+
+    def test_the_change_id_is_kind_prefixed(self):
+        self.assertEqual(inbox.change_id("bolt/loop-server"), "bolt-loop-server")
+        self.assertEqual(inbox.change_id("intent/writeback"), "intent-writeback")
+        self.assertIsNone(inbox.change_id("v1.0"))
+        self.assertIsNone(inbox.change_id(None))
+
+    def test_a_bare_slug_directory_is_adopted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            changes = Path(tmp)
+            (changes / "loop-server").mkdir()
+            self.assertEqual(
+                inbox.resolve_change_id(changes, "bolt/loop-server"),
+                "loop-server")
+
+    def test_a_fresh_record_gets_the_prefix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(
+                inbox.resolve_change_id(Path(tmp), "bolt/loop-server"),
+                "bolt-loop-server")
+            self.assertEqual(
+                inbox.resolve_change_id(Path(tmp), "intent/writeback"),
+                "intent-writeback")
+
+    def test_no_changes_root_still_resolves_the_prefixed_id(self):
+        self.assertEqual(inbox.resolve_change_id(None, "bolt/x"), "bolt-x")
+        self.assertIsNone(inbox.resolve_change_id(None, "v1.0"))
+
+
 if __name__ == "__main__":
     unittest.main()

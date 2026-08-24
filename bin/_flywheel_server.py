@@ -733,8 +733,9 @@ class Server:
         andon shape the loops use.
         """
         slug, cwd = want.slug, str(self.config.loops_cwd)
+        change = inbox.resolve_change_id(self.config.changes_dir, want.milestone)
         if self.dry_run:
-            self.log(f"would archive {slug} ({want.milestone})")
+            self.log(f"would archive {change} ({want.milestone})")
             return True
         if want.milestone.startswith(inbox.BOLT_PREFIX):
             # The close released the landing; the archive follows it. A bolt
@@ -751,7 +752,7 @@ class Server:
                     self.log(f"{want.milestone}: closed but not landed — "
                              f"the landing runs first; archive follows")
                     return False
-        out = self.run(["openspec", "archive", slug, "--yes", "--json"],
+        out = self.run(["openspec", "archive", change, "--yes", "--json"],
                        cwd=cwd)
         if getattr(out, "returncode", 1) != 0:
             why = _diagnostic(out)
@@ -768,18 +769,18 @@ class Server:
         status = self.run(["git", "status", "--porcelain", "--", "openspec/"],
                           cwd=cwd)
         if not (status.stdout or "").strip():
-            self.log(f"{want.milestone}: archived {slug}, nothing to commit")
+            self.log(f"{want.milestone}: archived {change}, nothing to commit")
             return True
         self.run(["git", "add", "--", "openspec/"], cwd=cwd)
         commit = self.run(
-            ["git", "commit", "-m", f"chore(openspec): archive {slug}",
+            ["git", "commit", "-m", f"chore(openspec): archive {change}",
              "--", "openspec/"], cwd=cwd)
         if getattr(commit, "returncode", 1) != 0:
             why = (commit.stderr or commit.stdout or "").strip()[:200]
             self.log(f"{want.milestone}: archive commit failed — {why}")
             self.flag(want.milestone, snapshot, f"archive commit failed: {why}")
             return False
-        self.log(f"{want.milestone}: archived {slug} and committed")
+        self.log(f"{want.milestone}: archived {change} and committed")
         return True
 
     def flag(self, milestone, snapshot, why):
