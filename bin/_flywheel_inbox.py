@@ -1049,6 +1049,83 @@ def find_andon(comments):
 
 
 # ---------------------------------------------------------------------------
+# 5 · the round — derived, never annotated
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RoundInbox:
+    """What stands for the operator's round, DERIVED from the snapshot.
+
+    The round is a pure function of the tracker, like the server's job
+    list: no writer has to remember a label for its work to appear, and
+    a label wrongly present or absent cannot invent or hide a decision.
+    The one annotated thing is a published payload — genuinely new
+    information the snapshot cannot derive — and even there the label
+    only nominates anchors; the marker comment is the payload.
+    """
+
+    #: bolt milestones whose every work item is merge-closed, with no
+    #: open plan card and nothing ready — the close releases the landing.
+    close_ready: tuple = ()
+    #: elaboration/unit batch parents sitting at board Backlog — pending
+    #: operator approvals the board would otherwise carry alone.
+    backlog_batches: tuple = ()
+    #: plan cards sitting at board Backlog — proposed bolts/units
+    #: awaiting the same approval.
+    backlog_cards: tuple = ()
+    #: open items labelled `dispatch:standing` — nominated payload
+    #: anchors; the caller reads each anchor's latest unretired
+    #: round-payload marker for the address.
+    payload_anchors: tuple = ()
+
+    @property
+    def empty(self):
+        return not (self.close_ready or self.backlog_batches
+                    or self.backlog_cards or self.payload_anchors)
+
+
+def round_inbox(snapshot):
+    """Everything standing for a round, computed from the snapshot.
+
+    Close-ready is the SAME predicate the bolt loop's close-ready mark
+    uses — every non-container work item on an open bolt milestone
+    closed `closed:merged`, none ready, and no open plan card holding
+    the landing — re-derived rather than read back from the labels the
+    loop writes, so the round cannot drift from the loop's own truth.
+    """
+    live = [i for i in snapshot.items if i.is_open or i.merge_closed]
+    holding = {c.milestone for c in snapshot.plan_cards
+               if c.milestone and c.milestone_state == "open"}
+    close_ready = []
+    bolt_milestones = sorted({
+        i.milestone for i in live
+        if i.milestone and i.milestone.startswith(BOLT_PREFIX)
+        and i.milestone_state == "open"})
+    for milestone in bolt_milestones:
+        if milestone in holding:
+            continue
+        work = [i for i in live if i.milestone == milestone
+                and not i.is_container]
+        if not work:
+            continue
+        if any(READY in i.labels and i.is_open for i in work):
+            continue
+        if all(i.merge_closed for i in work):
+            close_ready.append(milestone)
+    return RoundInbox(
+        close_ready=tuple(close_ready),
+        backlog_batches=tuple(b for b in snapshot.batches
+                              if b.status == STATUS_BACKLOG
+                              and b.milestone_state == "open"),
+        backlog_cards=tuple(c for c in snapshot.plan_cards
+                            if c.status == STATUS_BACKLOG
+                            and c.milestone_state == "open"),
+        payload_anchors=tuple(i for i in snapshot.items
+                              if i.is_open and DISPATCH_STANDING in i.labels),
+    )
+
+
+# ---------------------------------------------------------------------------
 # The round's markers — published payloads and close-ready milestones
 # ---------------------------------------------------------------------------
 

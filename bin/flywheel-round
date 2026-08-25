@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""flywheel-round — everything standing for the operator's round, as JSON.
+
+    flywheel-round --org agentplot --repo flywheel [--project Flywheel]
+
+The round is DERIVED, never annotated: close-ready bolts, pending
+board-Backlog approvals, and nominated payload anchors are computed by
+`_flywheel_inbox.round_inbox`, the same pure-function discipline the
+server's job list follows — so dispatch renders what the tracker holds,
+and a missing or stray label cannot hide or invent a decision. For each
+payload anchor the latest unretired round-payload marker is read from
+its comments; an anchor whose marker cannot be read is reported as a
+shortfall, never guessed at.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _flywheel_inbox as inbox         # noqa: E402
+from _flywheel_gh import resolve_token  # noqa: E402
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="flywheel-round")
+    parser.add_argument("--org", default="agentplot")
+    parser.add_argument("--repo", default="flywheel")
+    parser.add_argument("--project", default="Flywheel")
+    args = parser.parse_args(argv)
+
+    tracker = inbox.Tracker(resolve_token(args.org), args.org, args.repo,
+                            project_title=args.project)
+    snapshot = tracker.snapshot(with_edges=False)
+    box = inbox.round_inbox(snapshot)
+
+    payloads, shortfalls = [], []
+    for anchor in box.payload_anchors:
+        found = inbox.find_round_payload(tracker.comments(anchor.number) or ())
+        if found is None:
+            shortfalls.append(
+                {"anchor": anchor.number,
+                 "reason": "dispatch:standing with no unretired "
+                           "round-payload marker (a close-ready parent "
+                           "is expected here; anything else is a "
+                           "published payload gone missing)"})
+            continue
+        payloads.append({"anchor": anchor.number, "repo": found.repo,
+                         "sha": found.sha, "dir": found.dir,
+                         "origin": found.origin})
+
+    print(json.dumps({
+        "close_ready": list(box.close_ready),
+        "backlog_batches": [
+            {"number": b.number, "kind": b.kind, "milestone": b.milestone}
+            for b in box.backlog_batches],
+        "backlog_cards": [
+            {"number": c.number, "title": c.title, "milestone": c.milestone}
+            for c in box.backlog_cards],
+        "payloads": payloads,
+        "shortfalls": shortfalls,
+        "empty": box.empty,
+    }, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

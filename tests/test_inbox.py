@@ -428,6 +428,62 @@ class DispatchStandingTest(unittest.TestCase):
                          [1])
 
 
+class RoundInboxTest(unittest.TestCase):
+    """The round is derived from the snapshot, never from labels a
+    writer had to remember."""
+
+    def merged(self, number, milestone="bolt/x"):
+        return item(number, inbox.CLOSED_MERGED, state="closed",
+                    milestone=milestone)
+
+    def test_a_fully_merged_bolt_is_close_ready(self):
+        snap = Snapshot(items=[self.merged(1), self.merged(2),
+                               item(9, inbox.UNIT, milestone="bolt/x")])
+        box = inbox.round_inbox(snap)
+        self.assertEqual(box.close_ready, ("bolt/x",))
+
+    def test_an_open_card_holds_the_close(self):
+        snap = Snapshot(items=[self.merged(1),
+                               item(9, inbox.UNIT, milestone="bolt/x")],
+                        plan_cards=[inbox.PlanCard(
+                            number=30, title="Unit: more",
+                            milestone="bolt/x")])
+        self.assertEqual(inbox.round_inbox(snap).close_ready, ())
+
+    def test_a_ready_item_holds_the_close(self):
+        snap = Snapshot(items=[self.merged(1),
+                               item(2, inbox.READY, milestone="bolt/x")])
+        self.assertEqual(inbox.round_inbox(snap).close_ready, ())
+
+    def test_backlog_batches_and_cards_stand_as_approvals(self):
+        snap = Snapshot(
+            items=[item(1, milestone="intent/a")],
+            batches=[Batch(number=9, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/a"),
+                     Batch(number=8, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_READY,
+                           milestone="intent/b")],
+            plan_cards=[inbox.PlanCard(number=30, title="Unit: u",
+                                       status=inbox.STATUS_BACKLOG,
+                                       milestone="bolt/x")])
+        box = inbox.round_inbox(snap)
+        self.assertEqual([b.number for b in box.backlog_batches], [9],
+                         "Ready is released, not pending")
+        self.assertEqual([c.number for c in box.backlog_cards], [30])
+
+    def test_standing_labels_only_nominate_payload_anchors(self):
+        snap = Snapshot(items=[item(9, inbox.DISPATCH_STANDING, inbox.UNIT,
+                                    milestone="bolt/x")])
+        box = inbox.round_inbox(snap)
+        self.assertEqual([i.number for i in box.payload_anchors], [9])
+        self.assertEqual(box.close_ready, (),
+                         "a label cannot invent a close decision")
+
+    def test_an_empty_round_is_empty(self):
+        self.assertTrue(inbox.round_inbox(Snapshot()).empty)
+
+
 class RoundMarkerTest(unittest.TestCase):
     """The round's two markers: a published payload and a close-ready
     milestone — andon-grade strictness, prose can never match."""
