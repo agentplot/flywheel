@@ -57,22 +57,25 @@ write the label to the items it carries and settle rather than doing
 anything further with the deliverables: the collect, the merge and the
 closes are the loop's.
 
-When the word arrives as approval of a dispatch plan, the session
-SHALL apply the protocol's ordered steps
-(`skills/_reference/dispatch-plan.md`) before settling — commits first,
-the composed batches and cards at Backlog per container, `stage:done`,
-then the board Ready flips, which are the one exception to a session
-never moving an item to `state:ready`. The collect, the merge and the
-closes remain the loop's, and `stage:done` SHALL precede any Ready flip
-so a loop restart mid-apply merges the finished branch before any
-released batch can dispatch.
+When the session's close is a dispatch-plan payload, the session SHALL
+publish it — commit the `close/` files by pathspec, push its branch,
+and write the round-payload marker with the `dispatch:standing` label
+on its elaboration parent — and settle, naming its items as the
+payload's `done_items`. Dispatch runs the round and applies the
+approval (`skills/_reference/dispatch-plan.md`), including writing
+`stage:done` on those items; this requirement's own rule is what makes
+that legal — the loop cannot and SHALL NOT distinguish who wrote the
+label. `stage:done` SHALL still precede any Ready move so a loop
+restart mid-apply merges the finished branch before any released batch
+can dispatch.
 
-#### Scenario: The operator approves a dispatch plan
+#### Scenario: The operator approves the round carrying a session's payload
 
-- **WHEN** the operator approves a session's dispatch plan
-- **THEN** the session commits its close files, files the elaborations
-  and cards at Backlog, writes `stage:done` on its own items, flips the
-  approved batches and cards to board Ready, and settles
+- **WHEN** the operator approves a round that carries a settled
+  session's published payload
+- **THEN** dispatch files the elaborations and cards at Backlog, writes
+  `stage:done` on the payload's items, moves the approved batches and
+  cards to board Ready, and consumes the payload
 - **AND** the loop consumes the `stage:done` items and the Ready batch
   exactly as it would had the operator produced them on GitHub
 

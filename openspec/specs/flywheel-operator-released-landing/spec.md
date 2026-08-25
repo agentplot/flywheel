@@ -26,21 +26,34 @@ path to a landing.
 
 When every work item is merged, no plan card on the bolt remains open,
 and the milestone is still open, the loop SHALL mark the open unit
-parents `needs-operator` with a comment saying the close releases the
-landing — so the wait appears where the operator looks. The mark SHALL
-be withdrawn if new cards arrive on the bolt, and removed by the
-landing.
+parents `needs-operator` AND `dispatch:standing`, with a comment saying
+the close releases the landing that also carries the machine-readable
+close-ready marker block (milestone, bolt branch, main branch) — so the
+wait appears where the operator looks AND is enumerable by dispatch for
+the round, where the close renders as a pre-checked row. An unchecked
+row writes nothing: the labels and marker stand and the choice
+reappears in every later round. Both labels SHALL be withdrawn if new
+cards arrive on the bolt, and removed by the landing; no withdrawn
+marker exists — the label off means not offered.
 
 #### Scenario: The wait appears when the work is done
 
 - **WHEN** the last work item merges and no open cards remain
-- **THEN** the unit parent carries `needs-operator` and the comment
-  names the close as the release
+- **THEN** the unit parent carries `needs-operator` and
+  `dispatch:standing`, and the comment names the close as the release
+  and carries the close-ready marker with the milestone facts
 
 #### Scenario: New cards withdraw the wait
 
 - **WHEN** a new plan card lands on the bolt after the mark was written
-- **THEN** the mark is withdrawn — the bolt is no longer ready to close
+- **THEN** both labels are withdrawn — the bolt is no longer ready to
+  close, and no round offers it
+
+#### Scenario: Keeping it open costs nothing
+
+- **WHEN** the operator unchecks the milestone's close row in a round
+- **THEN** nothing is written, and the next round offers the close
+  again
 
 ### Requirement: The landing verifies the charter and upgrades the record
 

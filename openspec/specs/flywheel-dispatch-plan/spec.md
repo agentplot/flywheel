@@ -3,8 +3,10 @@
 ## Purpose
 The dispatch plan — the one routing surface put before the operator
 wherever a batch of outcomes needs routing: a design session's close,
-dispatch's triage of raw ideas. One approval places every outcome, with
-nothing on GitHub until the word is given. The protocol's one shared
+a bolt's routed findings, dispatch's triage of raw ideas, a
+close-ready milestone. Origins author and publish payloads; dispatch
+runs every round and applies the one approval that places every
+outcome, with nothing on GitHub until the word is given. The protocol's one shared
 statement is `skills/_reference/dispatch-plan.md`; this spec is the
 contract that statement and the code around it must satisfy.
 
@@ -46,13 +48,48 @@ bolt-planning's: named for the operator's deliverable, folded into an
 open bolt whose deliverable the units serve, split easy-into-open /
 hard-into-successor.
 
-For a design-session origin the payload SHALL be real committed files in
-the session's own `close/` directory — the page a view over them, never
-a restatement — with unit documents in bolt-planning's exact card
-grammar, posted verbatim at apply. For the dispatch origin the payload
-SHALL be embedded in one self-contained surface under the org folder's
-untracked scratch, because dispatch holds no checkout and writes no
-records; the tracker objects the apply writes are the record.
+For a session origin (design-session close, findings-routing) the
+payload SHALL be real committed files in the session's own `close/`
+directory — the page a view over them, never a restatement — with unit
+documents in bolt-planning's exact card grammar, posted verbatim at
+apply. Dispatch's own triage rows need no files: the intake issues are
+the inbox, and the round's one self-contained surface lives under the
+org folder's untracked scratch, because dispatch holds no checkout and
+writes no records; the committed payloads and the tracker objects the
+apply writes are the record.
+
+### Requirement: Origins publish; dispatch assembles and runs every round
+
+A session origin SHALL end by publishing, not by running a round:
+commit the payload files by pathspec, push the branch, write the
+round-payload marker (repo, a 40-hex commit SHA, the payload
+directory, the origin) as a comment on the payload's anchor item, and
+add the `dispatch:standing` label there. Dispatch SHALL enumerate
+everything standing — `dispatch:standing` items (published payloads,
+close-ready unit parents) plus its own unmilestoned intake — assemble
+ONE plan, run its surfaces, and apply the approval. Payload files SHALL
+be read at the pinned SHA (an actor with no checkout reads them through
+the API); a fetch that fails is a reported shortfall in the round,
+never a guess. Rounds are serialized: one at a time, material arriving
+mid-round seeding the next. As its last act per applied payload,
+dispatch SHALL write the round-consumed marker on the anchor and remove
+the label; a consumed payload is never re-offered, and a republish
+after a send-back supersedes the earlier address. A standing item SHALL
+NOT also be relayed as a DM — one wait, one surface.
+
+#### Scenario: A settled session's payload reaches the next round
+
+- **WHEN** a design session publishes its payload and settles, and the
+  operator later says "dispatch"
+- **THEN** the round dispatch assembles carries that payload's sections
+  beside whatever else stands, and the session's pane is not consulted
+
+#### Scenario: A crash between apply and consume
+
+- **WHEN** dispatch dies after applying a payload's containers and
+  before writing the consumed marker
+- **THEN** the payload still stands and the next round re-applies it —
+  every container mechanic is re-runnable, so nothing duplicates
 
 #### Scenario: A triage splits raw ideas into new intents
 
@@ -76,8 +113,11 @@ retargets?}`, and an omitted field SHALL mean as-proposed — so
 `renames` corrects a proposed container's slug or re-aims a bolt
 container at an alternate open bolt; `retargets` moves a row to another
 container of the same kind; an inline answer takes the question's
-`answered` path. A reply the applying actor cannot resolve into exactly
-one contract SHALL be asked again, never guessed.
+`answered` path; `closes` carries only UNCHECKED close rows (keep that
+milestone open — a choice that writes nothing and stands again next
+round), so an omitted milestone closes as seeded. A reply the applying
+actor cannot resolve into exactly one contract SHALL be asked again,
+never guessed.
 
 #### Scenario: The operator replies "yes to all" over Discord
 
@@ -116,8 +156,13 @@ with the board's own words: `approve` (filed under the row's container —
 an item in an intent container's elaboration, or a unit card on a bolt
 container), `backlog` (filed `state:queued` on the container's
 milestone, out of this round), `drop` (not filed), or `answered`
-(questions only — the answer becomes a decision record and no item is
-filed). On a bolt row the unit's bolt type is seeded and overridable. A
+(questions only — the operator's answer verbatim as a comment carrying
+the `<!-- flywheel:answered -->` marker line on the question item,
+which closes `closed:done`; the marker, not the reason, is the
+machine-readable fact, and no item is filed. A session holding a
+worktree may still fold an in-pane answer into `decisions/`, but
+nothing new SHALL depend on `decisions/*.md`). On a bolt row the
+unit's bolt type is seeded and overridable. A
 retarget re-files a row under another container of the same kind and is
 not a route.
 
@@ -142,28 +187,31 @@ close cards it.
 
 ### Requirement: The apply order is load-bearing
 
-On approval the actor SHALL apply the operator's word in this order: (1)
-fold answered questions into `decisions/` and commit every payload file,
-so the branch is merge-complete before any tracker write — the dispatch
-origin, which commits nothing, starts at (2); (2) per intent container
-in plan order, at Backlog: create the milestone and originating item
-when new, create member items — a triage row that is an intake issue is
-moved onto the milestone, never duplicated — and compose the elaboration
-(`--into` an open Backlog elaboration instead of creating a second); (3)
-per bolt container, at Backlog: reuse the open bolt's milestone or
-create the new one with the summary as its description, then
-bolt-planning's board mode, superseding only cards this plan explicitly
-replaces; (4) write `stage:done` on the items the session carries —
-dispatch carries none; (5) move every approved elaboration parent and
-card to board Ready, including cards folded onto an open running bolt,
-which the live loop expands mid-flight; (6) settle. `stage:done` SHALL
-precede every move to Ready; an apply interrupted before step 5 leaves
-batches at Backlog, which the operator's ordinary board approval
-finishes, per container independently.
+On approval dispatch SHALL apply the operator's word — every write a
+tracker write, the payload files having been committed at publish — in
+this order: (1) answers: the marked comment and `closed:done` close on
+each answered question item; (2) per intent container in plan order, at
+Backlog: create the milestone and originating item when new, create
+member items — a triage row that is an intake issue is moved onto the
+milestone, never duplicated — and compose the elaboration (`--into` an
+open Backlog elaboration instead of creating a second); (3) per bolt
+container, at Backlog: reuse the open bolt's milestone or create the
+new one with the summary as its description, then bolt-planning's board
+mode, superseding only cards this plan explicitly replaces; (4) write
+`stage:done` on each payload's `done_items` — the origin session's own
+items; (5) move every approved elaboration parent and card to board
+Ready, including cards folded onto an open running bolt, which the live
+loop expands mid-flight; (6) close each close row still checked — the
+close releases that bolt's landing; a container that filed cards onto a
+bolt forces its close row unchecked, never both in one round; (7)
+consume each payload and settle. `stage:done` SHALL precede every move
+to Ready; an apply interrupted before step 5 leaves batches at Backlog,
+which the operator's ordinary board approval finishes, per container
+independently.
 
 Step 5 is the one exception to an actor never moving an item to
-`state:ready`: applying the operator's explicit approval given in a
-round the actor itself ran.
+`state:ready`: dispatch applying the operator's explicit approval given
+in the round it ran.
 
 #### Scenario: The loop restarts mid-apply
 
