@@ -17,12 +17,26 @@ runs it (the page and the digest), and applies the word. Rounds are
 serialized by dispatch being one session: material arriving mid-round
 keeps its standing label and seeds the next round.
 
-| origin | who authors the payload | what stands for the round |
+| origin | who authors it | how it stands for the round |
 |---|---|---|
 | design-session close | the design session, in its own pane | a published payload: marker + `dispatch:standing` on the elaboration parent |
 | construction findings | a findings-routing session the bolt loop charges | a published payload: marker + `dispatch:standing` on the anchor item |
-| bolt close-ready | the bolt loop itself | the close-ready marker + `dispatch:standing` on the unit parents |
+| bolt close-ready | the bolt loop's own state | DERIVED — every work item merge-closed, nothing ready, no open card |
+| board-Backlog approvals | the compose guard, the bolt planner, any plan's apply | DERIVED — batches and cards at board Status Backlog |
 | dispatch triage | dispatch | open unmilestoned issues — its existing inbox |
+
+**The round is derived, never annotated**: `bin/flywheel-round`
+computes what stands as a pure function of the tracker
+(`_flywheel_inbox.round_inbox`), the same discipline as the server's
+job list — so no writer has to remember a label for its decision to
+appear, and a stray label cannot invent one. The one annotation is a
+published payload, which is genuinely new information: the label
+nominates the anchor, the marker carries the address. Backlog batches
+and cards render as approve rows; the apply's Ready step releases
+them, and approving directly on the board remains the fallback for a
+round never taken. The close-ready labels and marker the loop writes
+remain for operator visibility (Waiting On Me) and the server's poke —
+the round does not depend on them.
 
 The operator calls a round with one word — **"dispatch"** — over
 Discord or in the pane; the server's triage poke is the other trigger.

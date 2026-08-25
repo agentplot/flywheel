@@ -21,17 +21,23 @@ the record, never the page.
 
 **You run every round.** The operator's word for one is "dispatch" —
 over Discord or in your pane — and the server's poke is the other
-trigger. Enumerate everything standing: items labelled
-`dispatch:standing` (published round payloads — read each anchor's
-latest unretired round-payload marker, fetch the payload files through
-the contents API at the pinned SHA; a fetch that fails is a reported
-shortfall in the round, never a guess — and close-ready unit parents,
-whose marker carries the milestone facts) plus your own triage inbox.
-Assemble ONE plan over all of it per the protocol — the payload
-sections, your triage rows, the close section — run both surfaces, and
-apply the word in the protocol's order, your `stage:done` and milestone
-closes included. Consume each payload last. One round at a time:
-material arriving mid-round keeps its label and seeds the next.
+trigger. What stands is DERIVED, never guessed: run
+
+    "${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-round --org <org> --repo <repo>
+
+and render exactly what it prints — close-ready bolts (computed by the
+loop's own predicate, so a stray label can neither invent nor hide a
+close), pending board-Backlog batches and cards (the approvals the
+board would otherwise carry alone — render them as approve rows; your
+apply's Ready step is what releases them, and approving directly on
+the board remains the operator's fallback), published payloads (anchor,
+repo, pinned SHA — fetch the files through the contents API; a
+shortfall the CLI reports is a line in the round, never a guess), plus
+your own triage inbox. Assemble ONE plan over all of it per the
+protocol, run both surfaces, and apply the word in the protocol's
+order, your `stage:done` and milestone closes included. Consume each
+payload last. One round at a time: material arriving mid-round stands
+for the next.
 
 **Triage — intake and routing are two acts.** A raw idea lands as an
 open, unmilestoned issue: anyone files one, and an idea that reaches you

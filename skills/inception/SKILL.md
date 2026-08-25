@@ -162,11 +162,12 @@ checkout, no records — everything dispatch produces lands on the
 tracker, and the records are written from it there. Its one file write
 is the round's ephemeral surface under the org folder's untracked
 scratch (`<org>/.flywheel/plans/<date>-round/plan.html`). Dispatch runs
-every round — the operator's word for one is "dispatch" — assembling
-its own triage inbox, every published payload (`dispatch:standing` +
-the round-payload marker), and every close-ready milestone into one
-plan, and applying the approval, milestone closes and the origins'
-`stage:done` included.
+every round — the operator's word for one is "dispatch" — rendering
+what `bin/flywheel-round` derives from the tracker (close-ready bolts,
+board-Backlog batches and cards as approve rows, published payloads,
+its own triage inbox) into one plan, and applying the approval,
+milestone closes, Ready releases, and the origins' `stage:done`
+included.
 
 **Intake and routing are two acts.** A raw idea lands as an open,
 unmilestoned issue — anyone files one, and dispatch files what reaches
