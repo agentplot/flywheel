@@ -168,9 +168,10 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
        prototype badge-neutral · bolt-default badge-accent ·
        bolt-quick badge-success · other bolt types badge-accent.
      A "close" container is the round's milestones-to-close section:
-       one row per close-ready milestone — { key: "close: bolt/x",
-       kind: "close", milestone, checked: true, title, oneliner } —
-       rendered as a pre-checked checkbox; unchecking means keep open
+       one row per close-ready milestone — rows: [{ key, milestone,
+       checked: true, title, oneliner }] (or those fields on the
+       container itself when there is exactly one) — each a pre-checked
+       checkbox led by the milestone name; unchecking means keep open
        and writes nothing. Only unchecked rows reach the contract, as
        closes: { "<milestone>": false }.
      An empty context or left_out hides that section. -->
@@ -393,8 +394,10 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   // container's slug is an editable input, and a bolt with alternates
   // gets a select over the open bolts its units could fold into.
   function closeSection(c) {
-    // The round's close row: pre-checked, one gesture from landing the
-    // bolt; unchecking writes nothing and the choice stands next round.
+    // The round's close section: one pre-checked row per closable
+    // milestone — nested rows[] (each carrying milestone/checked), or
+    // the container itself as the single row. Unchecking writes nothing
+    // and the choice stands next round.
     const sec = document.createElement("section");
     const h = document.createElement("h2");
     h.className = "text-xs font-bold uppercase tracking-widest opacity-50 mb-2";
@@ -402,36 +405,39 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     sec.append(h);
     const list = document.createElement("div");
     list.className = "rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200";
-    const r = document.createElement("label");
-    r.className = "flex items-center gap-3 p-3 cursor-pointer";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.className = "checkbox checkbox-sm";
-    box.checked = c.checked !== false;
-    box.addEventListener("change", () => {
-      if (box.checked) delete closes[c.milestone];
-      else closes[c.milestone] = false;
-      preview();
-    });
-    const text = document.createElement("div");
-    const title = document.createElement("div");
-    title.className = "font-bold text-sm";
-    // The milestone IS the decision — it renders whatever the fill's
-    // title says, so a generic title can never hide which bolt closes.
-    const mono = document.createElement("span");
-    mono.className = "font-mono";
-    mono.textContent = c.milestone;
-    title.append(mono);
-    if (c.title && c.title !== c.milestone) {
-      title.append(document.createTextNode(` — ${c.title}`));
+    const rows = (c.rows && c.rows.length) ? c.rows : [c];
+    for (const item of rows) {
+      const r = document.createElement("label");
+      r.className = "flex items-center gap-3 p-3 cursor-pointer";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.className = "checkbox checkbox-sm";
+      box.checked = item.checked !== false;
+      box.addEventListener("change", () => {
+        if (box.checked) delete closes[item.milestone];
+        else closes[item.milestone] = false;
+        preview();
+      });
+      const text = document.createElement("div");
+      const title = document.createElement("div");
+      title.className = "font-bold text-sm";
+      // The milestone IS the decision — it renders whatever the fill's
+      // title says, so a generic title can never hide which bolt closes.
+      const mono = document.createElement("span");
+      mono.className = "font-mono";
+      mono.textContent = item.milestone;
+      title.append(mono);
+      if (item.title && item.title !== item.milestone) {
+        title.append(document.createTextNode(` — ${item.title}`));
+      }
+      const line = document.createElement("div");
+      line.className = "text-xs opacity-60";
+      line.textContent = item.oneliner
+        || "every item merged, every card ruled — closing releases the landing";
+      text.append(title, line);
+      r.append(box, text);
+      list.append(r);
     }
-    const line = document.createElement("div");
-    line.className = "text-xs opacity-60";
-    line.textContent = c.oneliner
-      || "every item merged, every card ruled — closing releases the landing";
-    text.append(title, line);
-    r.append(box, text);
-    list.append(r);
     sec.append(list);
     return sec;
   }
