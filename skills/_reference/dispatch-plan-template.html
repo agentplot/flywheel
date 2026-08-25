@@ -167,6 +167,12 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
        · planning badge-secondary · interactive badge-primary ·
        prototype badge-neutral · bolt-default badge-accent ·
        bolt-quick badge-success · other bolt types badge-accent.
+     A "close" container is the round's milestones-to-close section:
+       one row per close-ready milestone — { key: "close: bolt/x",
+       kind: "close", milestone, checked: true, title, oneliner } —
+       rendered as a pre-checked checkbox; unchecking means keep open
+       and writes nothing. Only unchecked rows reach the contract, as
+       closes: { "<milestone>": false }.
      An empty context or left_out hides that section. -->
 <script id="plan-data" type="application/json">
 {
@@ -273,6 +279,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   };
   const unitTypes = {};   // row key -> { chosen, suggested }
   const renames = {};     // container key -> new slug / other open bolt
+  const closes = {};      // milestone -> false (only unchecked rows)
 
   const BOLT_TYPES = ["bolt-default", "bolt-quick", "bolt-direct",
                       "bolt-adversarial", "bolt-plan"];
@@ -385,7 +392,44 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   // A container's header is the correctable naming surface: a NEW
   // container's slug is an editable input, and a bolt with alternates
   // gets a select over the open bolts its units could fold into.
+  function closeSection(c) {
+    // The round's close row: pre-checked, one gesture from landing the
+    // bolt; unchecking writes nothing and the choice stands next round.
+    const sec = document.createElement("section");
+    const h = document.createElement("h2");
+    h.className = "text-xs font-bold uppercase tracking-widest opacity-50 mb-2";
+    h.textContent = "Ready to close — ";
+    sec.append(h);
+    const list = document.createElement("div");
+    list.className = "rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200";
+    const r = document.createElement("label");
+    r.className = "flex items-center gap-3 p-3 cursor-pointer";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "checkbox checkbox-sm";
+    box.checked = c.checked !== false;
+    box.addEventListener("change", () => {
+      if (box.checked) delete closes[c.milestone];
+      else closes[c.milestone] = false;
+      preview();
+    });
+    const text = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "font-bold text-sm";
+    title.textContent = c.title || c.milestone;
+    const line = document.createElement("div");
+    line.className = "text-xs opacity-60";
+    line.textContent = c.oneliner
+      || "every item merged, every card ruled — closing releases the landing";
+    text.append(title, line);
+    r.append(box, text);
+    list.append(r);
+    sec.append(list);
+    return sec;
+  }
+
   function containerSection(c) {
+    if (c.kind === "close") return closeSection(c);
     const sec = document.createElement("section");
     const head = document.createElement("div");
     head.className = "flex items-baseline justify-between mb-2 gap-3 flex-wrap";
@@ -480,6 +524,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     if (Object.keys(types).length) out.unit_types = types;
     if (Object.keys(renames).length) out.renames = { ...renames };
     if (Object.keys(retargets).length) out.retargets = retargets;
+    if (Object.keys(closes).length) out.closes = { ...closes };
     return out;
   }
   function preview() {
@@ -489,6 +534,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     for (const [k, v] of Object.entries(c.retargets || {})) parts.push(`${k} → ${v}`);
     for (const [k, v] of Object.entries(c.unit_types || {})) parts.push(`${k} as ${v}`);
     for (const [k, v] of Object.entries(c.renames || {})) parts.push(`${k} renamed ${v}`);
+    for (const k of Object.keys(c.closes || {})) parts.push(`keep ${k} open`);
     document.getElementById("preview").textContent =
       "on approve → " + (parts.length ? parts.join(" · ") : "all as proposed")
       + Object.entries(c.answers || {}).map(([k, a]) => `\nanswer (${k}): ${a}`).join("");
@@ -501,6 +547,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       ...Object.entries(c.retargets || {}).map(([k, v]) => `${k} retargeted to ${v}`),
       ...Object.entries(c.unit_types || {}).map(([k, v]) => `${k} as ${v} — write it into the card's Type: line before filing`),
       ...Object.entries(c.renames || {}).map(([k, v]) => `${k} renamed to ${v}`),
+      ...Object.keys(c.closes || {}).map((k) => `keep ${k} open — do not close that milestone`),
     ];
     window.lavish.queuePrompt(
       "APPROVE the dispatch plan"
