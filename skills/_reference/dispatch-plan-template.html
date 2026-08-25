@@ -416,7 +416,15 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     const text = document.createElement("div");
     const title = document.createElement("div");
     title.className = "font-bold text-sm";
-    title.textContent = c.title || c.milestone;
+    // The milestone IS the decision — it renders whatever the fill's
+    // title says, so a generic title can never hide which bolt closes.
+    const mono = document.createElement("span");
+    mono.className = "font-mono";
+    mono.textContent = c.milestone;
+    title.append(mono);
+    if (c.title && c.title !== c.milestone) {
+      title.append(document.createTextNode(` — ${c.title}`));
+    }
     const line = document.createElement("div");
     line.className = "text-xs opacity-60";
     line.textContent = c.oneliner

@@ -196,7 +196,9 @@ carries a machine block —
     <!-- /flywheel:close-ready -->
 
 — beside `needs-operator` and `dispatch:standing`. The round renders one
-pre-checked row per close-ready milestone: checked means the apply
+pre-checked row per close-ready milestone, and the row leads with the
+milestone name itself — `bolt/<slug>` is the decision, and no title
+prose replaces it: checked means the apply
 closes it (the close releases the landing; the loop and the archive do
 the rest). **Unchecking writes nothing** — the milestone stays open, the
 labels and marker stand, and the choice reappears in every later round
