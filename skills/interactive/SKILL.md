@@ -41,17 +41,18 @@ The steering source for this type is the user-level `lavish` skill
 the shortfall and stop — do not half-build the page or substitute a
 document; re-charging the batch is the operator's call.
 
-## Close with a dispatch plan
+## Close with a dispatch-plan payload
 
 A batch with a next round or construction to propose ends with a
-dispatch plan — the protocol is the shared copy at
+dispatch-plan payload — the protocol is the shared copy at
 `skills/_reference/dispatch-plan.md`: the `close/` payload drafted as
-outcomes settle, its own lavish page, the exclusive routing across
-intent and bolt containers, the apply order, the failure discipline.
-The dispatch plan is a separate artifact from the batch's decision page
-— one carries the decisions, the other routes their consequences.
-Nothing reaches GitHub before the operator approves, and a session with
-nothing to propose settles as today.
+outcomes settle, the exclusive routing across intent and bolt
+containers, then published (commit, push, marker + `dispatch:standing`
+on the elaboration parent) and the session settles — dispatch runs the
+round and applies. The payload is a separate artifact from the batch's
+decision page — one carries the decisions, the other routes their
+consequences. Nothing reaches GitHub before the operator approves, and
+a session with nothing to propose settles as today.
 
 ## On the tracker
 

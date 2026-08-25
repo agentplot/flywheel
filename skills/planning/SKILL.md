@@ -40,15 +40,17 @@ travel through your report as proposed items, never as raw relays.
 If `plannotator` does not resolve on `PATH`, report the shortfall and
 stop — a round the operator never saw produces annotations nobody made.
 
-## Close with a dispatch plan
+## Close with a dispatch-plan payload
 
 A batch with a next round or construction to propose ends with a
-dispatch plan — the protocol is the shared copy at
+dispatch-plan payload — the protocol is the shared copy at
 `skills/_reference/dispatch-plan.md`: the `close/` payload drafted as
-outcomes settle, the lavish page, the exclusive routing across intent
-and bolt containers, the apply order, the failure discipline. Nothing
-reaches GitHub before the operator approves, and a session with nothing
-to propose settles as today.
+outcomes settle, the exclusive routing across intent and bolt
+containers, then published (commit, push, marker + `dispatch:standing`
+on the elaboration parent) and the session settles — dispatch runs the
+round and applies, your `stage:done` included. Nothing reaches GitHub
+before the operator approves, and a session with nothing to propose
+settles as today.
 
 ## On the tracker
 

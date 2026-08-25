@@ -135,7 +135,7 @@ directly, and dispatch relays nothing for them.
 | a sentence | an inline question | no — keep working on what it does not gate |
 | margin notes on a document that exists | `plannotator annotate <file>` | yes |
 | a choice across coupled decisions | a lavish page | yes |
-| approval of a proposed routing — next round, new intents, construction | the dispatch plan (`skills/_reference/dispatch-plan.md`) | yes — it is the session's last act |
+| approval of a proposed routing — next round, new intents, construction | a dispatch-plan payload, published for dispatch's round (`skills/_reference/dispatch-plan.md`) | no — publish and settle; dispatch runs the round |
 
 Escalation runs one way: take the cheapest channel that can carry the
 answer, and never demote a question back down or re-ask it. **The sole
@@ -160,8 +160,13 @@ copy.
 The standing singleton, and a pure GitHub-and-relay actor: no repo
 checkout, no records — everything dispatch produces lands on the
 tracker, and the records are written from it there. Its one file write
-is the triage plan's ephemeral surface under the org folder's untracked
-scratch (`<org>/.flywheel/plans/<date>-triage/plan.html`).
+is the round's ephemeral surface under the org folder's untracked
+scratch (`<org>/.flywheel/plans/<date>-round/plan.html`). Dispatch runs
+every round — the operator's word for one is "dispatch" — assembling
+its own triage inbox, every published payload (`dispatch:standing` +
+the round-payload marker), and every close-ready milestone into one
+plan, and applying the approval, milestone closes and the origins'
+`stage:done` included.
 
 **Intake and routing are two acts.** A raw idea lands as an open,
 unmilestoned issue — anyone files one, and dispatch files what reaches

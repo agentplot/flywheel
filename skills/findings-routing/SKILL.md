@@ -1,6 +1,6 @@
 ---
 name: findings-routing
-description: Run the dispatch plan a flywheel findings-routing session builds over a bolt's queued findings — the whole findings inbox routed in one operator approval into the current bolt, a successor bolt, the source intents, or drop. Use whenever a work order charges a findings-routing run on a bolt's queue.
+description: Author the dispatch-plan payload a flywheel findings-routing session builds over a bolt's queued findings — the whole findings inbox seeded for one operator round (dispatch runs it) into the current bolt, a successor bolt, the source intents, or drop. Use whenever a work order charges a findings-routing run on a bolt's queue.
 ---
 
 # Flywheel findings-routing — the round over a bolt's queue
@@ -50,25 +50,29 @@ before any tracker write, pushing what you commit: your directory is a
 shared checkout, so the standing staging rule binds you — never `-a`,
 never `add -A`.
 
-## The round, and the apply
+## Publish — you run no round
 
-Fill the template beside the protocol into `close/plan.html`, open it
-with `npx -y lavish-axi`, and post the digest form as a comment on the
-bolt's unit parent (or its first queued item) with `needs-operator`, so
-dispatch relays it to an operator who is not at the page. Whichever
-answer arrives first is the round's answer. Apply it in the protocol's
-order — commit, containers at Backlog, Ready last; a card approved onto
-this open bolt goes to Ready with the rest and the live loop expands it
-mid-flight — then clear `needs-operator` and settle. Applying the plan drains the
-inbox the way applying a guard's plan empties the guard: a later run
-against an unrouted queue proposes again; against an empty one, the loop
-charges nothing.
+You author and publish; dispatch assembles every standing payload into
+the one round and applies the operator's word (the protocol's
+"Publishing a payload"). Three acts, then settle:
 
-The loop that charged you is already stopped, so your round blocks
-nothing. An operator who never takes it loses nothing — the inbox waits,
-and you settle without applying if they send the plan back with nothing
-to redraft. Nothing the plan proposes reaches GitHub before the
-approval.
+1. Commit the `close/` payload by pathspec and **push your branch** —
+   dispatch has no checkout and reads the files through the contents
+   API at your commit's SHA.
+2. Write the round-payload marker as a comment on the anchor item — the
+   bolt's unit parent, or its lowest queued finding — with
+   `ORIGIN: construction` and the pushed SHA.
+3. Add the `dispatch:standing` label to the same item.
+
+No lavish page, no digest, no apply, no Ready, and no `needs-operator`:
+the payload stands until a round consumes it. The loop that charged you
+is already stopped, so nothing blocks; an operator who never calls a
+round loses nothing — the inbox waits, and a send-back comes back to a
+fresh session as the note on the anchor. Applying the plan (dispatch's
+act) drains the inbox the way applying a guard's plan empties the
+guard: a later run against an unrouted queue proposes again; against an
+empty one, the loop charges nothing. Nothing the plan proposes reaches
+GitHub before the approval.
 
 ## What you never do
 
@@ -79,5 +83,5 @@ report, never the tracker.
 
 ## What you report
 
-One line per row with its applied route and link, what stayed backlogged
-and why, and whether the inbox is empty.
+One line per row with its seeded route, the payload's anchor item and
+SHA, and anything you left out of the plan and why.

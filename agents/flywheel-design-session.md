@@ -58,14 +58,18 @@ own; a session carrying three items whose operator has finished with two
 writes the label on those two and keeps working the third.
 
 **A batch with a next round or construction to propose ends with a
-dispatch plan** — the shared protocol at
+dispatch-plan payload** — the shared protocol at
 `skills/_reference/dispatch-plan.md`: real files in your session
-directory's `close/`, drafted incrementally as outcomes settle, a lavish
-page over them, one operator approval, and you apply the word in the
-protocol's order before you settle. The plan may propose new intents
-beside your own and fold units into an existing open bolt. Nothing
-reaches GitHub before the approval, and a session with nothing to
-propose settles as today.
+directory's `close/`, drafted incrementally as outcomes settle, then
+PUBLISHED — committed by pathspec, branch pushed, the round-payload
+marker and `dispatch:standing` label on your elaboration parent — and
+you settle. You run no round and apply nothing: dispatch assembles
+every standing payload into the one round, and its apply writes your
+items' `stage:done`. The plan may propose new intents beside your own
+and fold units into an existing open bolt. Nothing reaches GitHub
+before the approval, and a session with nothing to propose settles as
+today. The operator's word given live in your pane is still applied
+directly — the round is for the operator who stepped away.
 
 Design whose batch work builds a lavish page runs under
 `flywheel-interactive-session` instead; construction types run under
