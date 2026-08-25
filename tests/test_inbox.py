@@ -480,6 +480,16 @@ class RoundInboxTest(unittest.TestCase):
         self.assertEqual(box.close_ready, (),
                          "a label cannot invent a close decision")
 
+    def test_a_close_ready_parent_is_no_payload_anchor(self):
+        # The loop labels the unit parents for visibility and the poke;
+        # the derived close row covers them — they nominate nothing.
+        snap = Snapshot(items=[self.merged(1),
+                               item(9, inbox.DISPATCH_STANDING, inbox.UNIT,
+                                    milestone="bolt/x")])
+        box = inbox.round_inbox(snap)
+        self.assertEqual(box.close_ready, ("bolt/x",))
+        self.assertEqual(box.payload_anchors, ())
+
     def test_an_empty_round_is_empty(self):
         self.assertTrue(inbox.round_inbox(Snapshot()).empty)
 

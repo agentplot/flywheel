@@ -1120,8 +1120,12 @@ def round_inbox(snapshot):
         backlog_cards=tuple(c for c in snapshot.plan_cards
                             if c.status == STATUS_BACKLOG
                             and c.milestone_state == "open"),
+        # A close-ready bolt's parents carry the standing label for
+        # visibility and the poke; they nominate no payload, so the
+        # derived close row covers them and they are not shortfalls.
         payload_anchors=tuple(i for i in snapshot.items
-                              if i.is_open and DISPATCH_STANDING in i.labels),
+                              if i.is_open and DISPATCH_STANDING in i.labels
+                              and i.milestone not in close_ready),
     )
 
 
