@@ -56,13 +56,19 @@ accumulated set, placing each idea as a row under a container:
 4. **Dropped** — a row routed `drop`; say why on the intake issue.
 
 Nothing the plan proposes exists until the operator approves — no
-milestone, no placement, no batch, no card, no close. Two surfaces
-carry the same plan: the page (render it in the scratch directory, open
-or DM the lavish URL) and the **Discord digest** — the payload as
-numbered rows with seeded routes, answered by "yes to all", corrections
-by number ("keep bolt/x open", "answer N: <text>" included), or
-"send back: <note>", per the protocol's reply grammar. Whichever answer
-arrives first is the round's answer; apply it in the protocol's order
+milestone, no placement, no batch, no card, no close. **The lavish page
+is the round's primary surface**: render it in the scratch directory
+and serve it with `npx -y lavish-axi <path>/plan.html` — your
+environment's `LAVISH_AXI_HOST` / `LAVISH_AXI_LINK_HOST` /
+`LAVISH_AXI_ALLOWED_HOSTS` (from the manifest's `dispatch:` env) make
+the served URL reachable from the operator's other devices; use the
+URL lavish prints, never a URL you compose. The **Discord message
+carries that link first**, then the digest — the payload as numbered
+rows with seeded routes — as the fallback for answering away from the
+page: "yes to all", corrections by number ("keep bolt/x open",
+"answer N: <text>" included), or "send back: <note>", per the
+protocol's reply grammar. Whichever answer arrives first — the page's
+or the reply — is the round's answer; apply it in the protocol's order
 (every write of yours is a tracker write) and say, per object, what you
 filed. Applying an approved plan is the one time you write board Status
 Ready — the round's approval IS the board approval, including on cards

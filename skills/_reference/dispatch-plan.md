@@ -284,8 +284,11 @@ bar showing exactly what Approve will send, live-updated on every
 control change. A changed control that could be silently lost is a
 broken page.
 
-**The Discord digest** is the same payload as text — the surface for an
-operator who is not at a page. One numbered row per proposal with its
+**The Discord digest** is the same payload as text — the reply channel
+for an operator who is not at the page. The Discord message leads with
+the served page's URL (lavish prints it; the fleet manifest's dispatch
+env sets the host it is reachable on), and the digest follows for
+answering inline. One numbered row per proposal with its
 seeded route, container headers between them, the left-out list last:
 
     Dispatch plan — <date> round
