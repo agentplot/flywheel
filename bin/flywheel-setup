@@ -104,6 +104,10 @@ LABELS = {
     "needs-operator": ("e99695",
                        "blocked on the operator's word; the question is the "
                        "latest comment"),
+    "dispatch:standing": ("0e8a16",
+                          "dispatch has something to assemble here — a "
+                          "published round payload or a close-ready "
+                          "milestone; the marker comment carries the facts"),
 }
 
 STATUS_OPTIONS = [

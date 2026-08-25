@@ -42,6 +42,10 @@ READY = "state:ready"
 IN_PROGRESS = "state:in-progress"
 QUEUED = "state:queued"
 NEEDS_OPERATOR = "needs-operator"
+#: Dispatch has something to assemble here — a published round payload's
+#: anchor, or a close-ready unit parent. The label is only the signal;
+#: the marker comment on the item says what kind of standing thing it is.
+DISPATCH_STANDING = "dispatch:standing"
 UNIT = "unit"
 ELABORATION = "elaboration"
 PLAN = "plan"
@@ -935,10 +939,18 @@ def dispatch_inbox(snapshot):
         # planner's, awaiting board approval, and it is never triage.
         # Live fire: dispatch routed a fresh card onto a milestone with a
         # state label, which started phantom bolt loops.
+        # `dispatch:standing` items — published round payloads, close-ready
+        # unit parents — join triage: the round is triage's own plan,
+        # widened, not a parallel queue.
         triage=tuple(i for i in live
-                     if i.is_open and not i.milestone
-                     and PLAN not in i.labels),
-        relay=tuple(i for i in live if NEEDS_OPERATOR in i.labels),
+                     if (i.is_open and not i.milestone
+                         and PLAN not in i.labels)
+                     or (i.is_open and DISPATCH_STANDING in i.labels)),
+        # One wait, one surface: an item standing for the round is
+        # assembled into the plan, never ALSO relayed as a DM — two
+        # deliveries of one wait carry two contradictory imperatives.
+        relay=tuple(i for i in live if NEEDS_OPERATOR in i.labels
+                    and DISPATCH_STANDING not in i.labels),
     )
 
 
@@ -1034,6 +1046,136 @@ def find_andon(comments):
         if found is None:
             found = parse_andon(body)
     return found
+
+
+# ---------------------------------------------------------------------------
+# The round's markers — published payloads and close-ready milestones
+# ---------------------------------------------------------------------------
+
+ROUND_PAYLOAD_OPEN = "<!-- flywheel:round-payload -->"
+ROUND_PAYLOAD_CLOSE = "<!-- /flywheel:round-payload -->"
+ROUND_CONSUMED = "<!-- flywheel:round-consumed -->"
+_ROUND_CONSUMED = re.compile(
+    r"^" + re.escape(ROUND_CONSUMED) + r"[ \t]*$", re.MULTILINE)
+_ROUND_PAYLOAD = re.compile(
+    r"^" + re.escape(ROUND_PAYLOAD_OPEN)
+    + r"[ \t]*$(?P<body>.*?)^" + re.escape(ROUND_PAYLOAD_CLOSE),
+    re.DOTALL | re.MULTILINE,
+)
+_PAYLOAD_LINE = re.compile(
+    r"^PAYLOAD:[ \t]*repo=(?P<repo>\S+)[ \t]+sha=(?P<sha>[0-9a-f]{40})"
+    r"[ \t]+dir=(?P<dir>\S+)[ \t]*$", re.MULTILINE)
+_ORIGIN_LINE = re.compile(r"^ORIGIN:[ \t]*(?P<origin>\S+)[ \t]*$",
+                          re.MULTILINE)
+
+CLOSE_READY_OPEN = "<!-- flywheel:close-ready -->"
+CLOSE_READY_CLOSE = "<!-- /flywheel:close-ready -->"
+_CLOSE_READY = re.compile(
+    r"^" + re.escape(CLOSE_READY_OPEN)
+    + r"[ \t]*$(?P<body>.*?)^" + re.escape(CLOSE_READY_CLOSE),
+    re.DOTALL | re.MULTILINE,
+)
+_CLOSE_READY_LINE = re.compile(
+    r"^CLOSE-READY:[ \t]*milestone=(?P<milestone>\S+)"
+    r"[ \t]+branch=(?P<branch>\S+)[ \t]+main=(?P<main>\S+)[ \t]*$",
+    re.MULTILINE)
+
+
+@dataclass(frozen=True)
+class RoundPayload:
+    repo: str
+    sha: str
+    dir: str
+    origin: str = ""
+
+
+@dataclass(frozen=True)
+class CloseReady:
+    milestone: str
+    branch: str
+    main: str
+
+
+def format_round_payload(repo, sha, dir, origin):
+    """The marker an origin actor writes on its anchor item at publish.
+    The label (`dispatch:standing`) is the signal; this is the payload —
+    the committed files' address, pinned by SHA so what dispatch renders
+    is exactly what the origin committed."""
+    for name, value in (("repo", repo), ("sha", sha), ("dir", dir),
+                        ("origin", origin)):
+        if not (value or "").strip():
+            raise ValueError(f"a round payload needs its {name}")
+    return (f"{ROUND_PAYLOAD_OPEN}\n"
+            f"PAYLOAD: repo={repo} sha={sha} dir={dir}\n"
+            f"ORIGIN: {origin}\n"
+            f"{ROUND_PAYLOAD_CLOSE}")
+
+
+def parse_round_payload(comment_body):
+    """The marker, or None — andon-grade strictness: own-line delimiters,
+    closing delimiter required, the PAYLOAD line required with a full
+    40-hex sha, so prose can never match."""
+    if not comment_body:
+        return None
+    match = _ROUND_PAYLOAD.search(comment_body)
+    if not match:
+        return None
+    body = match.group("body")
+    payload = _PAYLOAD_LINE.search(body)
+    if not payload:
+        return None
+    origin = _ORIGIN_LINE.search(body)
+    return RoundPayload(repo=payload.group("repo"), sha=payload.group("sha"),
+                        dir=payload.group("dir"),
+                        origin=origin.group("origin") if origin else "")
+
+
+def find_round_payload(comments):
+    """The standing payload among an item's comments, or None.
+
+    A `ROUND_CONSUMED` marker retires every payload published before it —
+    dispatch writes it as its apply's last act for the payload — so a
+    round never re-offers what an earlier round applied, even where the
+    label removal raced. Latest unretired payload wins: a republish after
+    a send-back supersedes the earlier address."""
+    found = None
+    for comment in comments or ():
+        body = comment.get("body") if isinstance(comment, dict) else comment
+        if body and _ROUND_CONSUMED.search(body):
+            found = None
+            continue
+        parsed = parse_round_payload(body)
+        if parsed is not None:
+            found = parsed
+    return found
+
+
+def format_close_ready(milestone, branch, main):
+    """The machine half of the loop's close-ready comment. The prose half
+    stays beside it for the human; this block is what lets an actor with
+    only API access enumerate closable milestones — `needs-operator` on a
+    container also means pauses and andons, so the label alone cannot."""
+    return (f"{CLOSE_READY_OPEN}\n"
+            f"CLOSE-READY: milestone={milestone} branch={branch} "
+            f"main={main}\n"
+            f"{CLOSE_READY_CLOSE}")
+
+
+def parse_close_ready(comment_body):
+    """The close-ready facts, or None. There is no withdrawn marker: the
+    loop removes the labels when new cards hold the landing, and label
+    off means not offered — the marker only carries the facts while the
+    label stands. Latest marker wins at the caller (scan newest-last)."""
+    if not comment_body:
+        return None
+    match = _CLOSE_READY.search(comment_body)
+    if not match:
+        return None
+    line = _CLOSE_READY_LINE.search(match.group("body"))
+    if not line:
+        return None
+    return CloseReady(milestone=line.group("milestone"),
+                      branch=line.group("branch"), main=line.group("main"))
 
 
 # ---------------------------------------------------------------------------

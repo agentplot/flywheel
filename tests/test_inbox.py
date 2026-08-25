@@ -401,6 +401,73 @@ class DispatchInboxTest(unittest.TestCase):
         self.assertEqual(inbox.dispatch_inbox(snap).triage, ())
 
 
+class DispatchStandingTest(unittest.TestCase):
+    """`dispatch:standing` widens triage and narrows relay — the round is
+    triage's own plan, never a parallel queue."""
+
+    def test_a_standing_item_joins_triage_even_with_a_milestone(self):
+        snap = Snapshot(items=[item(1, inbox.DISPATCH_STANDING, inbox.UNIT,
+                                    milestone="bolt/x")])
+        self.assertEqual([i.number for i in inbox.dispatch_inbox(snap).triage],
+                         [1])
+
+    def test_a_standing_wait_is_not_also_relayed(self):
+        # One wait, one surface: the round assembles it; a DM beside the
+        # plan would carry a second, contradictory imperative.
+        snap = Snapshot(items=[item(1, inbox.DISPATCH_STANDING,
+                                    inbox.NEEDS_OPERATOR,
+                                    milestone="bolt/x")])
+        box = inbox.dispatch_inbox(snap)
+        self.assertEqual([i.number for i in box.triage], [1])
+        self.assertEqual(box.relay, ())
+
+    def test_a_plain_needs_operator_still_relays(self):
+        snap = Snapshot(items=[item(1, inbox.NEEDS_OPERATOR,
+                                    milestone="bolt/x")])
+        self.assertEqual([i.number for i in inbox.dispatch_inbox(snap).relay],
+                         [1])
+
+
+class RoundMarkerTest(unittest.TestCase):
+    """The round's two markers: a published payload and a close-ready
+    milestone — andon-grade strictness, prose can never match."""
+
+    def payload(self):
+        return inbox.format_round_payload(
+            "agentplot/blueprints", "a" * 40,
+            "openspec/changes/bolt-x/sessions/close", "construction")
+
+    def test_a_payload_round_trips(self):
+        parsed = inbox.parse_round_payload(self.payload())
+        self.assertEqual(parsed.repo, "agentplot/blueprints")
+        self.assertEqual(parsed.sha, "a" * 40)
+        self.assertEqual(parsed.origin, "construction")
+
+    def test_prose_and_half_markers_never_match(self):
+        self.assertIsNone(inbox.parse_round_payload(
+            "the payload is at repo=x sha=y — not a marker"))
+        truncated = self.payload().rsplit("\n", 1)[0]
+        self.assertIsNone(inbox.parse_round_payload(truncated))
+        self.assertIsNone(inbox.parse_round_payload(
+            self.payload().replace("a" * 40, "short")))
+
+    def test_consumed_retires_earlier_payloads(self):
+        comments = [self.payload(),
+                    f"applied.\n\n{inbox.ROUND_CONSUMED}"]
+        self.assertIsNone(inbox.find_round_payload(comments))
+
+    def test_a_republish_after_consume_stands_again(self):
+        comments = [self.payload(), inbox.ROUND_CONSUMED, self.payload()]
+        self.assertIsNotNone(inbox.find_round_payload(comments))
+
+    def test_close_ready_round_trips(self):
+        marker = inbox.format_close_ready("bolt/x", "bolt/x", "main")
+        parsed = inbox.parse_close_ready(marker)
+        self.assertEqual((parsed.milestone, parsed.branch, parsed.main),
+                         ("bolt/x", "bolt/x", "main"))
+        self.assertIsNone(inbox.parse_close_ready("Ready to land: prose"))
+
+
 # ---------------------------------------------------------------------------
 # The andon cord — code, not judgment
 # ---------------------------------------------------------------------------
