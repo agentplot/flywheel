@@ -682,12 +682,38 @@ def start_actor(name: str, profile: str, model: str | None, cwd: Path,
     return launch_agent(name, profile, model, cwd, prompt, env)
 
 
+def workspace_for(label: str, env: dict) -> str | None:
+    """The herdr workspace carrying this label, created when absent.
+
+    A tab created with no workspace lands wherever the operator's focus
+    happens to be, which is how dispatch ended up filed under a
+    worktree's name. A named workspace makes placement deterministic;
+    None (lookup and creation both failed) falls back to today's
+    behavior rather than refusing the start."""
+    try:
+        listed = herdr_json(["herdr", "workspace", "list"], env)
+        for ws in (listed.get("result", {}) or {}).get("workspaces", ()):
+            if ws.get("label") == label:
+                return ws.get("workspace_id")
+        made = herdr_json(["herdr", "workspace", "create",
+                           "--label", label, "--no-focus"], env)
+        result = made.get("result", {}) or {}
+        return (result.get("workspace", {}) or {}).get("workspace_id")             or result.get("workspace_id")
+    except RuntimeError:
+        return None
+
+
 def launch_agent(name: str, profile: str, model: str | None, cwd: Path,
                  prompt: str | None, env: dict,
-                 tab_env: tuple = (), claude_args: tuple = ()) -> bool:
+                 tab_env: tuple = (), claude_args: tuple = (),
+                 workspace_label: str | None = None) -> bool:
     print(f"starting {name} ({profile}, {model or 'default'})")
     tab_argv = ["herdr", "tab", "create", "--cwd", str(cwd),
                 "--label", name, "--no-focus"]
+    if workspace_label:
+        workspace = workspace_for(workspace_label, env)
+        if workspace:
+            tab_argv += ["--workspace", workspace]
     for pair in tab_env:
         tab_argv += ["--env", pair]
     try:
@@ -818,7 +844,8 @@ def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
     ok = launch_agent("dispatch", "flywheel-dispatch", block.get("model"),
                       cwd, block.get("prompt"), env,
                       tab_env=tuple(f"{k}={v}" for k, v in env_map.items()),
-                      claude_args=claude_args)
+                      claude_args=claude_args,
+                      workspace_label="dispatch")
     return 0 if ok else 1
 
 
