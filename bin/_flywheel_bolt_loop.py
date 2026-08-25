@@ -2823,6 +2823,9 @@ class BoltLoop:
             # that started this landing IS its answer.
             if parent.is_container and inbox.NEEDS_OPERATOR in parent.labels:
                 self.tracker.remove_label(parent.number, inbox.NEEDS_OPERATOR)
+            if parent.is_container and inbox.DISPATCH_STANDING in parent.labels:
+                self.tracker.remove_label(parent.number,
+                                          inbox.DISPATCH_STANDING)
         waiting = [i.number for i in items
                    if inbox.NEEDS_OPERATOR in i.labels and not i.is_container]
         if waiting:
@@ -3340,6 +3343,10 @@ class BoltLoop:
                                and inbox.NEEDS_OPERATOR in i.labels):
                     self.tracker.remove_label(parent.number,
                                               inbox.NEEDS_OPERATOR)
+                    # Label off = not offered: no withdrawn marker exists,
+                    # and the next close-ready re-adds both labels.
+                    self.tracker.remove_label(parent.number,
+                                              inbox.DISPATCH_STANDING)
                     self.ledger.note(f"close-ready withdrawn from "
                                      f"#{parent.number} — new card(s) hold "
                                      f"the landing")
@@ -3368,8 +3375,16 @@ class BoltLoop:
                     f"{self.params.bolt_branch} and every card is ruled. "
                     f"Closing the {self.params.milestone} milestone releases "
                     f"the landing to {self.params.main_branch}; the archive "
-                    f"follows it."))
+                    f"follows it.\n\n"
+                    + inbox.format_close_ready(self.params.milestone,
+                                               self.params.bolt_branch,
+                                               self.params.main_branch)))
                 self.tracker.add_label(parent.number, inbox.NEEDS_OPERATOR)
+                # The machine half: the marker carries the facts and the
+                # label makes the wait enumerable by dispatch — a round
+                # offers the close; an unchecked row writes nothing and
+                # the choice stands again next round.
+                self.tracker.add_label(parent.number, inbox.DISPATCH_STANDING)
                 self.ledger.note(f"close-ready — the wait is on "
                                  f"#{parent.number} for the operator's close")
                 self._log(f"close-ready: waiting on the operator's milestone "
@@ -3425,12 +3440,15 @@ class BoltLoop:
                 f"Bolt: {self.params.milestone}. Items: {nums} — every "
                 "queued finding on the milestone, awaiting routing.",
                 "",
-                "Build one dispatch plan over the whole inbox per the "
-                "skill and skills/_reference/dispatch-plan.md, run the "
-                "round, and apply the operator's word in the protocol's "
-                "order. Nothing reaches GitHub before the approval; an "
-                "operator who never takes the round costs nothing — the "
-                "inbox waits.",
+                "Author one dispatch-plan payload over the whole inbox "
+                "per the skill and skills/_reference/dispatch-plan.md, "
+                "then PUBLISH it: commit the payload files by pathspec, "
+                "push your branch, and write the round-payload marker "
+                "with the dispatch:standing label on the anchor item. "
+                "You run no round and apply nothing — dispatch assembles "
+                "every standing payload into the one round and applies "
+                "the operator's word. An operator who never takes the "
+                "round costs nothing — the payload stands.",
                 "",
                 f"Your plan directory is openspec/changes/"
                 f"{self.params.change_id}/sessions/<date>-findings-routing/ "

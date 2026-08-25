@@ -3437,10 +3437,17 @@ class CloseReadyTest(unittest.TestCase):
         program = a_loop(tracker)
         program.run(max_cycles=1)
         self.assertIn(("add_label", 9, inbox.NEEDS_OPERATOR), tracker.writes)
+        self.assertIn(("add_label", 9, inbox.DISPATCH_STANDING),
+                      tracker.writes, "the wait is enumerable by dispatch")
         comments = [w for w in tracker.writes
                     if w[0] == "comment" and w[1] == 9]
         self.assertTrue(any("Closing the bolt/x milestone" in w[2]
                             for w in comments))
+        marked = [inbox.parse_close_ready(w[2]) for w in comments]
+        facts = next(m for m in marked if m is not None)
+        self.assertEqual((facts.milestone, facts.branch, facts.main),
+                         ("bolt/x", "bolt/x", "main"),
+                         "the machine half carries the facts")
 
     def test_the_mark_is_written_once(self):
         snap = Snapshot(items=[
@@ -3492,6 +3499,9 @@ class CloseReadyTest(unittest.TestCase):
         a_loop(tracker).run(max_cycles=1)
         self.assertIn(("remove_label", 9, inbox.NEEDS_OPERATOR),
                       tracker.writes)
+        self.assertIn(("remove_label", 9, inbox.DISPATCH_STANDING),
+                      tracker.writes,
+                      "label off = not offered; no withdrawn marker exists")
         self.assertNotIn(("add_label", 9, inbox.NEEDS_OPERATOR),
                          tracker.writes)
 
