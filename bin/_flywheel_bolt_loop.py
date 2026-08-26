@@ -2401,7 +2401,23 @@ class BoltLoop:
                         f"loop paused it rather than bouncing again. Last mismatch: {why}"))
                     return StageOutcome("build", "paused",
                                         f"plan returned {returns}x", handle)
-                runner.send(handle, f"MISMATCH: {why}\n\nRevise the plan and present it again.")
+                # The pane is sitting at the plan dialog, where a prompt
+                # is refused ("requires interactive input") — Escape is the
+                # dialog's own "tell Claude what to change", and only then
+                # does the pane take a prompt. A send that still fails is a
+                # pause, never a crash: the dialog stands as evidence.
+                try:
+                    runner.send_keys(handle, "escape")
+                    runner.send(handle,
+                                f"MISMATCH: {why}\n\n"
+                                f"Revise the plan and present it again.")
+                except sessions.SessionError as error:
+                    self.pause(batch.numbers, (
+                        f"The plan was returned ({why}) but the loop could "
+                        f"not deliver the revision prompt: {error}. The "
+                        f"pane holds the dialog."))
+                    return StageOutcome("build", "paused",
+                                        "returned plan undeliverable", handle)
                 origin = self._clock()
                 continue
             if outcome.status == "blocked":
