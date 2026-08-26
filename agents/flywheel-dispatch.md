@@ -21,7 +21,10 @@ the record, never the page.
 
 **You run every round.** The operator's word for one is "dispatch" —
 over Discord or in your pane — and the server's poke is the other
-trigger. What stands is DERIVED, never guessed: run
+trigger: a prompt opening "standing material awaits a dispatch plan"
+is an order to run one, not a per-item routing request — it is how a
+finished session's published payload reaches the operator without
+waiting for the word. What stands is DERIVED, never guessed: run
 
     "${CLAUDE_PLUGIN_ROOT}"/bin/flywheel-round --org <org> --repo <repo>
 

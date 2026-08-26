@@ -515,6 +515,45 @@ class DispatchLedgerTest(unittest.TestCase):
             self.assertTrue(actual["ok"])
             self.assertEqual(actual["step"], "relay:1")
 
+    def test_an_unchanged_queue_is_delivered_once_not_every_pass(self):
+        # A standing item leaves triage only when a round consumes it, so
+        # re-delivering the same set each pass pokes dispatch forever on
+        # material it already holds.
+        dispatch = FakeDispatch()
+        box = a_server(tracker=FakeTracker(self.snap()), dispatch=dispatch)
+        box.pass_once()
+        box.pass_once()
+        self.assertEqual(len(dispatch.calls), 1)
+
+    def test_a_changed_queue_is_delivered_again(self):
+        dispatch = FakeDispatch()
+        tracker = FakeTracker(self.snap())
+        box = a_server(tracker=tracker, dispatch=dispatch)
+        box.pass_once()
+        tracker._snapshot = Snapshot(items=[
+            item(1, inbox.NEEDS_OPERATOR), item(2, inbox.NEEDS_OPERATOR)])
+        box.pass_once()
+        self.assertEqual(len(dispatch.calls), 2)
+
+    def test_a_failed_delivery_is_retried_next_pass(self):
+        dispatch = FakeDispatch(
+            {"delivered": False, "reason": "dispatch is busy (working)"})
+        box = a_server(tracker=FakeTracker(self.snap()), dispatch=dispatch)
+        box.pass_once()
+        box.pass_once()
+        self.assertEqual(len(dispatch.calls), 2)
+
+    def test_an_emptied_queue_forgets_so_the_same_numbers_are_news(self):
+        dispatch = FakeDispatch()
+        tracker = FakeTracker(self.snap())
+        box = a_server(tracker=tracker, dispatch=dispatch)
+        box.pass_once()
+        tracker._snapshot = Snapshot(items=[])
+        box.pass_once()
+        tracker._snapshot = self.snap()
+        box.pass_once()
+        self.assertEqual(len(dispatch.calls), 2)
+
     def test_a_failed_delivery_is_a_recorded_divergence_with_its_reason(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:

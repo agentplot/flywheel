@@ -52,10 +52,15 @@ class RenderTest(unittest.TestCase):
         self.assertIn("DM each item's assignee", text)
         self.assertNotIn("\n", text)
 
-    def test_triage_names_the_routing_imperative(self):
+    def test_triage_is_the_round_trigger_the_charter_names(self):
+        # The sentence must match the dispatch charter's trigger phrase —
+        # a narrow per-item routing order here made dispatch decline the
+        # poke forever while a published payload stood unshown.
         text = dispatch_mcp.render_triage(self.ITEMS)
         self.assertIn("#12", text)
-        self.assertIn("route each (milestone, type, assignee)", text)
+        self.assertIn("standing material awaits a dispatch plan", text)
+        self.assertIn("run the round", text)
+        self.assertNotIn("\n", text)
 
 
 class SessionSemanticsTest(unittest.TestCase):

@@ -84,8 +84,9 @@ TOOLS = [
     },
     {
         "name": "triage",
-        "description": "Hand dispatch the unmilestoned open items awaiting "
-                       "triage. Returns whether the batch was delivered to "
+        "description": "Hand dispatch the material standing for a round — "
+                       "unmilestoned intake and dispatch:standing items. "
+                       "Returns whether the batch was delivered to "
                        "dispatch, with the reason when it was not.",
         "inputSchema": _ITEMS,
         "outputSchema": _DELIVERY,
@@ -118,9 +119,14 @@ def render_relay(items: list) -> str:
 
 
 def render_triage(items: list) -> str:
+    # The round trigger the dispatch charter names as the server's poke:
+    # standing payloads and close-ready parents ride this queue beside raw
+    # intake, so the imperative is "run the round", never a per-item routing
+    # order — the round derivation, not this sentence, says what each is.
     refs = "; ".join(_ref(i) for i in items)
-    return (f"unmilestoned open items await triage: {refs} — route each "
-            "(milestone, type, assignee)")
+    return (f"standing material awaits a dispatch plan: {refs} — run the "
+            "round: derive it with flywheel-round, render the plan on both "
+            "surfaces, and route any raw intake it carries")
 
 
 class DispatchProxy:

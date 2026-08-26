@@ -349,6 +349,7 @@ class Server:
         self.ledger = ledger or obs.NullLedger()
         self.planner = planner      # injected: charge one planning run
         self._deliveries = {}
+        self._delivered_sets = {}   # kind -> frozenset of item numbers
         self._plan_charges = 0
         self.heads = heads or git_heads
         self.run = run
@@ -499,9 +500,19 @@ class Server:
         dispatch actually reads is the proxy's; this pass owes it items,
         not prose. A non-delivery is a ledgered divergence with its
         reason and a pass failure — dispatch absent is a fact now, never
-        a silent success."""
+        a silent success.
+
+        One delivery per queue STATE: a standing item leaves triage only
+        when a round consumes it, so an unchanged queue re-delivered every
+        pass is an endless poke on material dispatch already holds. The
+        set delivered last is remembered per kind; only a changed set is
+        delivered again, a failed delivery is retried next pass, and an
+        emptied queue forgets — the same numbers standing anew are news."""
         box = inbox.dispatch_inbox(snapshot)
-        if box.empty or not self.dispatch:
+        if not self.dispatch:
+            return 0
+        if box.empty:
+            self._delivered_sets.clear()
             return 0
         if self.dry_run:
             for kind, items in (("relay", box.relay), ("triage", box.triage)):
@@ -511,10 +522,18 @@ class Server:
             return 0
         failures = 0
         with self.dispatch() as d:
-            if box.relay:
-                failures += self._deliver("relay", d.relay, box.relay)
-            if box.triage:
-                failures += self._deliver("triage", d.triage, box.triage)
+            for kind, call, items in (("relay", d.relay, box.relay),
+                                      ("triage", d.triage, box.triage)):
+                if not items:
+                    self._delivered_sets.pop(kind, None)
+                    continue
+                current = frozenset(i.number for i in items)
+                if self._delivered_sets.get(kind) == current:
+                    continue
+                if self._deliver(kind, call, items):
+                    failures += 1
+                else:
+                    self._delivered_sets[kind] = current
         return failures
 
     def _deliver(self, kind, call, items):
