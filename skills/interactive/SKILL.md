@@ -51,8 +51,10 @@ containers, then published (commit, push, marker + `dispatch:standing`
 on the elaboration parent) and the session settles — dispatch runs the
 round and applies. The payload is a separate artifact from the batch's
 decision page — one carries the decisions, the other routes their
-consequences. Nothing reaches GitHub before the operator approves, and
-a session with nothing to propose settles as today.
+consequences. Nothing reaches GitHub before the operator approves. A
+session with nothing to propose still publishes — the closure payload
+(no containers, the outcome, your items as `done_items`) — so a dead
+end reaches the operator as a round row, never as silence.
 
 ## On the tracker
 

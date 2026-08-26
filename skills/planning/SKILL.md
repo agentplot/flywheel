@@ -49,8 +49,10 @@ outcomes settle, the exclusive routing across intent and bolt
 containers, then published (commit, push, marker + `dispatch:standing`
 on the elaboration parent) and the session settles — dispatch runs the
 round and applies, your `stage:done` included. Nothing reaches GitHub
-before the operator approves, and a session with nothing to propose
-settles as today.
+before the operator approves. A session with nothing to propose still
+publishes — the closure payload (no containers, the outcome, your items
+as `done_items`) — so a dead end reaches the operator as a round row,
+never as silence.
 
 ## On the tracker
 

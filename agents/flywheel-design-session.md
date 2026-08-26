@@ -67,9 +67,12 @@ you settle. You run no round and apply nothing: dispatch assembles
 every standing payload into the one round, and its apply writes your
 items' `stage:done`. The plan may propose new intents beside your own
 and fold units into an existing open bolt. Nothing reaches GitHub
-before the approval, and a session with nothing to propose settles as
-today. The operator's word given live in your pane is still applied
-directly — the round is for the operator who stepped away.
+before the approval, and a session with nothing to propose STILL
+publishes — the closure payload: no containers, your outcome and your
+items as `done_items`, so the dead end reaches the operator as a round
+row instead of silence. The operator's word given live in your pane is
+still applied directly — the round is for the operator who stepped
+away.
 
 Design whose batch work builds a lavish page runs under
 `flywheel-interactive-session` instead; construction types run under

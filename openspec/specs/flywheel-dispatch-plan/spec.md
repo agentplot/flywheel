@@ -58,6 +58,26 @@ org folder's untracked scratch, because dispatch holds no checkout and
 writes no records; the committed payloads and the tracker objects the
 apply writes are the record.
 
+### Requirement: Every design-session close publishes — the dead end included
+
+A design session SHALL end by publishing a payload proposing one of
+three things: a next round (elaboration rows), construction (cards), or
+**closure** — no containers, the session's outcome and its items as
+`done_items`. An elaboration SHALL NOT end silently: either the
+operator was in the session, or its close is a row in the next round.
+The round renders closure payloads as finished-elaboration rows, seeded
+approve; approving writes `stage:done` on the `done_items`, and a note
+typed on the row is instead commented on each of those items with no
+`stage:done`, so the loop's next pass charges a fresh session carrying
+the steer. Either way the payload is consumed.
+
+#### Scenario: A dead-end elaboration reaches the operator
+
+- **WHEN** a design session finds nothing to propose and settles
+- **THEN** its closure payload stands for the round, whose row carries
+  the outcome — and "yes to all" signs it off while a typed note sends
+  a fresh session after it
+
 ### Requirement: Origins publish; dispatch assembles and runs every round
 
 A session origin SHALL end by publishing, not by running a round:

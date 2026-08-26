@@ -174,6 +174,12 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
        checkbox led by the milestone name; unchecking means keep open
        and writes nothing. Only unchecked rows reach the contract, as
        closes: { "<milestone>": false }.
+     A "finished" container is the round's finished-elaborations
+       section — one row per closure payload: { key, title, oneliner,
+       srcId } with the session's outcome; seeded approve (stage:done on
+       the payload's done_items), and a typed note is the dead-end steer
+       (commented on the items, stage:done withheld, a fresh session
+       carries it).
      An empty context or left_out hides that section. -->
 <script id="plan-data" type="application/json">
 {
@@ -291,7 +297,8 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   // is those origins' point. Needing more design first is a send-back
   // with a note, never a routing value.
   const ROUTES = { intent: ["approve", "backlog", "drop"],
-                   bolt: ["approve", "backlog", "drop"] };
+                   bolt: ["approve", "backlog", "drop"],
+                   finished: ["approve"] };
 
   function routesFor(container) {
     const routes = [...ROUTES[container.kind]];
@@ -442,8 +449,47 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     return sec;
   }
 
+  function finishedSection(c) {
+    // Finished elaborations: the dead end made visible. Approve signs
+    // the session off (stage:done at apply); a typed note steers a
+    // fresh session instead.
+    const sec = document.createElement("section");
+    const h = document.createElement("h2");
+    h.className = "text-xs font-bold uppercase tracking-widest opacity-50 mb-2";
+    h.textContent = "Finished elaborations — ";
+    sec.append(h);
+    const list = document.createElement("div");
+    list.className = "rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200";
+    for (const item of c.rows || []) {
+      const r = document.createElement("div");
+      r.className = "p-3 flex flex-col gap-2";
+      const top = document.createElement("div");
+      top.className = "flex items-baseline gap-2";
+      const badge = document.createElement("span");
+      badge.className = "badge badge-sm badge-secondary";
+      badge.textContent = "session";
+      const title = document.createElement("span");
+      title.className = "font-bold text-sm";
+      title.textContent = item.title;
+      top.append(badge, title);
+      const line = document.createElement("div");
+      line.className = "text-xs opacity-60";
+      line.textContent = item.oneliner || "";
+      const note = document.createElement("input");
+      note.className = "input input-sm w-full";
+      note.placeholder = "approve as finished — or type a note to steer a fresh session";
+      note.dataset.answerFor = item.key;
+      note.addEventListener("input", preview);
+      r.append(top, line, note);
+      list.append(r);
+    }
+    sec.append(list);
+    return sec;
+  }
+
   function containerSection(c) {
     if (c.kind === "close") return closeSection(c);
+    if (c.kind === "finished") return finishedSection(c);
     const sec = document.createElement("section");
     const head = document.createElement("div");
     head.className = "flex items-baseline justify-between mb-2 gap-3 flex-wrap";

@@ -57,8 +57,9 @@ write the label to the items it carries and settle rather than doing
 anything further with the deliverables: the collect, the merge and the
 closes are the loop's.
 
-When the session's close is a dispatch-plan payload, the session SHALL
-publish it — commit the `close/` files by pathspec, push its branch,
+Every close is a dispatch-plan payload — a next round, construction,
+or the closure shape for a session with nothing to propose. The session
+SHALL publish it — commit the `close/` files by pathspec, push its branch,
 and write the round-payload marker with the `dispatch:standing` label
 on its elaboration parent — and settle, naming its items as the
 payload's `done_items`. Dispatch runs the round and applies the

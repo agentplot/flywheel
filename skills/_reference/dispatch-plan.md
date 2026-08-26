@@ -42,12 +42,18 @@ The operator calls a round with one word — **"dispatch"** — over
 Discord or in the pane; the server's triage poke is the other trigger.
 If a round is open and unanswered, new material waits for the next.
 
-**Any design session MAY end with a dispatch-plan payload; none must.**
-A session with nothing to propose settles as today, and the loop's
-compose guard and the operator's ordinary board approval remain the
-fallback path. The chain exists so that one approval, given where the
-operator already is, closes this round and charges the next — instead
-of two gestures on two surfaces with the context carried by memory.
+**Every design session's close publishes a payload — the dead end
+included.** A close proposes one of three things: a next round
+(elaboration rows), construction (cards), or **closure** — no
+containers, just the session's outcome ("what we learned, why there is
+nothing to file") and its `done_items`. An elaboration therefore never
+ends without passing through the operator's hands: either they were in
+the session (the escalation channels), or its close is a row in the
+next round. The loop's compose guard and the operator's ordinary board
+approval remain the fallback path for work no plan proposed. The chain
+exists so that one approval, given where the operator already is,
+closes this round and charges the next — instead of two gestures on
+two surfaces with the context carried by memory.
 
 ## Publishing a payload
 
@@ -186,6 +192,16 @@ An ephemeral surface is not a record — the committed payload files and
 the tracker objects the apply writes are the record — and the raw ideas
 themselves wait as open unmilestoned issues, dispatch's existing inbox,
 so an operator who never calls a round loses nothing.
+
+**The finished-elaborations section** — a closure payload (no
+containers) renders as one row per finished session: the outcome
+one-liner, the report behind the disclosure, seeded **approve** —
+dispatch's apply writes `stage:done` on the payload's `done_items`, the
+loop collects, and the elaboration closes. A note typed on a finished
+row is the dead-end steer: the apply comments it on each `done_items`
+item and writes no `stage:done`, so the loop's next pass charges a
+fresh session that reads its items' comments and starts from the note.
+Either way the payload is consumed.
 
 **The close section** — a bolt loop that finds every item merged and
 every card ruled marks its unit parents: the "Ready to land" comment
@@ -348,7 +364,10 @@ operator's board approval. Steps the round lacks are skipped.
 
 1. **Answers** — per answered question row: the operator's answer
    verbatim as a comment carrying the `<!-- flywheel:answered -->`
-   marker line on the question item, then close it `closed:done`.
+   marker line on the question item, then close it `closed:done`. A
+   note on a **finished** row is applied here too: commented on each of
+   that payload's `done_items`, which also withholds their step-4
+   `stage:done` — the steer, not the sign-off.
 2. **Per intent container, in plan order, at Backlog** — when `status`
    is `new`, create the `intent/<slug>` milestone and its originating
    item first, assigned to the developer whose word settles it. Create
