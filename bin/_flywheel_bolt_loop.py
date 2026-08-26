@@ -2350,6 +2350,19 @@ class BoltLoop:
         returns on one batch and the loop pauses rather than bouncing again.
         """
         repo = repo or self._sole_repo()
+        # The built witness, plan-mode's own: commits on the batch branch
+        # AND a stage label proving an approval happened — either alone
+        # lies (a stray commit without the plan's approval; a label whose
+        # branch was reset), together they are what a finished plan-mode
+        # build leaves behind. Without this, a resumed batch re-adopts a
+        # finished pane forever.
+        staged = {inbox.STAGE_PLANNED, inbox.STAGE_BUILT,
+                  inbox.STAGE_VERIFIED, inbox.STAGE_MERGED}
+        if (self.branch_has_commits(f"build/{batch.slug}", repo)
+                and any(staged & set(i.labels) for i in batch.items)):
+            return StageOutcome("build", "done",
+                                "already built — the branch carries the "
+                                "plan's commits and the items its stage")
         order = sessions.work_order("/flywheel:build",
                                     self.plan_brief(batch, repo))
         runner = self.runner("build")

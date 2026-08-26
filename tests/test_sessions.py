@@ -408,7 +408,9 @@ class ClockTest(unittest.TestCase):
         result, _ = self.supervise([WaitState.WORKING] * 100, clock,
                                    origin=0.0)
         self.assertEqual(result.state, WaitState.STALLED)
-        self.assertEqual(result.waits, 0, "already past the stall: never wait again")
+        self.assertLessEqual(result.waits, 1,
+                             "one look at the pane, then the verdict — a "
+                             "settled session must never stall unseen")
 
     def test_a_restart_does_not_re_notify(self):
         clock = FakeClock()
@@ -528,6 +530,27 @@ class RunnerChoiceTest(unittest.TestCase):
         with self.assertRaises(sessions.SessionError) as caught:
             sessions.runner_for("telepathy")
         self.assertIn("herdr", str(caught.exception))
+
+
+class SettledBeforeStallTest(unittest.TestCase):
+    """The stall budget measures a session SEEN working — a settled pane
+    resumed with an hours-old origin settles, never stalls."""
+
+    def test_a_settled_session_with_an_ancient_origin_settles(self):
+        class Runner:
+            def wait(self, handle, timeout=None):
+                return sessions.WaitState.SETTLED_DONE
+        watch = sessions.supervise(Runner(), object(), origin=0.0,
+                                   clock=lambda: 100_000.0)
+        self.assertEqual(watch.state, sessions.WaitState.SETTLED_DONE)
+
+    def test_a_working_session_past_the_budget_still_stalls(self):
+        class Runner:
+            def wait(self, handle, timeout=None):
+                return sessions.WaitState.WORKING
+        watch = sessions.supervise(Runner(), object(), origin=0.0,
+                                   clock=lambda: 100_000.0)
+        self.assertEqual(watch.state, sessions.WaitState.STALLED)
 
 
 if __name__ == "__main__":

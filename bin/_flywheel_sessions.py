@@ -789,6 +789,15 @@ def supervise(runner, handle, operator_round=False, on_notify=None,
     started = clock() if origin is None else origin
     waits = 0
     while True:
+        # Poll BEFORE judging the clock: a rehydrated origin can be hours
+        # old while the session already settled — a stall verdict issued
+        # without one look at the pane wedged finished work behind a
+        # marker from the previous launch (observed live, twice). The
+        # budgets only ever measure a session seen still working.
+        state = runner.wait(handle, timeout=chunk)
+        waits += 1
+        if state != WaitState.WORKING:
+            return Supervision(state, clock() - started, notified, waits)
         elapsed = clock() - started
         if not notified and elapsed >= notify_after:
             notified = True
@@ -796,8 +805,3 @@ def supervise(runner, handle, operator_round=False, on_notify=None,
                 on_notify(handle, elapsed)
         if not operator_round and elapsed >= stall_after:
             return Supervision(WaitState.STALLED, elapsed, notified, waits)
-
-        state = runner.wait(handle, timeout=chunk)
-        waits += 1
-        if state != WaitState.WORKING:
-            return Supervision(state, clock() - started, notified, waits)
