@@ -72,11 +72,13 @@ environment's `LAVISH_AXI_HOST` / `LAVISH_AXI_LINK_HOST` /
 `LAVISH_AXI_ALLOWED_HOSTS` (from the manifest's `dispatch:` env) make
 the served URL reachable from the operator's other devices; use the
 URL lavish prints, never a URL you compose. The **Discord message
-carries that link first**, then the digest — the payload as numbered
-rows with seeded routes — as the fallback for answering away from the
-page: "yes to all", corrections by number ("keep bolt/x open",
-"answer N: <text>" included), or "send back: <note>", per the
-protocol's reply grammar. Whichever answer arrives first — the page's
+is that link plus a blurb**: the URL first, one ≤ 80-character line
+per row, the reply grammar last — every URL wrapped in `<...>` so
+Discord shows no embed — and nothing the page already says: no
+caveats, no analysis, no per-row prose. It exists so a simple round
+can be answered from a phone ("yes to all", "keep bolt/x open",
+"answer N: <text>", "send back: <note>"); anything needing more is
+answered on the page. Whichever answer arrives first — the page's
 or the reply — is the round's answer; apply it in the protocol's order
 (every write of yours is a tracker write) and say, per object, what you
 filed. Applying an approved plan is the one time you write board Status

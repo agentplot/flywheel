@@ -20,9 +20,17 @@ markdown bodies and the `plan-data` JSON, every proposal placed in a
 container with its choice seeded), the **decision contract** (what any
 surface sends back), and a **surface** (a renderer of the payload that
 collects the contract). The lavish page SHALL be one surface among
-others, never the plan's definition; the Discord digest SHALL render the
-same payload as text, and both SHALL resolve to the same decision
+others, never the plan's definition; the Discord digest SHALL carry the
+page's link and one line per row — no caveats, no per-row prose, every
+URL embed-suppressed — and both SHALL resolve to the same decision
 contract.
+
+#### Scenario: The digest is a link and a blurb
+
+- **WHEN** a round's Discord message is composed
+- **THEN** it opens with the served page URL, carries one line of at
+  most 80 characters per row and the reply grammar, wraps every URL in
+  `<...>`, and repeats nothing the page already says
 
 #### Scenario: The same plan is answered from two surfaces
 

@@ -316,36 +316,38 @@ bar showing exactly what Approve will send, live-updated on every
 control change. A changed control that could be silently lost is a
 broken page.
 
-**The Discord digest** is the same payload as text — the reply channel
-for an operator who is not at the page. The Discord message leads with
-the served page's URL (lavish prints it; the fleet manifest's dispatch
-env sets the host it is reachable on), and the digest follows for
-answering inline. One numbered row per proposal with its
-seeded route, container headers between them, the left-out list last:
+**The Discord digest** is the page's link and a blurb, not the page
+again. The lavish page holds the detail — full text, caveats, the
+payload bar — so the message carries only what a simple round needs to
+be answered from a phone: the served URL first (lavish prints it; the
+fleet manifest's dispatch env sets the host), then one line per row,
+then the grammar. Every URL in the message is wrapped in `<...>` so
+Discord renders no embed card. No caveats, no explanations, no
+per-row prose beyond the one line: an operator who needs more opens
+the page.
 
-    Dispatch plan — <date> round
-      1. [close] bolt/plan-generalization — every item merged, every
-         card ruled; closing releases the landing to main → close
-    intent/session-chaining (new) — next elaboration
-      2. [writeback] Write the chaining design into the book → approve
-      3. [question]  Should the digest thread per round? → awaiting answer
-    bolt/next-surface (existing — folding in)
-      4. [unit · bolt-default] close-contract-prose · 2 changes → approve
-    left out: the map-removal half — that org's tracker owns it
+    dispatch · <date> · round <n>
+    <http://mac-studio:4387/session/…>
+    1 close bolt/plan-generalization
+    2 writeback · intent/session-chaining (new) · chaining design → book
+    3 question · intent/session-chaining · digest per round or per channel?
+    4 unit · bolt/next-surface · close-contract-prose · bolt-default · 2 changes
+    left out: 1
+    yes to all · keep bolt/x open · N -> backlog · N as bolt-<type> · answer N: <text> · send back: <note>
 
-    Reply "yes" or "yes to all" to approve as proposed; corrections by
-    number ("4 -> backlog", "4 as bolt-quick", "rename bolt/x to
-    bolt/y", "keep bolt/plan-generalization open",
-    "answer 3: <text>"); or "send back: <note>".
+Each row line is ≤ 80 characters: number, kind, container, slug or
+short title, and the one fact that changes the decision (unit type,
+change count, question text). The left-out list is a count, not a
+list. Row numbers match the page.
 
 The reply grammar resolves to the decision contract: `yes` / `yes to
 all` is `{"decision": "approve"}` — and it CLOSES every seeded close
-row, landing those bolts, which each row states plainly; `row N ->
-<route>` edits that row's routing; `N as bolt-<type>` is a unit-type
-override; `keep <milestone> open` unchecks a close row; `answer N:
-<text>` answers a question row; `send back: <note>` returns the plan.
-The digest and the page are the same plan — whichever answer arrives
-first is the round's answer, applied identically.
+row, landing those bolts, which the close row's line states plainly by
+its kind; `N -> <route>` edits that row's routing; `N as bolt-<type>`
+is a unit-type override; `keep <milestone> open` unchecks a close row;
+`answer N: <text>` answers a question row; `send back: <note>` returns
+the plan. The digest and the page are the same plan — whichever answer
+arrives first is the round's answer, applied identically.
 
 If the page will not open and no channel carries the digest, report the
 shortfall and settle without a round: the committed payload still says
