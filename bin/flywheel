@@ -742,8 +742,11 @@ def launch_agent(name: str, profile: str, model: str | None, cwd: Path,
     # init), and herdr reports agent_pane_busy until it does — poll.
     # Fleet agents run unattended; the fleet layer owns the permission
     # mode rather than leaving it to a shell wrapper.
+    # 300s: a cold start in a devenv-initialized checkout (nix shell,
+    # plugin cache load, channel plugins) takes well over the old 120s —
+    # observed live on the willdan fleet, where every launch timed out.
     argv = ["herdr", "agent", "start", name, "--kind", "claude",
-            "--pane", str(pane), "--timeout", "120000",
+            "--pane", str(pane), "--timeout", "300000",
             "--", "--agent", profile, "-n", name,
             "--dangerously-skip-permissions", *claude_args]
     if model:
