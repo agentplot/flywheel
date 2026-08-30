@@ -316,6 +316,14 @@ bar showing exactly what Approve will send, live-updated on every
 control change. A changed control that could be silently lost is a
 broken page.
 
+**A chore card renders lean.** A `chore`-labeled card (the planner's
+below-the-line tier: no new behavior — deletions, corrections, moves,
+status fixes) is one row with badge `chore`, its changes listed one
+plain line each, and NO disclosure essay — the change list IS the full
+text. The seeded control is approve like any card; one approval lands
+the lot. In the digest a chore card is a single line naming the count
+and the bolt — `N chores · bolt/<slug>` — never one line per chore.
+
 **The Discord digest** is the page's link and a blurb, not the page
 again. The lavish page holds the detail — full text, caveats, the
 payload bar — so the message carries only what a simple round needs to

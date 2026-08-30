@@ -455,6 +455,17 @@ class RoundInboxTest(unittest.TestCase):
                                item(2, inbox.READY, milestone="bolt/x")])
         self.assertEqual(inbox.round_inbox(snap).close_ready, ())
 
+    def test_a_chore_card_carries_its_tier_flag_through_the_round(self):
+        # The chore tier is a rendering promise: the round must be able
+        # to tell a chore card from a unit card without re-reading labels.
+        snap = Snapshot(plan_cards=[
+            inbox.PlanCard(number=30, title="Unit: chores", chore=True,
+                           status=inbox.STATUS_BACKLOG, milestone="bolt/x"),
+            inbox.PlanCard(number=31, title="Unit: real", chore=False,
+                           status=inbox.STATUS_BACKLOG, milestone="bolt/x")])
+        cards = {c.number: c.chore for c in inbox.round_inbox(snap).backlog_cards}
+        self.assertEqual(cards, {30: True, 31: False})
+
     def test_backlog_batches_and_cards_stand_as_approvals(self):
         snap = Snapshot(
             items=[item(1, milestone="intent/a")],

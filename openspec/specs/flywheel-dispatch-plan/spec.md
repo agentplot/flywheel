@@ -25,6 +25,14 @@ page's link and one line per row — no caveats, no per-row prose, every
 URL embed-suppressed — and both SHALL resolve to the same decision
 contract.
 
+#### Scenario: A chore card costs one approval and ten words per chore
+
+- **WHEN** a plan carries a `chore`-labeled card
+- **THEN** the page renders it as one row whose change list — one plain
+  line per chore — is the full text, the digest renders it as a single
+  `N chores · bolt/<slug>` line, and one approval releases every chore
+  on the card
+
 #### Scenario: The digest is a link and a blurb
 
 - **WHEN** a round's Discord message is composed

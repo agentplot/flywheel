@@ -49,6 +49,12 @@ DISPATCH_STANDING = "dispatch:standing"
 UNIT = "unit"
 ELABORATION = "elaboration"
 PLAN = "plan"
+#: A chore card or batch: work with no new behavior — deletions, doc and
+#: docstring corrections, supersession headers, renames, status fixes.
+#: The label buys compact rendering on the round (one line per chore,
+#: one approval for the lot); the pipeline underneath is the ordinary
+#: card -> expansion -> items machinery, unchanged.
+CHORE = "chore"
 STALE = "stale"
 
 #: The stage names. A `stage:*` label is ADDITIONAL to the item's `state:*`
@@ -303,6 +309,7 @@ class Batch:
     number: int
     kind: str = None          # unit | elaboration
     status: str = None        # board Status: Backlog | Ready
+    chore: bool = False       # label `chore`: a chore batch, rendered lean
     sub_issues: tuple = ()
     milestone: str = None
     milestone_state: str = "open"
@@ -325,6 +332,7 @@ class PlanCard:
     status: str = None        # board Status: Backlog | Ready | None
     team: str = None
     stale: bool = False
+    chore: bool = False       # label `chore`: rendered one line per change
     blocked_by: tuple = ()
     milestone: str = None     # bolt/<slug>, set by the planner at filing
     milestone_state: str = "open"
@@ -463,6 +471,7 @@ class TrackerSnapshot:
             batches=[
                 Batch(number=b["number"], kind=b.get("kind"),
                       status=b.get("status"),
+                      chore=b.get("chore", False),
                       sub_issues=tuple(b.get("sub_issues", ())),
                       milestone=b.get("milestone", milestone),
                       milestone_state=b.get("milestone_state", "open"))
@@ -475,6 +484,7 @@ class TrackerSnapshot:
                          body=i.get("body", ""), status=i.get("status"),
                          team=i.get("team"),
                          stale=STALE in i.get("labels", ()),
+                         chore=CHORE in i.get("labels", ()),
                          blocked_by=tuple(i.get("blocked_by", ())),
                          milestone=i.get("milestone", milestone),
                          milestone_state=i.get("milestone_state", "open"))
@@ -1543,6 +1553,7 @@ class Tracker:
                     number=item.number,
                     kind=UNIT if UNIT in labels else ELABORATION,
                     status=row.get("status"),
+                    chore=CHORE in labels,
                     sub_issues=tuple(self.sub_issues(item.number)) if with_edges else (),
                     milestone=item.milestone,
                     milestone_state=item.milestone_state,
@@ -1558,6 +1569,7 @@ class Tracker:
                 number=item.number, title=item.title, body=item.body,
                 status=row.get("status"), team=row.get("team"),
                 stale=STALE in item.labels,
+                chore=CHORE in item.labels,
                 # Gated like the item block above: the one reader of a card's
                 # blockers is the expansion guard, which runs under
                 # `snapshot(milestone)` with edges on. The server's sweep and

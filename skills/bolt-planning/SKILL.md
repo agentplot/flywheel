@@ -90,6 +90,47 @@ Two levels, two different objects:
   — it is still one user-facing proposal — but the work splits along
   repo lines and nowhere else. A one-repo system gets no such split.
 
+## The chore tier — below the ceremony line
+
+Some of the gap is work with **no new behavior**: deleting dead code,
+correcting a docstring or comment that lies, stamping a superseded
+draft's header, renaming or moving a file, fixing a label or status.
+The agent that finds such work already knows exactly what to do, and
+the operator's whole decision is yes or no — so a chore NEVER gets a
+unit document. An essay, a mermaid diagram, or destination-voice
+framing around a two-line diff is the failure this tier exists to
+stop: it spends the operator's minutes decoding ceremony around work
+that needed none.
+
+All the chores a run finds for one system collapse into **one chore
+card**: title `Unit: chores` (the `chore` LABEL marks the tier — the
+title keeps the grammar the loop parses), labels `plan` + `chore`,
+filed on the open bolt they tidy (or the run's proposed bolt) exactly
+like any card, body in this grammar and nothing more:
+
+```markdown
+# Unit: chores
+
+System: <name>
+Type: `bolt-direct` · Price: <n> changes · ~hours
+
+| # | change | delivers |
+|---|--------|----------|
+| 1 | <change-slug> | <one plain line — the whole instruction> |
+```
+
+No sequence line, no mermaid, no Left out, no derivation footer. A
+chore needs **no chapter citation** — its justification is that it
+makes the code or docs true, not that the book demands it. `bolt-direct`
+is the default type (the merge gate is the check); a chore that needs
+more than that is not a chore — promote it to a unit. The round
+renders a chore card as one row with its changes one line each, and
+one approval lands the lot; nothing-before-approval still holds, the
+approval just costs the operator ten words of reading per chore.
+
+The test, per piece of work: would the diff add behavior a user or a
+loop could observe? Yes → unit. No → chore.
+
 ## The plan documents
 
 One **bolt summary** (it becomes the milestone description, verbatim):

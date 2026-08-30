@@ -104,6 +104,8 @@ LABELS = {
     "needs-operator": ("e99695",
                        "blocked on the operator's word; the question is the "
                        "latest comment"),
+    "chore": ("c5def5", "no new behavior — deletions, corrections, moves, "
+                        "status fixes; one line per change is the plan"),
     "dispatch:standing": ("0e8a16",
                           "standing for the round — a published payload or "
                           "close-ready milestone; the marker has the facts"),

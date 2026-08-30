@@ -53,10 +53,12 @@ def main(argv=None):
     print(json.dumps({
         "close_ready": list(box.close_ready),
         "backlog_batches": [
-            {"number": b.number, "kind": b.kind, "milestone": b.milestone}
+            {"number": b.number, "kind": b.kind, "milestone": b.milestone,
+             "chore": b.chore}
             for b in box.backlog_batches],
         "backlog_cards": [
-            {"number": c.number, "title": c.title, "milestone": c.milestone}
+            {"number": c.number, "title": c.title, "milestone": c.milestone,
+             "chore": c.chore}
             for c in box.backlog_cards],
         "payloads": payloads,
         "shortfalls": shortfalls,
