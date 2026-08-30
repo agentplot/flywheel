@@ -1836,6 +1836,25 @@ class BoltLoop:
         """
         if (self.params.change_dir / "bolt.md").exists():
             return None
+        # A change the archive already holds was finished and swept; a
+        # scaffold here would forge a fresh record for an archived bolt —
+        # observed live as a session charged on every server pass across
+        # three closed milestones whose landings had stalled. Halt with the
+        # fact instead, charging nothing: the archive is the record, and
+        # whatever the bolt still owes (item upgrades, an unlanded branch)
+        # is recovery, which no charter session can perform.
+        archive = self.params.change_dir.parent / "archive"
+        if archive.is_dir():
+            hits = sorted(
+                p.name for pattern in (f"*-{self.params.change_id}",
+                                       f"*-{self.params.slug}")
+                for p in archive.glob(pattern))
+            if hits:
+                return (f"scaffold: openspec/changes/{self.params.change_id} "
+                        f"is missing but the archive holds {hits[0]} — this "
+                        f"bolt was already archived, so no second record is "
+                        f"scaffolded. Anything still owed is recovery for "
+                        f"the operator, not a fresh charter")
         # The directory without the charter: the change is there and the
         # artifact is owed. Read once, above the dry-run branch, because it
         # picks the invocation AND what a dry run says it would do.

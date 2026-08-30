@@ -2651,6 +2651,20 @@ class ScaffoldCharterTest(unittest.TestCase):
             self.assertFalse((self.change_dir(tmp) / "bolt.md").exists(),
                              "and the tree is untouched")
 
+    def test_an_archived_change_is_never_rescaffolded(self):
+        # Observed live: three closed bolts whose change dirs had been
+        # archived kept charging a scaffold session every server pass.
+        # The archive is the record — the guard halts, launching nothing.
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "openspec" / "changes" / "archive"
+            (archive / "2026-08-25-x").mkdir(parents=True)
+            runner = ScriptedRunner()
+            program = self.loop_over(tmp, runner=runner)
+            failure = program.guard_scaffold([])
+            self.assertIsNotNone(failure)
+            self.assertIn("archive holds 2026-08-25-x", failure)
+            self.assertEqual(runner.launched, [])
+
     def test_the_scaffold_session_runs_in_the_records_repo(self):
         # The record is born on the records repo's main; the session's cwd
         # is `repo_dir`, never a construction worktree.
