@@ -175,6 +175,9 @@ class ScriptedRunner:
     def close(self, handle):
         self.closed.append(handle.name)
 
+    def close_named(self, name):
+        self.closed.append(name)
+
 
 class FakeClock:
     """Time moves only when something asks it to."""
@@ -1325,6 +1328,17 @@ class StageLabelTest(unittest.TestCase):
         result = self.direct(tracker).cycle(1)
         self.assertEqual([o.stage for o in result.outcomes],
                          ["spec", "build", "merge"])
+
+    def test_a_bolt_direct_merge_reaps_the_build_pane(self):
+        # With no verify stage the merge is the build conversation's end —
+        # the only close site this type reaches. Without it every builder
+        # pane leaks (the panes Chuck kept finding open, 2026-08-31).
+        snapshot = self.a_ready_item()
+        tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
+        program = self.direct(tracker)
+        program.cycle(1)
+        self.assertIn(loop.session_name("build", "add-thing"),
+                      program.runner("build").closed)
 
     def test_every_stage_the_cycle_runs_is_gated_on_the_declared_set(self):
         # `runs()` claims the next type that varies the sequence declares

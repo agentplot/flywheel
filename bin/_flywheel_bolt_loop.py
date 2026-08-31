@@ -2494,6 +2494,20 @@ class BoltLoop:
             return "unreadable", "the approver's verdict was unreadable"
         return match.group("verdict").lower(), match.group("why").strip()
 
+    def close_build_pane(self, build, batch):
+        """The build conversation is over — reap its pane.
+
+        By handle when this process launched it; by deterministic name
+        when it did not — a restarted loop holds no handle to a pane its
+        predecessor opened, and on types whose stage set has no verify
+        (`bolt-direct`) the merge is the conversation's end. Either way
+        the session stays resumable by its id; only the pane goes."""
+        runner = self.runner("build")
+        if build is not None and build.handle is not None:
+            runner.close(build.handle)
+        else:
+            runner.close_named(session_name("build", batch.slug))
+
     def verify_stage(self, batch, build, repo=None):
         """`/opsx:verify` -> a findings file -> the review's ruling.
 
@@ -2515,8 +2529,7 @@ class BoltLoop:
         if branch_sha and self.verified_at(batch.numbers) == branch_sha:
             # The verdict is durable and the branch has not moved: a
             # restarted loop re-buys no judgment it already recorded.
-            if build.handle is not None:
-                self.runner("build").close(build.handle)
+            self.close_build_pane(build, batch)
             return StageOutcome("verify", "done",
                                 f"verified at {branch_sha[:9]} — the branch has not moved")
         for _ in range(MAX_FIX_ROUNDS + 1):
@@ -2539,8 +2552,7 @@ class BoltLoop:
             if clean and self.change_validates(change, cwd=cwd):
                 # The build pane's purpose — the build/verify conversation —
                 # ends here. The session stays resumable by its id.
-                if build.handle is not None:
-                    self.runner("build").close(build.handle)
+                self.close_build_pane(build, batch)
                 self.mark_verified(batch, repo)
                 return StageOutcome("verify", "done", "verify is clean")
             if clean:
@@ -2548,8 +2560,7 @@ class BoltLoop:
                           f"validate {change} --strict` is not green.")
             ruling = self.review_stage(batch, change, cwd, report)
             if ruling["action"] == "proceed":
-                if build.handle is not None:
-                    self.runner("build").close(build.handle)
+                self.close_build_pane(build, batch)
                 self.mark_verified(batch, repo)
                 return StageOutcome(
                     "verify", "done",
@@ -3318,6 +3329,12 @@ class BoltLoop:
                     # so a stage that later learns to skip cannot quietly
                     # start labelling itself.
                     self.set_stage(batch.numbers, inbox.STAGE_MERGED)
+                if merge.ok:
+                    # The merged batch needs its builder no more — on types
+                    # with a verify stage the pane closed there and this is
+                    # a no-op; on the rest (and after a loop restart ate the
+                    # handle) this is the only reaper.
+                    self.close_build_pane(build, batch)
                     self.close_merged(batch.items, repo)
                     merged += 1
                     self._merged += 1

@@ -240,6 +240,13 @@ class Runner:
     def close(self, handle):
         raise NotImplementedError
 
+    def close_named(self, name):
+        """Reap a finished session by its deterministic name.
+
+        `close` needs the launch handle, which only the process that
+        launched the session holds — a restarted loop has no handle to a
+        pane its predecessor opened, and the pane outlives the process.
+        Best-effort: a name with nothing behind it is a no-op."""
 
 # ---------------------------------------------------------------------------
 # herdr — the supervised pane
@@ -448,6 +455,11 @@ class HerdrRunner(Runner):
         """
         self._close_tab(handle.ref.get("tab_id"))
 
+    def close_named(self, name):
+        row = self.agents().get(name)
+        if row is not None and row.get("agent_status") != "working":
+            self._close_tab(row.get("tab_id"))
+
     # -- internals ---------------------------------------------------------
 
     def _close_tab(self, tab_id):
@@ -655,6 +667,12 @@ class HeadlessRunner(Runner):
         if proc is not None and proc.poll() is None:
             proc.terminate()
         self._registry(handle.name).unlink(missing_ok=True)
+
+    def close_named(self, name):
+        recorded = self._read_registry(name)
+        if recorded and self._alive(recorded.get("pid")):
+            return  # still working — a name is not proof it settled
+        self._registry(name).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
