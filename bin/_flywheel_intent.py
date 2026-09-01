@@ -56,10 +56,10 @@ from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,  # noqa: E
                              STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
                              STATUS_BACKLOG, Tracker,
                              TrackerSnapshot, clear_needs_operator,
-                             find_andon, intent_inbox, set_needs_operator,
-                             set_stage, unblocked)
+                             find_andon, intent_inbox, parse_andon,
+                             set_needs_operator, set_stage, unblocked)
 from _flywheel_ledger import NullLedger
-from _flywheel_sessions import (MAX_NAME, SessionSpec,
+from _flywheel_sessions import (MAX_NAME, SessionHandle, SessionSpec,
                                 WaitState, runner_for,
                                 supervise, work_order)
 
@@ -956,6 +956,8 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
             # rejoin the ready set this same run.
             if resume_in_session(writer, runner, config, snapshot, report):
                 continue               # the tracker moved; re-query
+            if collect_settled(writer, runner, config, snapshot, report):
+                continue               # the tracker moved; re-query
             if resume_collect(inbox, writer, runner, config, snapshot, report):
                 continue               # the tracker moved; re-query
 
@@ -1065,6 +1067,66 @@ def resume_in_session(writer, runner, config, snapshot, report):
             f"deterministic id."))
         report.notes += (f"#{item.number} was in-session for a session "
                          f"that is gone (`{name}`) — reset to ready.",)
+        wrote = True
+    return wrote
+
+
+def collect_settled(writer, runner, config, snapshot, report):
+    """Flip the settled sessions no cycle is watching. True if it wrote.
+
+    `land` collects a session that settles inside the run that launched
+    it — but a design session outlives its 60-second run as a rule, and
+    the flow then expects the session to write `stage:done` to its own
+    item before settling. One that delivered without flipping leaves its
+    item `stage:in-session` beside an idle pane no path reads:
+    `resume_in_session` reconciles only GONE sessions, `collect_plan`
+    only `stage:done`. The pane sits forever and the item never closes
+    (observed live 2026-09-01: #11, #86, #70 — three delivered planning
+    sessions idle for hours, reaped by hand).
+
+    A raised andon pauses instead, mirroring `land`; a working or
+    blocked session is left strictly alone. The write is `stage:done`
+    plus the pane's report tail, and the next pass's `resume_collect`
+    closes the item, merges the `sess/*` branch, and reaps the pane
+    through the machinery that already exists.
+    """
+    if not config.apply or writer.tracker is None or runner is None:
+        return False
+    state_of = getattr(runner, "state", None)
+    if state_of is None:
+        return False
+    wrote = False
+    for entry in snapshot.on(config.milestone):
+        if not entry.is_open or STAGE_IN_SESSION not in entry.labels:
+            continue
+        if (writer.has_label(entry.number, STAGE_DONE)
+                or writer.has_label(entry.number, STAGE_COLLECTED)
+                or writer.has_label(entry.number, NEEDS_OPERATOR)):
+            continue
+        comments = writer.tracker.comments(entry.number)
+        name = session_named(comments)
+        if not name or state_of(name) != WaitState.SETTLED_DONE:
+            continue
+        collected = runner.collect(
+            SessionHandle(name=name, runner=getattr(runner, "kind", "herdr")))
+        raised = find_andon(comments) or parse_andon(collected.report or "")
+        if raised:
+            set_needs_operator(
+                writer, entry.number,
+                f"`{name}` settled with the andon standing: {raised.reason}. "
+                "Nothing is collected under it.")
+            report.notes += (f"#{entry.number}: `{name}` settled under its "
+                             f"andon — paused, not collected.",)
+            wrote = True
+            continue
+        evidence = (collected.report or "").strip().splitlines()
+        tail = evidence[-1][:200] if evidence else "no pane report"
+        set_stage(writer, entry.number, STAGE_DONE)
+        writer.comment(entry.number, (
+            f"`{name}` settled without flipping this item — the loop read "
+            f"the settled pane and flipped it. {tail}"))
+        report.notes += (f"#{entry.number}: `{name}` settled un-flipped — "
+                         f"stage:done written from the pane.",)
         wrote = True
     return wrote
 

@@ -318,6 +318,73 @@ class ResumeInSessionTest(unittest.TestCase):
         self.assertEqual(tracker.calls, [])
 
 
+class CollectSettledTest(unittest.TestCase):
+    """A session that delivered but never flipped its item leaves it
+    `stage:in-session` beside an idle pane no path reads (live: #11,
+    #86, #70 — settled planning sessions idle for hours). The loop reads
+    the settled pane and writes the flip itself."""
+
+    NAME = "planning-x-1"
+
+    def fixture(self, *labels, comments=None, report="delivered; settling."):
+        labels = labels or ("type:planning", inbox.IN_PROGRESS,
+                            "stage:in-session")
+        snap = Snapshot(items=[item(1, *labels)])
+        tracker = FakeTracker(snap, comments=comments if comments is not None
+                              else {1: [{"body": intent.format_dispatch(
+                                  self.NAME, 1000.0)}]})
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        return (snap, tracker, writer, intent.Report(slug="x"),
+                ScriptedRunner(roster={self.NAME: WaitState.SETTLED_DONE},
+                               report=report))
+
+    def test_a_settled_unflipped_item_gets_stage_done_from_the_pane(self):
+        snap, tracker, writer, report, runner = self.fixture()
+        wrote = intent.collect_settled(writer, runner, config(apply=True),
+                                       snap, report)
+        self.assertTrue(wrote)
+        self.assertIn(("add_label", 1, inbox.STAGE_DONE), tracker.calls)
+        self.assertIn(("remove_label", 1, inbox.STAGE_IN_SESSION),
+                      tracker.calls)
+        posted = [c for c in tracker.calls if c[0] == "comment"]
+        self.assertTrue(any("settled without flipping" in c[2]
+                            for c in posted), posted)
+
+    def test_a_working_session_is_left_strictly_alone(self):
+        snap, tracker, writer, report, _ = self.fixture()
+        runner = ScriptedRunner()   # unknown names read WORKING
+        self.assertFalse(intent.collect_settled(
+            writer, runner, config(apply=True), snap, report))
+        self.assertEqual(tracker.calls, [])
+
+    def test_an_already_flipped_item_is_not_re_flipped(self):
+        snap, tracker, writer, report, runner = self.fixture(
+            "type:planning", inbox.IN_PROGRESS, "stage:in-session",
+            inbox.STAGE_DONE)
+        self.assertFalse(intent.collect_settled(
+            writer, runner, config(apply=True), snap, report))
+        self.assertEqual(tracker.calls, [])
+
+    def test_a_standing_andon_pauses_instead_of_flipping(self):
+        snap, tracker, writer, report, runner = self.fixture(comments={1: [
+            {"body": intent.format_dispatch(self.NAME, 1000.0)},
+            {"body": inbox.format_andon("the carrier is unruled")}]})
+        wrote = intent.collect_settled(writer, runner, config(apply=True),
+                                       snap, report)
+        self.assertTrue(wrote)
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.calls)
+        self.assertNotIn(("add_label", 1, inbox.STAGE_DONE), tracker.calls)
+
+    def test_an_andon_only_in_the_pane_report_also_pauses(self):
+        snap, tracker, writer, report, runner = self.fixture(
+            report="held.\n" + inbox.format_andon("the tree contradicts D2"))
+        wrote = intent.collect_settled(writer, runner, config(apply=True),
+                                       snap, report)
+        self.assertTrue(wrote)
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.calls)
+        self.assertNotIn(("add_label", 1, inbox.STAGE_DONE), tracker.calls)
+
+
 class ResumeCollectTest(unittest.TestCase):
     """A flip the loop was not there to see.
 
