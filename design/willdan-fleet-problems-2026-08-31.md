@@ -225,3 +225,27 @@ paused work, so key it to tracker state: re-snapshot before honoring a
 hold, or clear the hold when the snapshot differs from the one the held
 run exited on (cheap: compare the needs-operator set and updated-at
 cursors).
+
+### 15. The loop runs `wt merge` in the inverted direction
+
+**Symptom (umbrella for 2 and 6):** the bolt branch's history is
+rewritten at every landing (the same devenv commit existed as a6bae91,
+74a0001, 74420d8 across the day), rebases grow with the branch (29
+picks) and emit "skipped previously applied commit", merge conflicts
+strand the shared bolt worktree rather than the one feature branch, and
+in-flight sibling branches — never restacked — all conflict at their own
+merge.
+
+**Root cause:** `wt merge`'s contract is "merge *current* branch into
+TARGET — squash & rebase, fast-forward the target", designed to run from
+the feature worktree with the integration branch as target. `merge_stage`
+runs `wt merge build/<slug> --no-remove` **from the bolt worktree**, so
+wt rebases the bolt branch onto the build branch — the integration line
+is the thing rewritten, every time.
+
+**Fix shape:** run the merge from the build worktree with the bolt
+branch as TARGET (`cwd=build worktree, wt merge <bolt-branch>`), so the
+feature is what gets rebased and the bolt branch is append-only. That
+also makes problem 6's ancestry checks sound again and confines a
+conflict strand to the feature worktree. Decide squash policy explicitly
+(`--no-squash` to keep per-commit history).
