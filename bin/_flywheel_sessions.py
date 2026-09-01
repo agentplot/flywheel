@@ -53,6 +53,19 @@ NOTIFY_AFTER_S = 90 * 60      # comment + needs-operator, then keep waiting
 STALL_AFTER_S = 4 * 60 * 60   # give up waiting; the pane is left open
 WAIT_CHUNK_S = 600            # one bounded wait, ten real minutes
 
+#: A cold claude start regularly needs more than two minutes — devenv init,
+#: MCP servers, a large project index — and the fleet driver already grants
+#: 300s (`bin/flywheel`). The runner granting less was the direct source of
+#: `timeout — timed out waiting for agent startup` on every busy day.
+START_TIMEOUT_MS = 300_000
+
+#: Startup failures that are transient by construction: the pane's shell is
+#: still initializing (pane_busy), claude is booting slower than the wait
+#: (not_ready / timed out). A retry against the same pane is safe — the
+#: session name and id are deterministic — and far cheaper than failing the
+#: stage and burning a whole cycle.
+_RETRYABLE_START = ("pane_busy", "not_ready", "timed out", "timeout")
+
 # herdr caps agent names at 32 characters (skills/_reference/herdr.md).
 MAX_NAME = 32
 
@@ -113,6 +126,39 @@ def claude_transcript_exists(cwd, session_id):
     slug = re.sub(r"[^A-Za-z0-9-]", "-", str(cwd))
     return (Path.home() / ".claude" / "projects" / slug
             / f"{session_id}.jsonl").exists()
+
+
+def seed_workspace_trust(cwd, config_path=None):
+    """Accept Claude Code's trust dialog for `cwd` before it is ever shown.
+
+    Claude Code blocks its first launch in an unseen directory at an
+    interactive trust dialog, which reads as `blocked`/`not ready` to the
+    launcher — every fresh build worktree failed its first launch until the
+    operator hand-seeded the path. The dialog's answer is one key in
+    `~/.claude.json`, so the launcher writes it up front. Best-effort and
+    idempotent: an unreadable or unwritable config is not a launch failure,
+    it just means the dialog may appear.
+    """
+    config = Path(config_path) if config_path else Path.home() / ".claude.json"
+    try:
+        data = json.loads(config.read_text())
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    if not isinstance(data, dict):
+        return False
+    project = data.setdefault("projects", {}).setdefault(str(cwd), {})
+    if project.get("hasTrustDialogAccepted"):
+        return False
+    project["hasTrustDialogAccepted"] = True
+    try:
+        # Atomic replace: claude itself rewrites this file, and a torn
+        # write here would cost far more than the dialog ever did.
+        tmp = config.with_name(config.name + ".flywheel-tmp")
+        tmp.write_text(json.dumps(data))
+        tmp.replace(config)
+    except OSError:
+        return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -267,20 +313,32 @@ class HerdrRunner(Runner):
 
     def __init__(self, run=_subprocess_run, sleep=time.sleep, env=None,
                  start_attempts=12, ready_attempts=30, submit_attempts=8,
-                 poll_s=4, transcript_exists=None):
+                 poll_s=4, transcript_exists=None, seed_trust=None,
+                 settle_reads=3, settle_gap_s=10):
         self._run = run
         self._sleep = sleep
         self._env = env
         self._transcript_exists = transcript_exists or claude_transcript_exists
+        self._seed_trust = seed_workspace_trust if seed_trust is None else seed_trust
         self.start_attempts = start_attempts
         self.ready_attempts = ready_attempts
         self.submit_attempts = submit_attempts
         self.poll_s = poll_s
+        self.settle_reads = settle_reads
+        self.settle_gap_s = settle_gap_s
 
     # -- plumbing ----------------------------------------------------------
 
     def _herdr(self, *args, timeout=None):
-        return self._run(["herdr", *args], env=self._env, timeout=timeout)
+        try:
+            return self._run(["herdr", *args], env=self._env, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # A wedged herdr call is a failed call, not a crashed loop: the
+            # callers all read returncode/stderr and re-derive state from
+            # the roster, which is exactly the right recovery.
+            return subprocess.CompletedProcess(
+                ["herdr", *args], 124, stdout="",
+                stderr=f"herdr {' '.join(args[:3])} timed out after {timeout}s")
 
     def _herdr_json(self, *args, timeout=None):
         out = self._herdr(*args, timeout=timeout)
@@ -309,16 +367,31 @@ class HerdrRunner(Runner):
 
     def launch(self, spec):
         """Idempotent: an agent already under this name is reused, and its
-        work order is NOT re-sent."""
+        work order is NOT re-sent. Reuse is health-checked first: a live
+        classified agent — working, settled, or blocked at a real question
+        its composer already reached — is the session this launch wants; a
+        row that never reached its composer is a corpse from an earlier
+        failed launch, and adopting it wedges the stage (the order is never
+        re-sent), so it is reaped and the launch proceeds fresh."""
         existing = self.agents().get(spec.name)
         if existing:
-            return SessionHandle(
-                name=spec.name, runner=self.kind, reused=True,
-                ref={"pane_id": existing.get("pane_id"),
-                     "tab_id": existing.get("tab_id"),
-                     "workspace_id": existing.get("workspace_id")},
-            )
+            status = existing.get("agent_status")
+            usable = (status in ("working", "idle", "done")
+                      or (status == "blocked"
+                          and existing.get("interactive_ready")))
+            if usable:
+                return SessionHandle(
+                    name=spec.name, runner=self.kind, reused=True,
+                    ref={"pane_id": existing.get("pane_id"),
+                         "tab_id": existing.get("tab_id"),
+                         "workspace_id": existing.get("workspace_id")},
+                )
+            self._close_tab(existing.get("tab_id"))
 
+        # Answer the trust dialog before claude can ask it: a fresh build
+        # worktree otherwise blocks its first launch at an interactive
+        # prompt no loop can drive.
+        self._seed_trust(spec.cwd)
         tab = self._herdr_json("tab", "create", "--cwd", str(spec.cwd),
                                "--label", spec.name, "--no-focus")
         result = tab.get("result", {})
@@ -333,7 +406,7 @@ class HerdrRunner(Runner):
             )
 
         argv = ["agent", "start", spec.name, "--kind", "claude",
-                "--pane", str(pane), "--timeout", "120000",
+                "--pane", str(pane), "--timeout", str(START_TIMEOUT_MS),
                 "--", "--agent", spec.profile, "-n", spec.name]
         argv += spec.permission_flag
         if spec.model:
@@ -348,15 +421,29 @@ class HerdrRunner(Runner):
                 argv += ["--session-id", spec.session_id]
 
         # A fresh tab's shell can take a while to reach its prompt (devenv
-        # init) and herdr reports pane_busy until it does.
+        # init) and herdr reports pane_busy until it does; a slow claude
+        # boot reads as not_ready or a start timeout. All transient — retry
+        # with backoff rather than failing the stage and burning a cycle.
         start = None
+        started = False
         for attempt in range(self.start_attempts):
             start = self._herdr(*argv)
-            if start.returncode == 0 or "pane_busy" not in (start.stderr or ""):
+            if start.returncode == 0:
+                started = True
+                break
+            # The agent can come up BEHIND a failed start: a startup
+            # timeout returns while claude is still booting, and every
+            # later attempt then reads pane_busy — busy with the very
+            # claude this launch asked for. The roster is the truth.
+            if self.agents().get(spec.name):
+                started = True
+                break
+            stderr = start.stderr or ""
+            if not any(token in stderr for token in _RETRYABLE_START):
                 break
             if attempt < self.start_attempts - 1:
-                self._sleep(10)
-        if start is None or start.returncode != 0:
+                self._sleep(min(30, 10 + 5 * attempt))
+        if not started:
             self._close_tab(tab_id)
             raise SessionError(
                 f"{spec.name}: agent start failed: "
@@ -399,7 +486,19 @@ class HerdrRunner(Runner):
         if timeout:
             args += ["--timeout", str(int(timeout * 1000))]
         self._herdr(*args, timeout=(timeout + 30) if timeout else None)
-        return self.state(handle.name)
+        state = self.state(handle.name)
+        # A momentary idle between two turns reads exactly like a finished
+        # session — build-codebuild-fleet's branch was collected and merged
+        # 25 minutes before its session printed its report. One status read
+        # is a hint, not a verdict: settled-done must hold across
+        # `settle_reads` spaced reads before it is believed. Blocked and
+        # gone return as seen — neither is a between-turns blip.
+        for _ in range(self.settle_reads - 1):
+            if state != WaitState.SETTLED_DONE:
+                break
+            self._sleep(self.settle_gap_s)
+            state = self.state(handle.name)
+        return state
 
     def send(self, handle, prompt):
         """Re-prompt a live pane — verify's go-fix round, a relayed answer."""
@@ -451,9 +550,17 @@ class HerdrRunner(Runner):
 
         A settled pane left open makes the roster lie — but a session the
         loop will re-prompt (a plan-mode build awaiting approval, a review
-        awaiting a bounce) KEEPS its pane. Callers close only what is done.
+        awaiting a bounce) KEEPS its pane. Callers close only what is done
+        — and the same still-working guard `close_named` carries holds
+        here too, so a caller whose settle verdict was a between-turns
+        blip cannot reap a live session. The roster's tab_id wins over the
+        handle's: a handle synthesized without a ref still closes the
+        right tab.
         """
-        self._close_tab(handle.ref.get("tab_id"))
+        row = self.agents().get(handle.name)
+        if row is not None and row.get("agent_status") == "working":
+            return
+        self._close_tab((row or {}).get("tab_id") or handle.ref.get("tab_id"))
 
     def close_named(self, name):
         row = self.agents().get(name)
@@ -558,12 +665,13 @@ class HeadlessRunner(Runner):
     kind = "headless"
 
     def __init__(self, run=None, popen=subprocess.Popen, state_dir=None,
-                 alive=_alive, clock=time.monotonic):
+                 alive=_alive, clock=time.monotonic, seed_trust=None):
         self._run = run or _subprocess_run
         self._popen = popen
         self._state_dir = Path(state_dir) if state_dir else _state_dir()
         self._alive = alive
         self._clock = clock
+        self._seed_trust = seed_workspace_trust if seed_trust is None else seed_trust
 
     def _registry(self, name):
         return self._state_dir / f"{name}.json"
@@ -602,6 +710,7 @@ class HeadlessRunner(Runner):
             return SessionHandle(name=spec.name, runner=self.kind, reused=True,
                                  ref=dict(recorded))
 
+        self._seed_trust(spec.cwd)
         self._state_dir.mkdir(parents=True, exist_ok=True)
         log = self._state_dir / f"{spec.name}.log"
         argv = self.argv(spec, resume=bool(recorded))

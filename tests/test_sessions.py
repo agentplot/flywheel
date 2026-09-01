@@ -94,6 +94,13 @@ def spec(**kw):
     return SessionSpec(**base)
 
 
+def herdr_runner(**kw):
+    """A HerdrRunner that never sleeps and never touches ~/.claude.json."""
+    kw.setdefault("sleep", lambda _s: None)
+    kw.setdefault("seed_trust", lambda _cwd: None)
+    return sessions.HerdrRunner(**kw)
+
+
 # ---------------------------------------------------------------------------
 # The work order
 # ---------------------------------------------------------------------------
@@ -130,7 +137,7 @@ class SpecTest(unittest.TestCase):
 
     def test_the_name_cap_is_herdrs_and_is_refused_before_any_subprocess(self):
         herdr = FakeHerdr()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None)
         with self.assertRaises(ValueError):
             runner.launch(spec(name="human-code-review-substrate-runners"))
         self.assertEqual(herdr.calls, [], "a bad name must cost no subprocess")
@@ -154,7 +161,7 @@ class IdempotentLaunchTest(unittest.TestCase):
             "terminal_title_stripped": "◑ build-substrate",
             "pane_id": "w1:p3", "tab_id": "w1:t3",
         }})
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None)
         handle = runner.launch(spec())
 
         self.assertTrue(handle.reused)
@@ -166,7 +173,7 @@ class IdempotentLaunchTest(unittest.TestCase):
 
     def test_a_fresh_launch_pins_the_deterministic_session_id(self):
         herdr = FakeHerdr()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None,
                                       transcript_exists=lambda c, s: False)
         runner.launch(spec(session_id="abc-123"))
         start = next(a for a in herdr.calls if a[1:3] == ["agent", "start"])
@@ -177,7 +184,7 @@ class IdempotentLaunchTest(unittest.TestCase):
         # #178: the pane is disposable, the session is durable — a
         # transcript under the derived id means resume, never start cold.
         herdr = FakeHerdr()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None,
                                       transcript_exists=lambda c, s: True)
         runner.launch(spec(session_id="abc-123"))
         start = next(a for a in herdr.calls if a[1:3] == ["agent", "start"])
@@ -187,7 +194,7 @@ class IdempotentLaunchTest(unittest.TestCase):
 
     def test_a_fresh_launch_creates_the_tab_then_starts_then_prompts(self):
         herdr = FakeHerdr()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None)
         runner.launch(spec())
         verbs = [v for v in herdr.verbs() if v != "agent list"]
         self.assertEqual(verbs[:4], ["tab create", "agent start",
@@ -198,7 +205,7 @@ class IdempotentLaunchTest(unittest.TestCase):
         # line `/rename scaffold-x/opsx:new x` observed on first boot. One
         # esc before the order guarantees a clean composer.
         herdr = FakeHerdr()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None)
         runner.launch(spec())
         keys = [a for a in herdr.calls if a[1:3] == ["agent", "send-keys"]]
         prompt_at = next(i for i, a in enumerate(herdr.calls)
@@ -219,7 +226,7 @@ class IdempotentLaunchTest(unittest.TestCase):
                     self.roster[argv[3]]["terminal_title_stripped"] = "1"
                 return out
         herdr = StubbornTitle()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None,
                                       submit_attempts=2)
         runner.launch(spec())
         prompts = [a[4] for a in herdr.calls if a[1:3] == ["agent", "prompt"]]
@@ -238,7 +245,7 @@ class IdempotentLaunchTest(unittest.TestCase):
                     self.roster[argv[3]]["interactive_ready"] = False
                 return out
         herdr = NeverReady()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None,
                                       ready_attempts=2)
         with self.assertRaises(sessions.SessionError):
             runner.launch(spec())
@@ -256,7 +263,7 @@ class IdempotentLaunchTest(unittest.TestCase):
                     self.roster[argv[3]]["agent_status"] = "idle"
                 return out
         herdr = DeafComposer()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None,
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None,
                                       submit_attempts=2)
         with self.assertRaises(sessions.SessionError):
             runner.launch(spec())
@@ -269,7 +276,7 @@ class IdempotentLaunchTest(unittest.TestCase):
 
     def test_the_name_is_set_at_launch_so_there_is_no_rename_to_race(self):
         herdr = FakeHerdr()
-        runner = sessions.HerdrRunner(run=herdr, sleep=lambda _s: None)
+        runner = herdr_runner(run=herdr, sleep=lambda _s: None)
         runner.launch(spec())
         start = next(a for a in herdr.calls if a[1:3] == ["agent", "start"])
         self.assertIn("-n", start)
@@ -296,7 +303,7 @@ class VerbTest(unittest.TestCase):
         self.herdr = FakeHerdr({"n": {
             "name": "n", "agent_status": "idle", "terminal_title_stripped": "n",
             "pane_id": "p", "tab_id": "t", "interactive_ready": True}})
-        self.runner = sessions.HerdrRunner(run=self.herdr, sleep=lambda _s: None)
+        self.runner = herdr_runner(run=self.herdr, sleep=lambda _s: None)
         self.handle = sessions.SessionHandle(name="n", runner="herdr",
                                              ref={"tab_id": "t"})
 
@@ -454,7 +461,8 @@ class HeadlessTest(unittest.TestCase):
             self.spawned.append({"argv": argv, "cwd": cwd, "env": env})
             return FakeProc()
 
-        return sessions.HeadlessRunner(popen=popen, state_dir=tmp, alive=alive)
+        return sessions.HeadlessRunner(popen=popen, state_dir=tmp, alive=alive,
+                                       seed_trust=lambda _cwd: None)
 
     def test_it_refuses_plan_mode_at_launch_not_at_four_hours(self):
         import tempfile
@@ -551,6 +559,280 @@ class SettledBeforeStallTest(unittest.TestCase):
         watch = sessions.supervise(Runner(), object(), origin=0.0,
                                    clock=lambda: 100_000.0)
         self.assertEqual(watch.state, sessions.WaitState.STALLED)
+
+
+# ---------------------------------------------------------------------------
+# Launch robustness — transient startup failures retry, corpses are reaped
+# ---------------------------------------------------------------------------
+
+class LaunchRobustnessTest(unittest.TestCase):
+
+    def test_not_ready_and_startup_timeout_retry_like_pane_busy(self):
+        # Problem 3 (willdan fleet): each of these transients failed the
+        # stage outright and the batch waited a whole cycle.
+        class Flaky(FakeHerdr):
+            def __init__(self):
+                super().__init__()
+                self.failures = [
+                    "timeout — timed out waiting for agent startup",
+                    "agent_not_ready — blocked during startup",
+                ]
+
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                if argv[1:3] == ["agent", "start"] and self.failures:
+                    self.calls.append(argv)
+                    return Result(1, stderr=self.failures.pop(0))
+                return super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+
+        herdr = Flaky()
+        sleeps = []
+        runner = herdr_runner(run=herdr, sleep=sleeps.append)
+        handle = runner.launch(spec())
+        self.assertFalse(handle.reused)
+        starts = [a for a in herdr.calls if a[1:3] == ["agent", "start"]]
+        self.assertEqual(len(starts), 3, "two transients, then success")
+        self.assertTrue(sleeps, "retries back off rather than hammering")
+
+    def test_a_non_transient_start_error_fails_on_the_first_try(self):
+        class Broken(FakeHerdr):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                if argv[1:3] == ["agent", "start"]:
+                    self.calls.append(argv)
+                    return Result(1, stderr="agent_kind_unsupported")
+                return super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+
+        herdr = Broken()
+        runner = herdr_runner(run=herdr)
+        with self.assertRaises(sessions.SessionError):
+            runner.launch(spec())
+        starts = [a for a in herdr.calls if a[1:3] == ["agent", "start"]]
+        self.assertEqual(len(starts), 1)
+        self.assertIn(["herdr", "tab", "close", "w1:t9"], herdr.calls)
+
+    def test_an_agent_that_came_up_behind_a_timeout_is_adopted(self):
+        # A startup timeout can return while claude is still booting; the
+        # roster then carries the very agent the start asked for, and every
+        # re-start would read pane_busy forever. The roster is the truth.
+        class LateBoot(FakeHerdr):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                if argv[1:3] == ["agent", "start"]:
+                    self.calls.append(argv)
+                    name = argv[3]
+                    self.roster[name] = {
+                        "name": name, "agent_status": "idle",
+                        "terminal_title_stripped": name,
+                        "interactive_ready": True,
+                        "pane_id": "w1:p9", "tab_id": "w1:t9",
+                    }
+                    return Result(
+                        1, stderr="timeout — timed out waiting for agent startup")
+                return super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+
+        herdr = LateBoot()
+        runner = herdr_runner(run=herdr)
+        handle = runner.launch(spec())
+        starts = [a for a in herdr.calls if a[1:3] == ["agent", "start"]]
+        self.assertEqual(len(starts), 1, "the roster hit ends the retries")
+        self.assertEqual(handle.ref["pane_id"], "w1:p9")
+        prompts = [a for a in herdr.calls if a[1:3] == ["agent", "prompt"]]
+        self.assertTrue(prompts, "the adopted boot still gets its order")
+
+    def test_the_start_timeout_matches_the_fleet_drivers(self):
+        # 839387a2 granted a cold claude start 300s in bin/flywheel; the
+        # runner granting 120s was the source of every startup timeout.
+        herdr = FakeHerdr()
+        runner = herdr_runner(run=herdr)
+        runner.launch(spec())
+        start = next(a for a in herdr.calls if a[1:3] == ["agent", "start"])
+        self.assertEqual(start[start.index("--timeout") + 1], "300000")
+
+    def test_a_wedged_herdr_call_is_a_failure_not_a_crash(self):
+        import subprocess as sp
+
+        class Wedged(FakeHerdr):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                if argv[1:3] == ["agent", "wait"]:
+                    self.calls.append(argv)
+                    raise sp.TimeoutExpired(argv, timeout)
+                return super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+
+        herdr = Wedged({"n": {
+            "name": "n", "agent_status": "working",
+            "terminal_title_stripped": "n", "pane_id": "p", "tab_id": "t"}})
+        runner = herdr_runner(run=herdr)
+        state = runner.wait(sessions.SessionHandle(name="n", runner="herdr"),
+                            timeout=600)
+        self.assertEqual(state, WaitState.WORKING,
+                         "the roster answers when the wait cannot")
+
+
+# ---------------------------------------------------------------------------
+# Reuse is health-checked — a corpse under the name is reaped, not adopted
+# ---------------------------------------------------------------------------
+
+class ReuseHealthTest(unittest.TestCase):
+
+    def row(self, **kw):
+        base = {"name": "build-substrate", "agent_status": "idle",
+                "terminal_title_stripped": "build-substrate",
+                "interactive_ready": True,
+                "pane_id": "w1:p3", "tab_id": "w1:t3"}
+        base.update(kw)
+        return {"build-substrate": base}
+
+    def test_a_blocked_pane_that_never_reached_its_composer_is_reaped(self):
+        # The problem-3 shape: a leftover from an earlier failed launch
+        # holds the name; adopting it never re-sends the order and every
+        # prompt to it returns agent_blocked.
+        herdr = FakeHerdr(self.row(agent_status="blocked",
+                                   interactive_ready=False))
+        runner = herdr_runner(run=herdr)
+        handle = runner.launch(spec())
+        self.assertFalse(handle.reused)
+        self.assertIn(["herdr", "tab", "close", "w1:t3"], herdr.calls,
+                      "the corpse's tab is closed before the fresh launch")
+        self.assertIn("agent start", herdr.verbs())
+
+    def test_a_blocked_pane_with_a_live_composer_is_reused(self):
+        # A real question mid-conversation also reads blocked — a respawned
+        # loop must reattach and relay it, never kill the session that asked.
+        herdr = FakeHerdr(self.row(agent_status="blocked"))
+        runner = herdr_runner(run=herdr)
+        handle = runner.launch(spec())
+        self.assertTrue(handle.reused)
+        self.assertNotIn("tab close", herdr.verbs())
+        self.assertNotIn("agent start", herdr.verbs())
+
+    def test_an_unclassified_row_is_reaped_and_relaunched(self):
+        herdr = FakeHerdr(self.row(agent_status="unknown"))
+        runner = herdr_runner(run=herdr)
+        handle = runner.launch(spec())
+        self.assertFalse(handle.reused)
+        self.assertIn("agent start", herdr.verbs())
+
+
+# ---------------------------------------------------------------------------
+# Settle needs more than one read — a between-turns blip is not a finish
+# ---------------------------------------------------------------------------
+
+class SettleDebounceTest(unittest.TestCase):
+
+    def make(self, statuses, **kw):
+        class Blip(FakeHerdr):
+            def __init__(self, seq):
+                super().__init__({"n": {
+                    "name": "n", "agent_status": "working",
+                    "terminal_title_stripped": "n",
+                    "pane_id": "p", "tab_id": "t"}})
+                self.seq = list(seq)
+
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                if argv[1:3] == ["agent", "list"] and self.seq:
+                    self.roster["n"]["agent_status"] = self.seq.pop(0)
+                return super().__call__(argv, cwd=cwd, env=env, timeout=timeout)
+
+        herdr = Blip(statuses)
+        return herdr, herdr_runner(run=herdr, **kw)
+
+    def test_a_momentary_idle_between_turns_does_not_settle(self):
+        # Problem 5 (willdan fleet): build-codebuild-fleet was collected
+        # and merged 25 minutes before its session finished. One idle read
+        # between turns must stay WORKING.
+        herdr, runner = self.make(["idle", "working"])
+        state = runner.wait(sessions.SessionHandle(name="n", runner="herdr"))
+        self.assertEqual(state, WaitState.WORKING)
+
+    def test_a_settle_that_holds_across_spaced_reads_is_believed(self):
+        sleeps = []
+        herdr, runner = self.make(["idle", "idle", "idle"],
+                                  sleep=sleeps.append)
+        state = runner.wait(sessions.SessionHandle(name="n", runner="herdr"))
+        self.assertEqual(state, WaitState.SETTLED_DONE)
+        self.assertEqual(len(sleeps), runner.settle_reads - 1,
+                         "the confirming reads are spaced, not back-to-back")
+
+    def test_blocked_returns_on_the_first_read(self):
+        # A question deserves the operator now, not after a debounce.
+        herdr, runner = self.make(["blocked"])
+        state = runner.wait(sessions.SessionHandle(name="n", runner="herdr"))
+        self.assertEqual(state, WaitState.SETTLED_BLOCKED)
+
+
+# ---------------------------------------------------------------------------
+# Close is guarded — never a working pane, and the roster's tab wins
+# ---------------------------------------------------------------------------
+
+class GuardedCloseTest(unittest.TestCase):
+
+    def test_close_refuses_a_working_pane(self):
+        herdr = FakeHerdr({"n": {
+            "name": "n", "agent_status": "working",
+            "terminal_title_stripped": "n", "pane_id": "p", "tab_id": "t"}})
+        runner = herdr_runner(run=herdr)
+        runner.close(sessions.SessionHandle(name="n", runner="herdr",
+                                            ref={"tab_id": "t"}))
+        self.assertNotIn("tab close", runner._run.verbs()
+                         if hasattr(runner._run, "verbs") else [])
+        self.assertNotIn(["herdr", "tab", "close", "t"], herdr.calls)
+
+    def test_close_reaps_by_roster_tab_when_the_handle_carries_none(self):
+        # The intent loop closes sessions its process never launched — a
+        # synthesized handle has no tab_id, and closing nothing left panes
+        # open forever.
+        herdr = FakeHerdr({"n": {
+            "name": "n", "agent_status": "idle",
+            "terminal_title_stripped": "n", "pane_id": "p", "tab_id": "t"}})
+        runner = herdr_runner(run=herdr)
+        runner.close(sessions.SessionHandle(name="n", runner="herdr"))
+        self.assertIn(["herdr", "tab", "close", "t"], herdr.calls)
+
+
+# ---------------------------------------------------------------------------
+# Trust seeding — the dialog is answered before claude can ask it
+# ---------------------------------------------------------------------------
+
+class TrustSeedTest(unittest.TestCase):
+
+    def test_seeding_writes_the_dialog_answer_for_the_path(self):
+        import json as j
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "claude.json"
+            self.assertTrue(sessions.seed_workspace_trust("/w/build-x", config))
+            data = j.loads(config.read_text())
+            self.assertTrue(
+                data["projects"]["/w/build-x"]["hasTrustDialogAccepted"])
+
+    def test_seeding_is_idempotent_and_preserves_the_rest_of_the_config(self):
+        import json as j
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "claude.json"
+            config.write_text(j.dumps({
+                "theme": "dark",
+                "projects": {"/w/build-x": {"hasTrustDialogAccepted": True,
+                                            "history": [1, 2]}}}))
+            before = j.loads(config.read_text())
+            self.assertFalse(sessions.seed_workspace_trust("/w/build-x", config))
+            self.assertEqual(j.loads(config.read_text()), before)
+
+    def test_launch_seeds_trust_for_the_spec_cwd(self):
+        seeded = []
+        runner = herdr_runner(run=FakeHerdr(), seed_trust=seeded.append)
+        runner.launch(spec())
+        self.assertEqual(seeded, ["/tmp/wt"])
+
+    def test_reuse_seeds_nothing(self):
+        seeded = []
+        herdr = FakeHerdr({"build-substrate": {
+            "name": "build-substrate", "agent_status": "working",
+            "terminal_title_stripped": "build-substrate",
+            "pane_id": "p", "tab_id": "t"}})
+        runner = herdr_runner(run=herdr, seed_trust=seeded.append)
+        runner.launch(spec())
+        self.assertEqual(seeded, [])
 
 
 if __name__ == "__main__":
