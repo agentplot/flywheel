@@ -34,6 +34,10 @@ deterministic session name, guarded against still-working panes) and
 landed merge**. Pinned by
 `test_a_bolt_direct_merge_reaps_the_build_pane`. First live proof: the
 respawned loop reaped `build-appsync-api-stack` at its merge.
+**Residual:** the guard can close an item before its batch is driven
+(stage re-derived from a hand-merged branch); those paths skip every
+close site, so guard-closed items still leak their panes — reap on
+guard-close too.
 
 ### 2. Merge-conflict handling stranded the bolt worktree mid-rebase
 
