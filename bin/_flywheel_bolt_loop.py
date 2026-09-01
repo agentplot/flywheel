@@ -963,6 +963,20 @@ class MergeGate:
         return None
 
 
+#: The round-robin poll slice under fan-out. One batch's bounded wait must
+#: not starve its siblings' settles for ten minutes, so concurrent
+#: pipelines poll on a shorter clock; a lone pipeline keeps the full chunk.
+PARALLEL_WAIT_CHUNK_S = 120
+
+
+@dataclass
+class _PipelineTask:
+    """One admitted batch: its pipeline and the request it is waiting on."""
+    batch: object
+    gen: object
+    request: object = None
+
+
 def run_gen(gen):
     """Exhaust a session generator inline — today's blocking shape.
 
@@ -1014,6 +1028,10 @@ class BoltParams:
     #: synthesized from `repo_dir` and `--book`, which is today's
     #: single-repo behavior exactly.
     bindings: dict = None
+    #: How many batches may run their spec/build/verify sessions at once.
+    #: Merges stay serial whatever this says — the bolt branch is the one
+    #: piece of shared state. 1 is the old strictly-serial drive.
+    parallel: int = 4
     #: The openspec change id the bolt's record lives under —
     #: kind-prefixed (`bolt-<slug>`) for a record scaffolded now, the bare
     #: slug for one that predates the prefix (`resolve_change_id` adopts an
@@ -3558,6 +3576,71 @@ class BoltLoop:
                     outcomes.append(StageOutcome("batch", "paused", reason))
         return list(still)
 
+    def run_pipelines(self, resolved, snapshot, outcomes, held):
+        """The fan-out: up to `params.parallel` pipelines at once, one merge.
+
+        Pipelines are admitted from `resolved` in its order and their
+        session waits polled round-robin on one thread — each poll one
+        bounded `runner.wait`, sliced short (`PARALLEL_WAIT_CHUNK_S`) so no
+        sibling starves; a lone pipeline keeps the serial chunk and today's
+        cadence exactly. `MergeGate` admits the lowest batch number when no
+        other pipeline is inside its merge stage — spec, build and verify
+        never queue, which is the point. An andon, pause or stall ends only
+        its own pipeline. A green merge re-splits the held `after:`
+        siblings (problem 9); `release_after` appends to `resolved`, which
+        the admission index picks up mid-flight. Returns batches merged.
+        """
+        cap = max(1, self.params.parallel)
+        chunk = sessions.WAIT_CHUNK_S if cap == 1 else PARALLEL_WAIT_CHUNK_S
+        active, merged, admitted = [], 0, 0
+        merging = None
+
+        def advance(task, value=None):
+            """To the pipeline's next request; its result when it ends."""
+            try:
+                task.request = task.gen.send(value)
+                return None
+            except StopIteration as stop:
+                return stop.value
+
+        def finish(task, result):
+            nonlocal merging, merged, held
+            batch_outcomes, did_merge = result
+            outcomes.extend(batch_outcomes)
+            active.remove(task)
+            merging = None if merging is task else merging
+            if did_merge:
+                merged += 1
+                self._merged += 1
+                if held:
+                    held = self.release_after(held, resolved, outcomes)
+
+        def step(task, value=None):
+            result = advance(task, value)
+            if result is not None:
+                finish(task, result)
+
+        while True:
+            while admitted < len(resolved) and len(active) < cap:
+                batch, binding = resolved[admitted]
+                admitted += 1
+                task = _PipelineTask(
+                    batch, self.batch_pipeline(batch, binding, snapshot))
+                active.append(task)
+                step(task)
+            if not active:
+                return merged
+            gated = [t for t in active if isinstance(t.request, MergeGate)]
+            if merging is None and gated:
+                merging = min(gated, key=lambda t: t.batch.numbers)
+                step(merging)
+                continue
+            for task in [t for t in active if isinstance(t.request, Wait)]:
+                settled = task.request.supervisor.poll(
+                    task.request.runner, task.request.handle, chunk)
+                if settled is not None:
+                    step(task, settled)
+
     def cycle(self, number):
         result = CycleResult(number=number)
         snapshot = self.tracker.snapshot(self.params.milestone)
@@ -3634,21 +3717,7 @@ class BoltLoop:
             self.ledger.note(f"unresolvable repo — "
                              + ", ".join(f"#{n}" for n in batch.numbers))
             outcomes.append(StageOutcome("batch", "paused", reason))
-        for batch, binding in resolved:
-            batch_outcomes, did_merge = run_gen(
-                self.batch_pipeline(batch, binding, snapshot))
-            outcomes.extend(batch_outcomes)
-            if did_merge:
-                merged += 1
-                self._merged += 1
-                # A merge can satisfy a held sibling's `after:` gate
-                # RIGHT NOW. Re-splitting only at cycle start made
-                # #68/#69 wait out the rest of the cycle plus a whole
-                # planning pass after #67 closed mid-cycle (problem
-                # 9). Re-evaluate against a fresh snapshot and append
-                # the released batches to this same drive.
-                if held:
-                    held = self.release_after(held, resolved, outcomes)
+        merged += self.run_pipelines(resolved, snapshot, outcomes, held)
         result.outcomes = tuple(outcomes)
         if merged == 0:
             result.stopped = ("no batch reached the bolt branch this cycle — "

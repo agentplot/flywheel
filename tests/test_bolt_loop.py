@@ -846,6 +846,79 @@ class CycleTest(unittest.TestCase):
         self.assertIn(2, tracker.closed,
                       "the released batch went all the way to closed:merged")
 
+    # -- the fan-out: concurrent batches, serial merges ---------------------
+
+    def fan_shell(self):
+        return FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                          ("git", "merge-base"): Result(0)})
+
+    def fan_tracker(self, extra_labels=(), comments=None):
+        snapshot = Snapshot(items=[
+            item(1, inbox.READY, change="first"),
+            item(2, inbox.READY, *extra_labels, change="second")],
+            milestone="bolt/x")
+        return FakeTracker(snapshot, comments=comments or {
+            1: [{"body": "built"}], 2: [{"body": "built"}]})
+
+    def merged_order(self, tracker):
+        return [n for op, n, label in
+                [w for w in tracker.writes if w[0] == "add_label"]
+                if label == inbox.STAGE_MERGED]
+
+    def test_a_slow_batch_does_not_hold_its_siblings_back(self):
+        # THE fan-out property. Batch 1's session keeps working while
+        # batch 2 settles; under the old serial drive batch 2 could not
+        # even launch until batch 1 had merged.
+        tracker = self.fan_tracker()
+        runner = ScriptedRunner(states=[
+            WaitState.WORKING, WaitState.SETTLED_DONE,
+            WaitState.WORKING, WaitState.SETTLED_DONE])
+        result = a_loop(tracker, runner=runner, shell=self.fan_shell()).cycle(1)
+        self.assertEqual(self.merged_order(tracker), [2, 1],
+                         "the quick sibling merges while the slow one works")
+        self.assertEqual([o.status for o in result.outcomes
+                          if o.stage == "merge"], ["done", "done"])
+
+    def test_parallel_one_is_the_old_serial_drive(self):
+        tracker = self.fan_tracker()
+        runner = ScriptedRunner(states=[
+            WaitState.WORKING, WaitState.SETTLED_DONE,
+            WaitState.WORKING, WaitState.SETTLED_DONE])
+        a_loop(tracker, runner=runner, shell=self.fan_shell(),
+               parallel=1).cycle(1)
+        self.assertEqual(self.merged_order(tracker), [1, 2])
+
+    def test_contended_merge_gate_admits_the_lowest_batch_first(self):
+        # Both pipelines reach MergeGate in the same round; the grant is
+        # by batch number, not arrival luck.
+        tracker = self.fan_tracker()
+        a_loop(tracker, shell=self.fan_shell()).cycle(1)
+        self.assertEqual(self.merged_order(tracker), [1, 2])
+
+    def test_one_batchs_andon_pauses_only_that_batch(self):
+        tracker = self.fan_tracker(comments={
+            1: [{"body": inbox.format_andon("the spec contradicts D4")}],
+            2: [{"body": "built"}]})
+        result = a_loop(tracker, shell=self.fan_shell()).cycle(1)
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+        self.assertEqual(self.merged_order(tracker), [2],
+                         "the healthy sibling still merges")
+        self.assertEqual(
+            {o.status for o in result.outcomes}, {"paused", "done"})
+
+    def test_plan_mode_is_threaded_per_call_never_read_off_the_loop(self):
+        # Interleaved batches of different types must not read each
+        # other's mode: the parameter wins over the loop's default.
+        program = a_loop(FakeTracker())          # the bolt's type: not plan
+        batch = loop.WorkBatch(slug="x-1", items=(
+            item(1, inbox.READY, change="add-thing"),))
+        self.assertEqual(
+            program.spec_stage(batch, plan_mode=True).status, "skipped",
+            "plan-mode threading skips the spec even on a spec-typed loop")
+        self.assertEqual(
+            program.verify_stage(batch, loop.StageOutcome("build", "done"),
+                                 plan_mode=True).status, "skipped")
+
     def test_an_andon_marker_on_an_item_pauses_its_batch_with_needs_operator(self):
         snapshot = Snapshot(items=[item(1, inbox.READY)], milestone="bolt/x")
         tracker = FakeTracker(snapshot, comments={
