@@ -539,3 +539,43 @@ board; the charter is what has to change.
 - **THEN** the landing proceeds under its existing preconditions and
   gains nothing from this requirement
 
+
+### Requirement: Batches fan out; the merge is the one serialized stage
+
+The bolt loop SHALL drive up to its configured `parallel` batches
+concurrently — each batch's spec, build and verify sessions running
+while its siblings' run, every batch isolated on its own
+`build/<slug>` branch and worktree — and SHALL admit exactly one batch
+at a time into the merge stage, the lowest batch number first when more
+than one is waiting, because the bolt branch is the only state batches
+share. Each session's notify and stall budgets SHALL measure that
+session alone, however the waits interleave. `parallel: 1` SHALL be
+the strictly serial drive. A batch's type SHALL be read per batch:
+interleaved batches of different types never see each other's stage
+set or plan mode.
+
+#### Scenario: A slow batch does not hold its siblings back
+
+- **WHEN** two unblocked batches are driven and the first's session
+  keeps working while the second's settles
+- **THEN** the second batch proceeds through its stages and merges
+  while the first is still being supervised
+
+#### Scenario: Two batches reach the merge together
+
+- **WHEN** two pipelines are waiting to merge at the same moment
+- **THEN** the lower batch number merges first and the other starts its
+  merge only after the first's merge stage has finished
+
+#### Scenario: An andon pauses only its own batch
+
+- **WHEN** one of several concurrent batches carries an unanswered andon
+- **THEN** that batch alone pauses with `needs-operator` and its
+  siblings drive on to the bolt branch
+
+#### Scenario: A mid-flight merge releases a held sibling into the running set
+
+- **WHEN** a batch merges while `after:`-held siblings wait and slots
+  are free under the cap
+- **THEN** the released siblings are admitted to the same cycle's
+  running set rather than waiting for the next planning pass

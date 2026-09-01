@@ -348,6 +348,9 @@ class ServerConfig:
     #                 "settle_minutes": int}. The homing rule as a fact on
     # disk: only bound systems get planning runs.
     books: dict = field(default_factory=dict)
+    #: Fleet-wide bolt fan-out: batches driven concurrently per bolt loop.
+    #: 0 means unset — the loop's own default rules.
+    parallel: int = 0
 
     @property
     def changes_dir(self):
@@ -444,6 +447,8 @@ class Server:
                 "--org", self.config.org, "--repo", self.config.repo,
                 "--project", self.config.project,
                 "--repo-dir", str(self.config.loops_cwd)]
+        if kind == "bolt" and self.config.parallel:
+            argv += ["--parallel", str(self.config.parallel)]
         if kind == "bolt" and self.config.books:
             bindings = {name: {"repo": str(b["repo"]), "book": str(b["book"])}
                         for name, b in self.config.books.items()

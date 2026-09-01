@@ -18,6 +18,9 @@
 #               (default: Flywheel)
 #   loops_cwd — the checkout the loop processes run in, relative to this
 #               folder; the repo holding openspec/changes/
+#   parallel  — batches a bolt loop drives concurrently (default 4).
+#               Merges stay serial regardless; 1 is the strictly
+#               serial drive.
 
 session: myorg
 tracker: myorg/my-tracker-repo
