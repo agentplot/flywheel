@@ -241,7 +241,13 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
 <!-- ============== THE FORMAT — not edited per plan ============== -->
 <script>
   const PLAN = JSON.parse(document.getElementById("plan-data").textContent);
-  const md = id => document.getElementById(id).textContent.trim();
+  // Null-safe: a derived row (approvals) carries no srcId, and a throw
+  // here kills the whole render loop — the approve button's listener is
+  // attached after it, so one missing source made every control dead.
+  const md = id => {
+    const el = id && document.getElementById(id);
+    return el ? el.textContent.trim() : "";
+  };
   const render = text => {
     const div = document.createElement("div");
     div.className = "md";
@@ -392,13 +398,15 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       }
       mid.append(ul);
     }
-    const det = document.createElement("details");
-    det.className = "mt-1";
-    const sum = document.createElement("summary");
-    sum.className = "text-xs opacity-50 hover:opacity-80";
-    sum.textContent = "full text";
-    det.append(sum, render(md(item.srcId)));
-    mid.append(det);
+    if (item.srcId) {
+      const det = document.createElement("details");
+      det.className = "mt-1";
+      const sum = document.createElement("summary");
+      sum.className = "text-xs opacity-50 hover:opacity-80";
+      sum.textContent = "full text";
+      det.append(sum, render(md(item.srcId)));
+      mid.append(det);
+    }
     if (item.question) {
       const inp = document.createElement("input");
       inp.className = "input input-sm w-full mt-2";
@@ -639,7 +647,19 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   }
 
   for (const c of PLAN.containers || []) {
-    document.getElementById("containers").append(containerSection(c));
+    // One malformed container must not take the approve/send-back
+    // controls down with it — their listeners attach after this loop,
+    // and a silent dead button is the worst failure a plan can have.
+    try {
+      document.getElementById("containers").append(containerSection(c));
+    } catch (err) {
+      const broken = document.createElement("section");
+      broken.className = "text-xs text-error";
+      broken.textContent =
+        `section '${c.key || c.kind}' failed to render (${err}) — ` +
+        "its rows are unrouted; everything else on this page still works";
+      document.getElementById("containers").append(broken);
+    }
   }
 
   // The payload is always visible — a control change is never silently lost.
