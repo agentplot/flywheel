@@ -325,7 +325,12 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
                    // leave writes nothing (and is the seed — approving
                    // new work never requires touching the parked rows),
                    // ready flips board Status, drop closes for good.
-                   approvals: ["leave", "ready", "drop"] };
+                   approvals: ["leave", "ready", "drop"],
+                   // Waiting-on-operator rows (needs-operator items):
+                   // leave writes nothing (the seed — still waiting);
+                   // answered posts the typed note as the item's answer,
+                   // retires a standing andon, and clears the label.
+                   waits: ["leave", "answered"] };
 
   function routesFor(container) {
     const routes = [...ROUTES[container.kind]];
@@ -539,7 +544,8 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     return sec;
   }
 
-  function approvalsSection(c) {
+  function approvalsSection(c, routes = ROUTES.approvals,
+                            heading = "Awaiting approval at Backlog — ") {
     // Derived backlog: board objects that already exist, awaiting the
     // operator. Grouped by milestone; each group's set-all flips the
     // whole milestone at once. Seeded LEAVE — untouched rows write
@@ -547,7 +553,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     const sec = document.createElement("section");
     const h = document.createElement("h2");
     h.className = "text-xs font-bold uppercase tracking-widest opacity-50 mb-2";
-    h.textContent = "Awaiting approval at Backlog — ";
+    h.textContent = heading;
     sec.append(h);
     const groups = new Map();
     for (const item of c.rows || []) {
@@ -562,11 +568,11 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       name.className = "text-xs font-mono opacity-70";
       name.textContent = milestone;
       head.append(name, setAllControl(rows.map((r) => r.key),
-                                      ROUTES.approvals));
+                                      routes));
       sec.append(head);
       const list = document.createElement("div");
       list.className = "rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200";
-      for (const item of rows) list.append(row(item, ROUTES.approvals));
+      for (const item of rows) list.append(row(item, routes));
       sec.append(list);
     }
     return sec;
@@ -576,6 +582,9 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     if (c.kind === "close") return closeSection(c);
     if (c.kind === "finished") return finishedSection(c);
     if (c.kind === "approvals") return approvalsSection(c);
+    if (c.kind === "waits")
+      return approvalsSection(c, ROUTES.waits,
+                              "Waiting on you — answer or leave standing — ");
     const sec = document.createElement("section");
     const head = document.createElement("div");
     head.className = "flex items-baseline justify-between mb-2 gap-3 flex-wrap";

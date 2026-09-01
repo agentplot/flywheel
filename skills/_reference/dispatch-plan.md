@@ -315,6 +315,25 @@ is filed:
   re-route; the "an existing plan card is never triage" rule does not
   bar it.
 
+**Waiting-on-you rows** — the fleet's open `needs-operator` items,
+from `flywheel-round`'s `needs_operator` list — ride every round as a
+**waits** container: the plan is the ONE routing surface put before the
+operator, and an andon or pause the operator never sees is a stall
+wearing a label. One row per item — number, title, and the wait's
+reason (the standing andon, or the pause's latest comment) — with two
+routes:
+
+- **leave** — still waiting, no write. The seed for every row.
+- **answered** — the typed note is the operator's answer, applied at
+  step 1 beside the question answers: post the note as a comment on the
+  item — prefixed with the `ANDON ANSWERED` marker line when an
+  unanswered andon stands, so the stop retires — and clear
+  `needs-operator`. A row switched to `answered` with no note is asked
+  again, never guessed.
+
+The rows are informational plus one verb; nothing about them files,
+parks, or closes work. Approve-as-seeded touches none of them.
+
 A **retarget** re-files a row under another container of the same kind.
 "This needs more design first" is a send-back of the plan with a note,
 never a routing value.

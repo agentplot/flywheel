@@ -610,6 +610,20 @@ class RoundInboxTest(unittest.TestCase):
         box = inbox.round_inbox(snap)
         self.assertEqual([b.number for b in box.backlog_batches], [9])
 
+    def test_needs_operator_items_ride_the_round(self):
+        # The plan is the one routing surface — an andon or pause the
+        # operator never sees is a stall wearing a label (willdan,
+        # 2026-09-01: five paused batches, none on the plan page).
+        snap = Snapshot(items=[
+            item(9, inbox.NEEDS_OPERATOR, milestone="bolt/x"),
+            item(10, milestone="bolt/x"),
+            item(11, inbox.NEEDS_OPERATOR, state="closed",
+                 milestone="bolt/x")])
+        box = inbox.round_inbox(snap)
+        self.assertEqual([i.number for i in box.needs_operator], [9],
+                         "open waits only")
+        self.assertFalse(box.empty, "a round with only waits still runs")
+
     def test_standing_labels_only_nominate_payload_anchors(self):
         snap = Snapshot(items=[item(9, inbox.DISPATCH_STANDING, inbox.UNIT,
                                     milestone="bolt/x")])

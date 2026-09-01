@@ -53,7 +53,22 @@ def main(argv=None):
                          "sha": found.sha, "dir": found.dir,
                          "origin": found.origin})
 
+    def last_reason(number):
+        """The wait's reason: the unanswered andon when one stands, else
+        the latest comment (the pause writes its reason there)."""
+        comments = tracker.comments(number) or ()
+        raised = inbox.find_andon(comments)
+        if raised:
+            return f"ANDON: {raised.reason}"
+        bodies = [c.get("body", "") if isinstance(c, dict) else str(c)
+                  for c in comments]
+        return (bodies[-1].strip()[:400] if bodies else "")
+
     print(json.dumps({
+        "needs_operator": [
+            {"number": i.number, "title": i.title, "milestone": i.milestone,
+             "reason": last_reason(i.number)}
+            for i in box.needs_operator],
         "close_ready": list(box.close_ready),
         "backlog_batches": [
             {"number": b.number, "kind": b.kind, "milestone": b.milestone,

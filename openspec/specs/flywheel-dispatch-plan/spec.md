@@ -127,6 +127,14 @@ NOT also be relayed as a DM — one wait, one surface.
 - **THEN** the payload still stands and the next round re-applies it —
   every container mechanic is re-runnable, so nothing duplicates
 
+#### Scenario: The waiting-on-operator set rides the round
+
+- **WHEN** open items carry `needs-operator` when a round assembles
+- **THEN** the plan renders each as a waits row — the item and the
+  wait's reason, seeded leave — and a typed answer applies as the
+  item's answer comment (retiring a standing andon) and clears the
+  label, while approve-as-seeded touches none of them
+
 #### Scenario: A batch with nothing left to release is not offered
 
 - **WHEN** a Backlog batch's known members hold nothing queued — every

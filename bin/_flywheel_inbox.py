@@ -1103,11 +1103,17 @@ class RoundInbox:
     #: anchors; the caller reads each anchor's latest unretired
     #: round-payload marker for the address.
     payload_anchors: tuple = ()
+    #: open items labelled `needs-operator` — andons and pauses. The plan
+    #: is the ONE routing surface put before the operator, so the set the
+    #: fleet is waiting on rides every round beside the approvals; a
+    #: relay DM is a poke, not a surface.
+    needs_operator: tuple = ()
 
     @property
     def empty(self):
         return not (self.close_ready or self.backlog_batches
-                    or self.backlog_cards or self.payload_anchors)
+                    or self.backlog_cards or self.payload_anchors
+                    or self.needs_operator)
 
 
 def round_inbox(snapshot):
@@ -1163,6 +1169,8 @@ def round_inbox(snapshot):
         payload_anchors=tuple(i for i in snapshot.items
                               if i.is_open and DISPATCH_STANDING in i.labels
                               and i.milestone not in close_ready),
+        needs_operator=tuple(i for i in snapshot.items
+                             if i.is_open and NEEDS_OPERATOR in i.labels),
     )
 
 
