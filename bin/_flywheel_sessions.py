@@ -555,7 +555,7 @@ class HerdrRunner(Runner):
             return WaitState.SETTLED_BLOCKED
         return WaitState.WORKING
 
-    def collect(self, handle, lines=200):
+    def collect(self, handle, lines=600):
         """Read the pane.
 
         Composer ghost text is NOT input: a read renders whatever sits at the
