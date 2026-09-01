@@ -127,6 +127,14 @@ NOT also be relayed as a DM — one wait, one surface.
 - **THEN** the payload still stands and the next round re-applies it —
   every container mechanic is re-runnable, so nothing duplicates
 
+#### Scenario: A batch with nothing left to release is not offered
+
+- **WHEN** a Backlog batch's known members hold nothing queued — every
+  member already released, or every member closed
+- **THEN** the round derives no approvals row for it, and the loop
+  closes a finished elaboration container (every member closed, no
+  standing payload, no operator hold) so no later round re-derives it
+
 #### Scenario: A triage splits raw ideas into new intents
 
 - **WHEN** dispatch builds a triage plan over four unmilestoned intake

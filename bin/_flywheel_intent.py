@@ -50,7 +50,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,  # noqa: E501
+from _flywheel_inbox import (CLOSED_DONE, DISPATCH_STANDING, ELABORATION,  # noqa: E501
+                             INTENT_PREFIX,
                              resolve_change_id,
                              IN_PROGRESS, NEEDS_OPERATOR, QUEUED, READY,
                              STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
@@ -960,6 +961,8 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
                 continue               # the tracker moved; re-query
             if resume_collect(inbox, writer, runner, config, snapshot, report):
                 continue               # the tracker moved; re-query
+            if close_finished_batches(writer, config, snapshot, report):
+                continue               # the tracker moved; re-query
 
             batches, undispatchable = batch_ready(snapshot, inbox.ready)
             for item, kind in undispatchable:
@@ -1129,6 +1132,41 @@ def collect_settled(writer, runner, config, snapshot, report):
                          f"stage:done written from the pane.",)
         wrote = True
     return wrote
+
+
+def close_finished_batches(writer, config, snapshot, report):
+    """Close an elaboration parent whose every member is closed.
+
+    Members close one by one through the collect path, and nothing ever
+    closed the container: the finished parent sat open at board Backlog
+    and every dispatch round re-derived it as an approvals row, so the
+    operator was shown the same finished elaborations round after round
+    (willdan round 17, observed 2026-09-01). A parent still carrying
+    `dispatch:standing` holds an unconsumed payload and is dispatch's to
+    retire; one under `needs-operator` is the operator's; a parent whose
+    membership was not fetched is left alone. True if it wrote.
+    """
+    if not config.apply or writer.tracker is None:
+        return False
+    open_items = {i.number: i for i in snapshot.items if i.is_open}
+    finished = [
+        batch for batch in snapshot.batches
+        if batch.kind == ELABORATION and batch.sub_issues
+        and batch.milestone in (None, config.milestone)
+        and (parent := open_items.get(batch.number)) is not None
+        and DISPATCH_STANDING not in parent.labels
+        and NEEDS_OPERATOR not in parent.labels
+        and not any(n in open_items for n in batch.sub_issues)]
+    for batch in finished:
+        writer.close_issue(
+            batch.number,
+            comment=("Every member of this elaboration is closed; the loop "
+                     "closes the finished container so no dispatch round "
+                     "re-offers it."),
+            reason=CLOSED_DONE)
+        report.notes += (f"closed finished elaboration #{batch.number} — "
+                         f"every member already closed.",)
+    return bool(finished)
 
 
 def resume_collect(inbox, writer, runner, config, snapshot, report):

@@ -385,6 +385,57 @@ class CollectSettledTest(unittest.TestCase):
         self.assertNotIn(("add_label", 1, inbox.STAGE_DONE), tracker.calls)
 
 
+class CloseFinishedBatchesTest(unittest.TestCase):
+    """A finished elaboration parent — every member closed — sat open at
+    board Backlog forever, and every dispatch round re-derived it as an
+    approvals row (willdan rounds 17/18). The loop closes the container."""
+
+    def fixture(self, parent_labels=(), members=()):
+        snap = Snapshot(
+            items=[item(9, inbox.ELABORATION, *parent_labels)] + list(members),
+            batches=[Batch(number=9, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/x", sub_issues=(1, 2))])
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        return snap, tracker, writer, intent.Report(slug="x")
+
+    def test_a_parent_with_every_member_closed_is_closed(self):
+        snap, tracker, writer, report = self.fixture()
+        wrote = intent.close_finished_batches(writer, config(apply=True),
+                                              snap, report)
+        self.assertTrue(wrote)
+        self.assertIn(("close_issue", 9, inbox.CLOSED_DONE), tracker.calls)
+        self.assertTrue(any("finished elaboration #9" in n
+                            for n in report.notes))
+
+    def test_an_open_member_keeps_the_parent_open(self):
+        snap, tracker, writer, report = self.fixture(
+            members=[item(1, inbox.QUEUED)])
+        self.assertFalse(intent.close_finished_batches(
+            writer, config(apply=True), snap, report))
+        self.assertEqual(tracker.calls, [])
+
+    def test_a_standing_payload_anchor_is_dispatchs_to_retire(self):
+        snap, tracker, writer, report = self.fixture(
+            parent_labels=(inbox.DISPATCH_STANDING,))
+        self.assertFalse(intent.close_finished_batches(
+            writer, config(apply=True), snap, report))
+        self.assertEqual(tracker.calls, [])
+
+    def test_unknown_membership_is_left_alone(self):
+        snap = Snapshot(
+            items=[item(9, inbox.ELABORATION)],
+            batches=[Batch(number=9, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/x")])
+        tracker = FakeTracker(snapshot=snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        self.assertFalse(intent.close_finished_batches(
+            writer, config(apply=True), snap, intent.Report(slug="x")))
+        self.assertEqual(tracker.calls, [])
+
+
 class ResumeCollectTest(unittest.TestCase):
     """A flip the loop was not there to see.
 

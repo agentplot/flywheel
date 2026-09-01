@@ -1138,11 +1138,22 @@ def round_inbox(snapshot):
             continue
         if all(i.merge_closed for i in work):
             close_ready.append(milestone)
+    # The approval's one effect on a Backlog batch is releasing its queued
+    # members. A batch whose known members hold nothing queued — released
+    # already, or every member closed and gone from the snapshot — has
+    # nothing an approval could do, and offering it anyway is how the same
+    # finished elaborations re-rendered round after round (willdan round
+    # 17, observed 2026-09-01). Empty `sub_issues` means membership was
+    # not fetched, and an unknown batch still stands.
+    queued = {i.number for i in snapshot.items if i.is_open
+              and QUEUED in i.labels}
     return RoundInbox(
         close_ready=tuple(close_ready),
         backlog_batches=tuple(b for b in snapshot.batches
                               if b.status == STATUS_BACKLOG
-                              and b.milestone_state == "open"),
+                              and b.milestone_state == "open"
+                              and (not b.sub_issues
+                                   or queued & set(b.sub_issues))),
         backlog_cards=tuple(c for c in snapshot.plan_cards
                             if c.status == STATUS_BACKLOG
                             and c.milestone_state == "open"),
@@ -1531,7 +1542,7 @@ class Tracker:
 
     # -- assembly ----------------------------------------------------------
 
-    def snapshot(self, milestone=None, with_edges=True):
+    def snapshot(self, milestone=None, with_edges=True, with_batch_edges=None):
         """The picture the filters run over.
 
         Built per-milestone when a milestone is given, because the exact
@@ -1540,9 +1551,15 @@ class Tracker:
         wants none of that: it over-approximates on purpose and calls this
         with `with_edges=False`.
 
+        `with_batch_edges` narrows that trade for the round: batch
+        containers still get their `sub_issues` (one call per batch — a
+        handful) while items skip the per-issue blocker calls. It defaults
+        to `with_edges`, so existing callers are unchanged.
+
         Open issues **plus** the `closed:merged` ones, which are closed and
         still in flight — see `merge_closed_issues`.
         """
+        batch_edges = with_edges if with_batch_edges is None else with_batch_edges
         all_raws = self.open_issues() + self.merge_closed_issues()
         raws = all_raws
         if milestone:
@@ -1570,7 +1587,7 @@ class Tracker:
                     kind=UNIT if UNIT in labels else ELABORATION,
                     status=row.get("status"),
                     chore=CHORE in labels,
-                    sub_issues=tuple(self.sub_issues(item.number)) if with_edges else (),
+                    sub_issues=tuple(self.sub_issues(item.number)) if batch_edges else (),
                     milestone=item.milestone,
                     milestone_state=item.milestone_state,
                 ))

@@ -578,6 +578,38 @@ class RoundInboxTest(unittest.TestCase):
                          "Ready is released, not pending")
         self.assertEqual([c.number for c in box.backlog_cards], [30])
 
+    def test_a_batch_with_nothing_left_to_release_is_not_offered(self):
+        # Willdan rounds 17/18: finished elaborations ("no open members")
+        # and batches whose members were already released rendered as
+        # approvals round after round. The approval's one effect is
+        # releasing queued members — no queued member, no row.
+        snap = Snapshot(
+            items=[item(1, inbox.QUEUED, milestone="intent/a"),
+                   item(2, inbox.READY, milestone="intent/a")],
+            batches=[Batch(number=9, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/a", sub_issues=(1,)),
+                     Batch(number=8, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/a", sub_issues=(2,)),
+                     Batch(number=7, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/a", sub_issues=(50, 51))])
+        box = inbox.round_inbox(snap)
+        self.assertEqual([b.number for b in box.backlog_batches], [9],
+                         "released members (#8) and closed members (#7) "
+                         "leave an approval nothing to do")
+
+    def test_a_batch_whose_membership_was_not_fetched_still_stands(self):
+        # Empty sub_issues means unknown, not empty — an edge-less
+        # snapshot must not silently drop every pending approval.
+        snap = Snapshot(
+            batches=[Batch(number=9, kind=inbox.ELABORATION,
+                           status=inbox.STATUS_BACKLOG,
+                           milestone="intent/a")])
+        box = inbox.round_inbox(snap)
+        self.assertEqual([b.number for b in box.backlog_batches], [9])
+
     def test_standing_labels_only_nominate_payload_anchors(self):
         snap = Snapshot(items=[item(9, inbox.DISPATCH_STANDING, inbox.UNIT,
                                     milestone="bolt/x")])

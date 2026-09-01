@@ -32,7 +32,10 @@ def main(argv=None):
 
     tracker = inbox.Tracker(resolve_token(args.org), args.org, args.repo,
                             project_title=args.project)
-    snapshot = tracker.snapshot(with_edges=False)
+    # Batch edges on: the round must know each Backlog batch's members to
+    # tell "awaiting approval" from "nothing left to release" — one call
+    # per batch, while items still skip their per-issue blocker calls.
+    snapshot = tracker.snapshot(with_edges=False, with_batch_edges=True)
     box = inbox.round_inbox(snapshot)
 
     payloads, shortfalls = [], []
