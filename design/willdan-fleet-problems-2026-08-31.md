@@ -249,6 +249,29 @@ operator-touched items are left alone.
 
 ---
 
+### 17. Every launch in a fresh built-repo worktree timed out — the plugin install record was missing
+
+**Symptom (2026-09-01):** every spec/build session in a switchboard-kit
+build worktree failed with `agent start failed: timed out waiting for
+agent startup`; the panes sat blank with an idle zsh; the bolt loop
+burned cycle after cycle (`spec=failed build=failed STOP`).
+
+**Root cause:** claude only loads a repo's enabled `flywheel@flywheel`
+plugin where `~/.claude/plugins/installed_plugins.json` holds an install
+record for that exact project path. Fresh worktrees have none, so claude
+booted without the flywheel agent profiles and `--agent
+flywheel-construction-session` died at the shell instantly — herdr then
+waited the full timeout on an agent that never existed. Trust seeding
+(problem 2's fix) masked nothing here: trust was seeded, the plugin
+record was the missing half.
+
+**Fixed:** `90d26d2a` — both runners seed `claude plugin install
+flywheel@flywheel --scope local` for the spec cwd beside the trust seed
+(best-effort, idempotent, skipped when the record exists). All existing
+willdan worktrees were seeded by hand the same day. Note: a user-scope
+install would have covered everything but is impossible on this machine
+— `~/.claude/settings.json` is nix/home-manager managed and read-only.
+
 ## Environment notes that interacted with all of the above
 
 - **prek** (`j178/prek#1672`): `prek install` bakes the installing
