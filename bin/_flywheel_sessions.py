@@ -953,22 +953,56 @@ def supervise(runner, handle, operator_round=False, on_notify=None,
     new prompt, the next call is a new origin, and there is no counter to
     reset by hand.
     """
-    started = clock() if origin is None else origin
-    waits = 0
-    while True:
+    watcher = Supervisor(operator_round=operator_round, on_notify=on_notify,
+                         clock=clock, notify_after=notify_after,
+                         stall_after=stall_after, origin=origin,
+                         notified=notified)
+    return next(filter(None, iter(
+        lambda: watcher.poll(runner, handle, chunk), object())))
+
+
+class Supervisor:
+    """`supervise` made resumable: the loop locals as state, one poll at a
+    time, so a scheduler can interleave many sessions' waits on one thread.
+
+    `poll` performs ONE bounded `runner.wait` and applies the clock rules —
+    poll before judging the clock, notify once at `notify_after`, stall at
+    `stall_after` unless `operator_round`. It returns `None` while the
+    session is still working and a terminal `Supervision` otherwise. Every
+    docstring rule on `supervise` holds here; `supervise` is this class run
+    to completion.
+    """
+
+    def __init__(self, operator_round=False, on_notify=None, clock=time.time,
+                 notify_after=NOTIFY_AFTER_S, stall_after=STALL_AFTER_S,
+                 origin=None, notified=False):
+        self.operator_round = operator_round
+        self.on_notify = on_notify
+        self.clock = clock
+        self.notify_after = notify_after
+        self.stall_after = stall_after
+        self.origin = origin
+        self.notified = notified
+        self.waits = 0
+
+    def poll(self, runner, handle, chunk=WAIT_CHUNK_S):
         # Poll BEFORE judging the clock: a rehydrated origin can be hours
         # old while the session already settled — a stall verdict issued
         # without one look at the pane wedged finished work behind a
         # marker from the previous launch (observed live, twice). The
         # budgets only ever measure a session seen still working.
+        if self.origin is None:
+            self.origin = self.clock()
         state = runner.wait(handle, timeout=chunk)
-        waits += 1
+        self.waits += 1
+        elapsed = self.clock() - self.origin
         if state != WaitState.WORKING:
-            return Supervision(state, clock() - started, notified, waits)
-        elapsed = clock() - started
-        if not notified and elapsed >= notify_after:
-            notified = True
-            if on_notify is not None:
-                on_notify(handle, elapsed)
-        if not operator_round and elapsed >= stall_after:
-            return Supervision(WaitState.STALLED, elapsed, notified, waits)
+            return Supervision(state, elapsed, self.notified, self.waits)
+        if not self.notified and elapsed >= self.notify_after:
+            self.notified = True
+            if self.on_notify is not None:
+                self.on_notify(handle, elapsed)
+        if not self.operator_round and elapsed >= self.stall_after:
+            return Supervision(WaitState.STALLED, elapsed, self.notified,
+                               self.waits)
+        return None

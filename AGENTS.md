@@ -103,6 +103,30 @@ coverage check skips lines opening with `subgraph`.
 `site/` has no build step and must keep having none. It is uploaded to Pages
 as-is, so anything that needs compiling would ship uncompiled.
 
+## Python style — functional first
+
+The `bin/` and `tools/` Python leans functional. Write new code, and
+rework code you touch, to these rules:
+
+- **Comprehensions over loop-and-append.** Any `result = []` /
+  `for` / `result.append(...)` shape is a list (or dict, set, generator)
+  comprehension. Build the data as one expression; never mutate a
+  collection into existence.
+- **Destructure, don't index.** `batch, binding = row`, `first, *rest =
+  items`, tuple unpacking in comprehension targets. Positional `row[0]` /
+  `row[1]` bookkeeping is a defect.
+- **Expressions over statements.** Prefer `next(...)` with a default,
+  conditional expressions, `any()` / `all()`, `sorted(key=...)`,
+  `itertools` / `functools` over hand-rolled index and flag variables.
+- **Data flows in, data flows out.** Functions take values and return
+  values; avoid accumulating through shared mutable attributes when a
+  return value can carry the result.
+- **An explicit `for` is reserved for side effects** — tracker writes,
+  subprocess calls, yields in a generator pipeline. A comprehension run
+  for its side effects (`[f(x) for x in xs]` with the list discarded) is
+  worse than the loop it replaced; a `for` that only shapes data should
+  have been a comprehension.
+
 ## Commits
 
 Messages are Conventional Commits with an imperative subject:

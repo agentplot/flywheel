@@ -542,6 +542,61 @@ class RunnerChoiceTest(unittest.TestCase):
         self.assertIn("herdr", str(caught.exception))
 
 
+class SupervisorTest(unittest.TestCase):
+    """`Supervisor` is `supervise` made resumable — one poll at a time, so a
+    scheduler can interleave many sessions' waits. The clock rules
+    themselves are pinned by ClockTest through `supervise`, which now runs
+    on this class; these tests pin the incremental contract."""
+
+    @staticmethod
+    def ticking(runner, clock):
+        original = runner.wait
+
+        def wait(handle, timeout=None):
+            clock.advance(timeout or 600)
+            return original(handle, timeout)
+
+        runner.wait = wait
+        return runner
+
+    def test_poll_returns_none_while_working_then_the_supervision(self):
+        clock = FakeClock()
+        runner = self.ticking(
+            ScriptedRunner([WaitState.WORKING, WaitState.SETTLED_DONE]), clock)
+        watcher = sessions.Supervisor(clock=clock)
+        handle = sessions.SessionHandle("n", "herdr")
+        working, settled = (watcher.poll(runner, handle) for _ in range(2))
+        self.assertIsNone(working)
+        self.assertEqual(settled.state, WaitState.SETTLED_DONE)
+        self.assertEqual(settled.waits, 2)
+
+    def test_notify_fires_once_across_separate_polls(self):
+        clock = FakeClock()
+        runner = self.ticking(ScriptedRunner([WaitState.WORKING] * 20), clock)
+        notices = []
+        watcher = sessions.Supervisor(clock=clock,
+                                      on_notify=lambda h, e: notices.append(e))
+        handle = sessions.SessionHandle("n", "herdr")
+        for _ in range(12):
+            watcher.poll(runner, handle)
+        self.assertEqual(len(notices), 1)
+
+    def test_two_supervisors_interleave_without_sharing_clocks(self):
+        # The fan-out shape: one thread, two sessions, alternating polls.
+        # Each supervisor's budget measures its own session only.
+        clock = FakeClock()
+        slow = self.ticking(ScriptedRunner([WaitState.WORKING] * 50), clock)
+        quick = ScriptedRunner([WaitState.SETTLED_DONE])
+        handle = sessions.SessionHandle("n", "herdr")
+        first = sessions.Supervisor(clock=clock)
+        second = sessions.Supervisor(clock=clock, origin=0.0)
+        self.assertIsNone(first.poll(slow, handle))
+        settled = second.poll(quick, handle)
+        self.assertEqual(settled.state, WaitState.SETTLED_DONE)
+        self.assertIsNone(first.poll(slow, handle),
+                          "a sibling settling is not this session's verdict")
+
+
 class SettledBeforeStallTest(unittest.TestCase):
     """The stall budget measures a session SEEN working — a settled pane
     resumed with an hours-old origin settles, never stalls."""
