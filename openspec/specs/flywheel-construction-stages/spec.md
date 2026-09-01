@@ -579,3 +579,46 @@ set or plan mode.
   are free under the cap
 - **THEN** the released siblings are admitted to the same cycle's
   running set rather than waiting for the next planning pass
+
+### Requirement: The plan-mode path is one session
+
+A plan-typed batch SHALL be driven as ONE session: the session plans in
+`--permission-mode plan`, the loop treats the first blocked settle as
+the plan dialog — writing `stage:planned` and sending the dialog's
+approve key — and the same session builds. No second session SHALL be
+charged to judge the plan; a later blocked settle is a real question
+and pauses for the operator.
+
+#### Scenario: The dialog is released and the build proceeds
+
+- **WHEN** a plan-mode build settles blocked for the first time
+- **THEN** `stage:planned` is written, the dialog is approved in place,
+  and the same session is supervised on a fresh clock — no judge
+  session is launched
+
+#### Scenario: A question after the release reaches the operator
+
+- **WHEN** the session settles blocked again after its plan was released
+- **THEN** the stage returns blocked and the pane holds the question
+
+### Requirement: The chore type runs one direct session
+
+A `chore`-typed batch SHALL be driven build-then-merge: one session
+whose work order is the items' own bodies — the change list the
+operator approved on the chore card — applied directly on the batch
+branch. The chore path SHALL write no openspec change, run no spec
+session, present no plan dialog, and run no verify; its commits are its
+deliverable and the merge gate is its check.
+
+#### Scenario: A chore card's approval is the whole ceremony
+
+- **WHEN** an approved chore batch is driven
+- **THEN** exactly one session runs, its order carrying the card's
+  change lines verbatim, and the loop merges its commits with no
+  `openspec archive` step
+
+#### Scenario: A chore that fails its gate still gets the fix round
+
+- **WHEN** a chore batch's merge gate is red
+- **THEN** the same go-fix path any build gets carries the gate's
+  output back to the session, bounded by the same fix-round budget

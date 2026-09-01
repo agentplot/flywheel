@@ -112,21 +112,24 @@ like any card, body in this grammar and nothing more:
 # Unit: chores
 
 System: <name>
-Type: `bolt-direct` · Price: <n> changes · ~hours
+Type: `chore` · Price: <n> changes · ~hours
 
 | # | change | delivers |
 |---|--------|----------|
-| 1 | <change-slug> | <one plain line — the whole instruction> |
+| 1 | <short-name> | <one plain line — the whole instruction> |
 ```
 
 No sequence line, no mermaid, no Left out, no derivation footer. A
 chore needs **no chapter citation** — its justification is that it
-makes the code or docs true, not that the book demands it. `bolt-direct`
-is the default type (the merge gate is the check); a chore that needs
-more than that is not a chore — promote it to a unit. The round
-renders a chore card as one row with its changes one line each, and
-one approval lands the lot; nothing-before-approval still holds, the
-approval just costs the operator ten words of reading per chore.
+makes the code or docs true, not that the book demands it. `chore` is
+the type: the loop runs ONE session that applies the card's change
+list straight on the batch branch and merges — no openspec change, no
+spec session, no plan dialog, no verify; the merge gate is the check.
+A chore that needs more than that is not a chore — promote it to a
+unit. The round renders a chore card as one row with its changes one
+line each, and one approval lands the lot; nothing-before-approval
+still holds, the approval just costs the operator ten words of
+reading per chore.
 
 The test, per piece of work: would the diff add behavior a user or a
 loop could observe? Yes → unit. No → chore.

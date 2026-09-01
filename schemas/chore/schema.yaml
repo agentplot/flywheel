@@ -1,0 +1,28 @@
+name: chore
+version: 20260901  # calver YYYYMMDD
+description: Flywheel construction tracking, the chore type - one session
+  applies the card's change list straight on the batch branch and the loop
+  merges. No openspec change, no spec, no plan dialog, no verify - the whole
+  point of a chore is to just get it done, and any ceremony past "make the
+  edit, commit it" costs more than the change.
+
+# The type as a named loop config, and it is READ: bin/_flywheel_bolt_loop.py's
+# read_schema_config parses this block into a LoopConfig, and the loop runs the
+# strategy and the stage set it finds here.
+#
+# mode: direct - the chore path. The build session's work order is the items'
+#              own bodies (the change list the operator approved on the card);
+#              it writes no openspec change and its commits are its witness.
+# stages     - build and merge only. No spec (there is nothing to derive), no
+#              verify (the merge gate is the check a chore warrants). land is
+#              absent because landing belongs to the BOLT's bound type; a
+#              chore card rides whatever bolt carries it.
+# hooks      - the one real boundary this type reaches.
+# artifacts  - none. A chore writes no record; the tracker item and the
+#              commits are the whole story.
+loop:
+  strategy: ff
+  extensions: []
+  mode: direct
+  stages: [build, merge]
+  hooks: [post-apply]

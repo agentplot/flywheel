@@ -586,7 +586,8 @@ class TypeConfigTest(unittest.TestCase):
         self.assertIn("bolt-direct", published)
         self.assertEqual(published, ["bolt-adversarial", "bolt-default",
                                      "bolt-direct", "bolt-plan",
-                                     "bolt-quick", "flywheel-intent"])
+                                     "bolt-quick", "chore",
+                                     "flywheel-intent"])
 
 
 # ---------------------------------------------------------------------------
@@ -1191,29 +1192,74 @@ class StageTest(unittest.TestCase):
             program.verify_stage(self.batch(1), loop.StageOutcome("build", "done")).status,
             "skipped")
 
-    def test_a_plan_returned_twice_pauses_the_batch_rather_than_bouncing_again(self):
+    def test_a_second_block_after_the_release_is_a_real_ask(self):
+        # One session, no judge: the first blocked settle IS the plan
+        # dialog and the loop releases it; a later block is a genuine
+        # question and comes back blocked for the operator's pane.
         tracker = FakeTracker()
         runner = ScriptedRunner(
-            states=[WaitState.SETTLED_BLOCKED] * 12,
-            reports=["a plan"] * 12)
+            states=[WaitState.SETTLED_BLOCKED, WaitState.SETTLED_BLOCKED],
+            reports=["a plan", "may I touch the prod bucket?"])
         program = a_loop(tracker, runner=runner, plan=True)
-        program.judge_plan_gen = returning(
-            lambda batch, handle, pane: ("returned", "claim #1 dropped"))
         outcome = program.plan_mode_build(self.batch(1, change=None), "build-x")
-        self.assertEqual(outcome.status, "paused")
-        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+        self.assertEqual(runner.keys, [("build-x", ("enter",))],
+                         "released once, never blindly again")
+        self.assertEqual(outcome.status, "blocked")
 
-    def test_an_approved_plan_is_driven_through_the_dialog_and_the_clock_restarts(self):
+    def test_the_plan_dialog_is_released_by_the_loop_and_the_clock_restarts(self):
         tracker = FakeTracker()
         runner = ScriptedRunner(states=[WaitState.SETTLED_BLOCKED,
                                         WaitState.SETTLED_DONE],
                                 reports=["a plan", "built it"])
         program = a_loop(tracker, runner=runner, plan=True)
-        verdicts = iter([("approved", "fine"), ("unreadable", "finished")])
-        program.judge_plan_gen = returning(lambda *a: next(verdicts))
         outcome = program.plan_mode_build(self.batch(1, change=None), "build-x")
         self.assertEqual(runner.keys, [("build-x", ("enter",))])
         self.assertEqual(outcome.status, "done")
+        self.assertEqual(runner.launched[1:], [],
+                         "one session — no judge pane beside the build")
+        self.assertIn(("add_label", 1, inbox.STAGE_PLANNED), tracker.writes)
+
+    def test_a_chore_batch_runs_one_direct_session_and_writes_no_records(self):
+        # The chore path (operator's ruling, 2026-09-01): the items' own
+        # bodies are the work order, no /opsx:apply, no openspec change —
+        # the session edits, commits, and the loop merges.
+        seen = {"reads": 0}
+
+        def revlist():
+            seen["reads"] += 1
+            return Result(0, "0\n" if seen["reads"] <= 1 else "3\n")
+
+        shell = FakeShell({("git", "rev-list"): revlist})
+        runner = ScriptedRunner(reports=["chores applied"])
+        program = a_loop(FakeTracker(), runner=runner, shell=shell,
+                         config=loop.LoopConfig(name="chore", mode="direct",
+                                                stages=("build", "merge")))
+        batch = loop.WorkBatch(slug="chores-1", items=(
+            item(1, inbox.READY, title="Unit: chores",
+                 body="| 1 | fix-header | stamp the superseded draft |"),))
+        outcome = program.build_stage(batch)
+        self.assertEqual(outcome.status, "done")
+        order = runner.launched[0].order
+        self.assertIn("stamp the superseded draft", order)
+        self.assertNotIn("/opsx:apply", order)
+        self.assertNotIn(("openspec", "validate"),
+                         {a[:2] for a, _ in shell.calls},
+                         "no change exists, so nothing validates")
+
+    def test_the_chore_schema_declares_the_direct_path(self):
+        config = loop.read_schema_config(
+            ROOT / "schemas" / "chore" / "schema.yaml").validate()
+        self.assertTrue(config.direct)
+        self.assertEqual(config.stages, ("build", "merge"))
+
+    def test_a_direct_merge_archives_no_change(self):
+        shell = FakeShell({("git", "merge-base"): Result(0)})
+        program = a_loop(FakeTracker(), shell=shell)
+        outcome = program.merge_stage(self.batch(1), direct=True)
+        self.assertEqual(outcome.status, "done")
+        self.assertNotIn(("openspec", "archive"),
+                         {a[:2] for a, _ in shell.calls},
+                         "a chore has no openspec change to archive")
 
     def test_a_merge_is_done_only_when_git_says_the_branch_is_an_ancestor(self):
         ancestry = {"rc": 1}
@@ -1692,20 +1738,17 @@ class StageLabelTest(unittest.TestCase):
         `bolt-direct`, arrived at by a different route.
 
         `stage:planned` is still written on this path, by `plan_mode_build`
-        at the APPROVED verdict — the one boundary the plan-mode path has.
+        at the dialog's release — the one boundary the plan-mode path has.
         """
         snapshot = self.a_ready_item()
         tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
-        runner = ScriptedRunner(states=[WaitState.SETTLED_DONE] * 12,
-                                reports=["a plan"] * 12)
+        # The dialog block, then the finished build — the loop releases
+        # the plan itself; there is no judge session.
+        runner = ScriptedRunner(states=[WaitState.SETTLED_BLOCKED,
+                                        WaitState.SETTLED_DONE],
+                                reports=["a plan", "built it"])
         program = a_loop(tracker, runner=runner, shell=self.shell(),
                          plan=True)
-        # Approve once, then let the session read as finished — `approved`
-        # re-enters the dialog loop, so a judge that only ever approves
-        # never returns.
-        verdicts = iter([("approved", "matches the claim"),
-                         ("unreadable", "finished")])
-        program.judge_plan_gen = returning(lambda *a: next(verdicts))
         program.cycle(1)
         self.assertNotIn(inbox.STAGE_VERIFIED, self.stages_written(tracker),
                          "no verify session ran, so no verify label")
