@@ -240,6 +240,38 @@ def _subprocess_run(argv, cwd=None, env=None, timeout=None):
                           capture_output=True, text=True)
 
 
+#: The plugin that carries every `flywheel-*` agent profile a spec names.
+FLYWHEEL_PLUGIN = "flywheel@flywheel"
+
+
+def seed_plugin_install(cwd, run=_subprocess_run, plugins_path=None):
+    """Install the flywheel plugin for `cwd` before claude first boots there.
+
+    A repo's `.claude/settings.json` can enable the plugin, but claude only
+    loads it where an install record exists for that exact project path —
+    and a fresh worktree has none. Claude then boots without the flywheel
+    agent profiles, `--agent flywheel-…` dies at the shell, and the
+    launcher times out on an agent that never existed (observed live on
+    every switchboard-kit build worktree, 2026-09-01). Best-effort and
+    idempotent, like the trust seed: a failed install is not a launch
+    failure — the launch itself will say what is wrong.
+    """
+    path = (Path(plugins_path) if plugins_path
+            else Path.home() / ".claude" / "plugins" / "installed_plugins.json")
+    try:
+        records = json.loads(path.read_text())["plugins"][FLYWHEEL_PLUGIN]
+        if any(r.get("projectPath") == str(cwd) for r in records):
+            return False
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        pass
+    try:
+        result = run(["claude", "plugin", "install", FLYWHEEL_PLUGIN,
+                      "--scope", "local"], cwd=str(cwd), timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
 #: `terminal_title_stripped` is not stripped while an agent is working.
 #: Measured on the live roster, 2026-08-13: an idle agent reads `dispatch`,
 #: a working one reads `◑ build-substrate` — the spinner glyph survives. So
@@ -314,12 +346,14 @@ class HerdrRunner(Runner):
     def __init__(self, run=_subprocess_run, sleep=time.sleep, env=None,
                  start_attempts=12, ready_attempts=30, submit_attempts=8,
                  poll_s=4, transcript_exists=None, seed_trust=None,
-                 settle_reads=3, settle_gap_s=10):
+                 seed_plugin=None, settle_reads=3, settle_gap_s=10):
         self._run = run
         self._sleep = sleep
         self._env = env
         self._transcript_exists = transcript_exists or claude_transcript_exists
         self._seed_trust = seed_workspace_trust if seed_trust is None else seed_trust
+        self._seed_plugin = ((lambda cwd: seed_plugin_install(cwd, run=run))
+                             if seed_plugin is None else seed_plugin)
         self.start_attempts = start_attempts
         self.ready_attempts = ready_attempts
         self.submit_attempts = submit_attempts
@@ -390,8 +424,10 @@ class HerdrRunner(Runner):
 
         # Answer the trust dialog before claude can ask it: a fresh build
         # worktree otherwise blocks its first launch at an interactive
-        # prompt no loop can drive.
+        # prompt no loop can drive. Same for the plugin install record —
+        # without it claude boots agentless and the launch times out.
         self._seed_trust(spec.cwd)
+        self._seed_plugin(spec.cwd)
         tab = self._herdr_json("tab", "create", "--cwd", str(spec.cwd),
                                "--label", spec.name, "--no-focus")
         result = tab.get("result", {})
@@ -665,13 +701,16 @@ class HeadlessRunner(Runner):
     kind = "headless"
 
     def __init__(self, run=None, popen=subprocess.Popen, state_dir=None,
-                 alive=_alive, clock=time.monotonic, seed_trust=None):
+                 alive=_alive, clock=time.monotonic, seed_trust=None,
+                 seed_plugin=None):
         self._run = run or _subprocess_run
         self._popen = popen
         self._state_dir = Path(state_dir) if state_dir else _state_dir()
         self._alive = alive
         self._clock = clock
         self._seed_trust = seed_workspace_trust if seed_trust is None else seed_trust
+        self._seed_plugin = ((lambda cwd: seed_plugin_install(cwd, run=self._run))
+                             if seed_plugin is None else seed_plugin)
 
     def _registry(self, name):
         return self._state_dir / f"{name}.json"
@@ -711,6 +750,7 @@ class HeadlessRunner(Runner):
                                  ref=dict(recorded))
 
         self._seed_trust(spec.cwd)
+        self._seed_plugin(spec.cwd)
         self._state_dir.mkdir(parents=True, exist_ok=True)
         log = self._state_dir / f"{spec.name}.log"
         argv = self.argv(spec, resume=bool(recorded))

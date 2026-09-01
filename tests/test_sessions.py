@@ -98,6 +98,7 @@ def herdr_runner(**kw):
     """A HerdrRunner that never sleeps and never touches ~/.claude.json."""
     kw.setdefault("sleep", lambda _s: None)
     kw.setdefault("seed_trust", lambda _cwd: None)
+    kw.setdefault("seed_plugin", lambda _cwd: None)
     return sessions.HerdrRunner(**kw)
 
 
@@ -462,7 +463,8 @@ class HeadlessTest(unittest.TestCase):
             return FakeProc()
 
         return sessions.HeadlessRunner(popen=popen, state_dir=tmp, alive=alive,
-                                       seed_trust=lambda _cwd: None)
+                                       seed_trust=lambda _cwd: None,
+                                       seed_plugin=lambda _cwd: None)
 
     def test_it_refuses_plan_mode_at_launch_not_at_four_hours(self):
         import tempfile
@@ -833,6 +835,70 @@ class TrustSeedTest(unittest.TestCase):
         runner = herdr_runner(run=herdr, seed_trust=seeded.append)
         runner.launch(spec())
         self.assertEqual(seeded, [])
+
+
+class PluginSeedTest(unittest.TestCase):
+    """A repo can enable the flywheel plugin, but claude only loads it where
+    an install record exists for that exact project path — a fresh worktree
+    boots agentless and the launch times out on an agent that never was."""
+
+    def _records(self, tmp, paths):
+        import json as j
+        from pathlib import Path
+        plugins = Path(tmp) / "installed_plugins.json"
+        plugins.write_text(j.dumps({"plugins": {
+            sessions.FLYWHEEL_PLUGIN: [{"projectPath": p} for p in paths]}}))
+        return plugins
+
+    def test_a_missing_record_installs_the_plugin_in_that_cwd(self):
+        import tempfile
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins = self._records(tmp, ["/w/other"])
+            ran = sessions.seed_plugin_install(
+                "/w/build-x",
+                run=lambda argv, cwd=None, env=None, timeout=None:
+                    (calls.append((argv, cwd)), Result())[1],
+                plugins_path=plugins)
+        self.assertTrue(ran)
+        self.assertEqual(calls, [(
+            ["claude", "plugin", "install", sessions.FLYWHEEL_PLUGIN,
+             "--scope", "local"], "/w/build-x")])
+
+    def test_an_existing_record_installs_nothing(self):
+        import tempfile
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            plugins = self._records(tmp, ["/w/build-x"])
+            ran = sessions.seed_plugin_install(
+                "/w/build-x",
+                run=lambda *a, **kw: calls.append(a) or Result(),
+                plugins_path=plugins)
+        self.assertFalse(ran)
+        self.assertEqual(calls, [])
+
+    def test_an_unreadable_registry_still_attempts_the_install(self):
+        calls = []
+        ran = sessions.seed_plugin_install(
+            "/w/build-x",
+            run=lambda argv, cwd=None, env=None, timeout=None:
+                (calls.append(argv), Result())[1],
+            plugins_path="/nonexistent/installed_plugins.json")
+        self.assertTrue(ran)
+        self.assertEqual(len(calls), 1)
+
+    def test_a_failed_install_is_not_a_launch_failure(self):
+        def boom(argv, cwd=None, env=None, timeout=None):
+            raise OSError("no claude on PATH")
+        self.assertFalse(sessions.seed_plugin_install(
+            "/w/build-x", run=boom,
+            plugins_path="/nonexistent/installed_plugins.json"))
+
+    def test_launch_seeds_the_plugin_for_the_spec_cwd(self):
+        seeded = []
+        runner = herdr_runner(run=FakeHerdr(), seed_plugin=seeded.append)
+        runner.launch(spec())
+        self.assertEqual(seeded, ["/tmp/wt"])
 
 
 if __name__ == "__main__":
