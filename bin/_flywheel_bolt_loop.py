@@ -3225,6 +3225,31 @@ class BoltLoop:
                            ok=outcome.ok)
         return outcome
 
+    def release_after(self, held, resolved, outcomes):
+        """A batch merged mid-cycle can satisfy a held sibling's `after:`
+        gate — re-split the held items against a fresh snapshot rather
+        than making them wait out the cycle plus the next planning pass.
+        Batches released here are analysed, bound, and APPENDED to the
+        drive list the caller is iterating (appending during iteration
+        is safe, and is the point). Returns what is still held."""
+        snapshot = self.tracker.snapshot(self.params.milestone)
+        released, still = after_split(
+            snapshot, inbox.unblocked(snapshot, tuple(i for i, _ in held)))
+        if released:
+            for batch in analyse(tuple(released), snapshot,
+                                 self.params.slug):
+                binding = self.unit_binding(batch, snapshot)
+                if binding:
+                    self.ledger.note(
+                        "released mid-cycle — "
+                        + ", ".join(f"#{n}" for n in batch.numbers))
+                    resolved.append((batch, binding))
+                else:
+                    reason = self.unresolvable_repo(batch, snapshot)
+                    self.pause(batch.numbers, reason)
+                    outcomes.append(StageOutcome("batch", "paused", reason))
+        return list(still)
+
     def cycle(self, number):
         result = CycleResult(number=number)
         snapshot = self.tracker.snapshot(self.params.milestone)
@@ -3383,6 +3408,14 @@ class BoltLoop:
                     self.close_merged(batch.items, repo)
                     merged += 1
                     self._merged += 1
+                    # A merge can satisfy a held sibling's `after:` gate
+                    # RIGHT NOW. Re-splitting only at cycle start made
+                    # #68/#69 wait out the rest of the cycle plus a whole
+                    # planning pass after #67 closed mid-cycle (problem
+                    # 9). Re-evaluate against a fresh snapshot and append
+                    # the released batches to this same drive.
+                    if held:
+                        held = self.release_after(held, resolved, outcomes)
         result.outcomes = tuple(outcomes)
         if merged == 0:
             result.stopped = ("no batch reached the bolt branch this cycle — "

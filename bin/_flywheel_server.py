@@ -36,6 +36,7 @@ Zero dependencies, stdlib only, beside `_flywheel_gh.py` and
 `_flywheel_inbox.py`.
 """
 
+import hashlib
 import json
 import os
 import signal
@@ -147,6 +148,28 @@ class Want:
     slug: str = ""
     argv: tuple = ()
     why: str = ""
+    #: The milestone's tracker digest as of the pass that started the
+    #: run — recorded into the backoff fingerprint at reap, so a hold
+    #: releases the moment the milestone's state differs from what the
+    #: held run saw. The reason string alone is too coarse: an operator
+    #: repair (a label cleared, a branch hand-merged, a board flip) can
+    #: leave the one-item reason byte-identical while everything the
+    #: loop would act on has changed (problem 14, willdan fleet).
+    digest: str = ""
+
+
+def milestone_digest(snapshot, milestone):
+    """A cheap, order-independent digest of everything on one milestone
+    the loops act on: item number/state/labels, batch and card board
+    status, card staleness. Pure; snapshot-only; no extra API reads."""
+    parts = sorted(
+        [f"i{i.number}:{i.state}:{','.join(sorted(i.labels))}"
+         for i in snapshot.items if i.milestone == milestone]
+        + [f"b{b.number}:{b.status}"
+           for b in snapshot.batches if b.milestone == milestone]
+        + [f"c{c.number}:{c.status}:{int(bool(c.stale))}"
+           for c in snapshot.plan_cards if c.milestone == milestone])
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:12]
 
 
 @dataclass(frozen=True)
@@ -197,8 +220,16 @@ class Backoff:
         return max(0, (self.last_exit + delay) - now)
 
 
+def hold_fingerprint(why, digest=""):
+    """What a hold is keyed on: the job reason plus the milestone's
+    tracker digest when one is in hand. A caller with no digest keys on
+    the reason alone — the pre-digest behavior, kept so a plan() called
+    without digests (tests, tools) still compares like with like."""
+    return f"{why}|{digest}" if digest else why
+
+
 def plan(jobs, *, teams=None, host=None, running=(), board_teams=None,
-         now=0.0, backoff=None, argv_for=None):
+         now=0.0, backoff=None, argv_for=None, digests=None):
     """What this host should start, stop and leave alone. No I/O.
 
     `running` is the set of `(milestone, kind)` keys with a live process
@@ -209,6 +240,7 @@ def plan(jobs, *, teams=None, host=None, running=(), board_teams=None,
     teams = teams or {}
     board_teams = board_teams or {}
     backoff = backoff or {}
+    digests = digests or {}
     running = set(running)
 
     start, keep, elsewhere, waiting = [], [], [], []
@@ -235,8 +267,14 @@ def plan(jobs, *, teams=None, host=None, running=(), board_teams=None,
         if key in running:
             keep.append(key)
             continue
+        # The fingerprint is the reason PLUS the milestone's tracker
+        # digest: the hold releases the moment either changes, so an
+        # operator repair the reason string cannot see still wakes the
+        # loop on the next pass.
+        digest = digests.get(job.milestone, "")
         held = backoff.get(key)
-        left = held.wait_left(now, job.why) if held else 0
+        left = (held.wait_left(now, hold_fingerprint(job.why, digest))
+                if held else 0)
         if left > 0:
             waiting.append((job.milestone, int(left)))
             continue
@@ -244,7 +282,7 @@ def plan(jobs, *, teams=None, host=None, running=(), board_teams=None,
             milestone=job.milestone, kind=job.kind,
             slug=inbox.milestone_slug(job.milestone) or "",
             argv=tuple(argv_for(job)) if argv_for else (),
-            why=job.why,
+            why=job.why, digest=digest,
         ))
 
     stop = [key for key in sorted(running) if key not in ours]
@@ -444,6 +482,8 @@ class Server:
             jobs, teams=self.config.teams, host=self.config.host,
             running=set(self.processes), board_teams=self.board_teams(),
             now=self.clock(), backoff=self.backoff, argv_for=self.argv_for,
+            digests={j.milestone: milestone_digest(snapshot, j.milestone)
+                     for j in jobs},
         )
 
         failures = 0
@@ -610,8 +650,15 @@ class Server:
 
         key = (f"plan/{name}", "planner")
         held = self.backoff.get(key)
+        # Fingerprint over the cards' actual state, not the two-word
+        # summary: an operator approving, dropping, or hand-editing a
+        # card releases the hold at once (problem 14's planner half).
+        cards_state = ",".join(
+            f"{c.number}:{c.status}:{int(bool(c.stale))}"
+            for c in sorted(cards, key=lambda c: c.number))
         why = f"cards {'stale' if standing else 'missing'}, book settled"
-        if held and held.wait_left(self.clock(), why) > 0:
+        fingerprint = f"{why}|{cards_state}"
+        if held and held.wait_left(self.clock(), fingerprint) > 0:
             return 0
 
         order = (f"bolt planning for {name} — book {binding['book']}, "
@@ -627,7 +674,8 @@ class Server:
         charged = bool(self.planner(name, binding, order))
         self.ledger.actual(step, "charged" if charged else "charge failed",
                            ok=charged)
-        self.backoff.setdefault(key, Backoff()).record_exit(why, self.clock())
+        self.backoff.setdefault(key, Backoff()).record_exit(
+            fingerprint, self.clock())
         return 0 if charged else 1
 
     # -- processes ---------------------------------------------------------
@@ -674,7 +722,13 @@ class Server:
                 continue
             del self.processes[key]
             held = self.backoff.setdefault(key, Backoff())
-            held.record_exit(loop.want.why, self.clock())
+            # The digest recorded is the one from the pass that STARTED
+            # the run: if the loop itself wrote anything, the next
+            # pass's digest differs and the hold releases for one more
+            # run — which then exits against the new digest and holds.
+            held.record_exit(
+                hold_fingerprint(loop.want.why, loop.want.digest),
+                self.clock())
             ran = int(self.clock() - loop.started)
             self.log(f"{key[0]}: exited rc={code} after {ran}s · "
                      f"{loop.log_path}")

@@ -925,7 +925,11 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
 
             # A flip the loop was not there to see. Collected BEFORE the
             # ready set is worked, so a restarted process finishes what it
-            # left behind before starting anything new.
+            # left behind before starting anything new. The ghost reset
+            # runs first: an in-session item whose session is gone must
+            # rejoin the ready set this same run.
+            if resume_in_session(writer, runner, config, snapshot, report):
+                continue               # the tracker moved; re-query
             if resume_collect(inbox, writer, runner, config, snapshot, report):
                 continue               # the tracker moved; re-query
 
@@ -988,6 +992,55 @@ def run(config, tracker=None, runner=None, clock=time.time, writer=None,
         except OSError:
             pass
     return report
+
+
+def resume_in_session(writer, runner, config, snapshot, report):
+    """Reset the in-session ghosts a dead process left behind. True if
+    it wrote.
+
+    A loop killed mid-charge leaves items at `state:in-progress` +
+    `stage:in-session` that no session owns — invisible to the ready
+    filter, to `collect_plan`, and to every other reader, so they sit
+    forever until the operator resets them by hand (problem 13, willdan
+    fleet: #24/#25). The membership is recoverable — the dispatch marker
+    names the session — and the roster answers whether that session is
+    live. GONE with no `stage:done` means the work never finished and
+    nobody is doing it: back to `state:ready`, stage label dropped, so
+    the next cycle redispatches. The deterministic session id then
+    resumes the same conversation warm — nothing is lost but the wait.
+
+    A live or blocked session is left strictly alone, and so is anything
+    the operator has touched (`stage:done`, `needs-operator`): this
+    reconciles abandonment, never judgment.
+    """
+    if not config.apply or writer.tracker is None or runner is None:
+        return False
+    state_of = getattr(runner, "state", None)
+    if state_of is None:
+        return False
+    wrote = False
+    for item in snapshot.on(config.milestone):
+        if not item.is_open or STAGE_IN_SESSION not in item.labels:
+            continue
+        if (writer.has_label(item.number, STAGE_DONE)
+                or writer.has_label(item.number, STAGE_COLLECTED)
+                or writer.has_label(item.number, NEEDS_OPERATOR)):
+            continue
+        name = session_named(writer.tracker.comments(item.number))
+        if not name or state_of(name) != WaitState.GONE:
+            continue
+        writer.relabel(item.number,
+                       remove=[IN_PROGRESS, STAGE_IN_SESSION], add=[READY])
+        writer.comment(item.number, (
+            f"The loop found this item marked in-session for "
+            f"`{name}`, but no such session is on the roster — a "
+            f"restart stranded it. Reset to ready; the next cycle "
+            f"redispatches, resuming the session's conversation by its "
+            f"deterministic id."))
+        report.notes += (f"#{item.number} was in-session for a session "
+                         f"that is gone (`{name}`) — reset to ready.",)
+        wrote = True
+    return wrote
 
 
 def resume_collect(inbox, writer, runner, config, snapshot, report):

@@ -248,6 +248,46 @@ class BackoffTest(unittest.TestCase):
             held.record_exit("same", now=1000)
         self.assertEqual(held.wait_left(1000, "same"), server.BACKOFF_MAX_S)
 
+    def test_an_operator_repair_releases_the_hold_the_reason_cannot_see(self):
+        # Problem 14 (willdan fleet): the operator cleared labels and
+        # hand-merged a branch, but the one-item reason string was
+        # byte-identical, so four panes idled out minutes of hold. The
+        # fingerprint now carries the milestone's tracker digest.
+        held = server.Backoff()
+        held.record_exit(server.hold_fingerprint("#1 in-progress", "aaa"),
+                         now=1000)
+        unchanged = server.plan(
+            [Job("bolt/a", "run", "#1 in-progress")], host="w", now=1001,
+            backoff={("bolt/a", "run"): held},
+            digests={"bolt/a": "aaa"})
+        self.assertEqual(unchanged.start, (), "same state, hold stands")
+        repaired = server.plan(
+            [Job("bolt/a", "run", "#1 in-progress")], host="w", now=1001,
+            backoff={("bolt/a", "run"): held},
+            digests={"bolt/a": "bbb"})
+        self.assertEqual([w.milestone for w in repaired.start], ["bolt/a"],
+                         "the milestone's state moved — the hold releases")
+
+    def test_the_milestone_digest_sees_labels_states_and_board_status(self):
+        base = Snapshot(
+            items=[item(1, inbox.NEEDS_OPERATOR, milestone="bolt/a")],
+            batches=[inbox.Batch(number=9, status=inbox.STATUS_BACKLOG,
+                                 milestone="bolt/a")])
+        cleared = Snapshot(
+            items=[item(1, milestone="bolt/a")],
+            batches=[inbox.Batch(number=9, status=inbox.STATUS_BACKLOG,
+                                 milestone="bolt/a")])
+        flipped = Snapshot(
+            items=[item(1, inbox.NEEDS_OPERATOR, milestone="bolt/a")],
+            batches=[inbox.Batch(number=9, status=inbox.STATUS_READY,
+                                 milestone="bolt/a")])
+        digest = server.milestone_digest
+        self.assertEqual(digest(base, "bolt/a"), digest(base, "bolt/a"))
+        self.assertNotEqual(digest(base, "bolt/a"), digest(cleared, "bolt/a"))
+        self.assertNotEqual(digest(base, "bolt/a"), digest(flipped, "bolt/a"))
+        self.assertNotEqual(digest(base, "bolt/a"), digest(base, "bolt/b"),
+                            "scoped to the one milestone")
+
 
 # ---- 3 · the command lines ----------------------------------------------
 

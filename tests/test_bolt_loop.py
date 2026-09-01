@@ -748,6 +748,39 @@ class CycleTest(unittest.TestCase):
         result = a_loop(FakeTracker(snapshot)).cycle(1)
         self.assertIn("blocked", result.stopped)
 
+    def test_a_mid_cycle_merge_releases_a_held_after_sibling_same_cycle(self):
+        # Problem 9 (willdan fleet): #67 closed mid-cycle; #68/#69
+        # (`after:` on it) still waited out the rest of that cycle plus
+        # the whole next planning pass. A merge must re-evaluate the
+        # held set right away.
+        first = item(1, inbox.READY, change="first")
+        second = item(2, inbox.READY, change="second", after=("first",))
+        snap1 = Snapshot(items=[first, second], milestone="bolt/x")
+        snap2 = Snapshot(items=[
+            item(1, inbox.CLOSED_MERGED, state="closed", change="first"),
+            second], milestone="bolt/x")
+
+        class MovingTracker(FakeTracker):
+            def __init__(self, snaps, **kw):
+                super().__init__(snaps[0], **kw)
+                self.snaps = list(snaps)
+
+            def snapshot(self, milestone=None, with_edges=True):
+                return (self.snaps.pop(0) if len(self.snaps) > 1
+                        else self.snaps[0])
+
+        tracker = MovingTracker(
+            [snap1, snap2],
+            comments={1: [{"body": "built"}], 2: [{"body": "built"}]})
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                           ("git", "merge-base"): Result(0)})
+        result = a_loop(tracker, shell=shell).cycle(1)
+        merges = [o for o in result.outcomes if o.stage == "merge"]
+        self.assertEqual(len(merges), 2,
+                         "the held sibling drives in the SAME cycle")
+        self.assertIn(2, tracker.closed,
+                      "the released batch went all the way to closed:merged")
+
     def test_an_andon_marker_on_an_item_pauses_its_batch_with_needs_operator(self):
         snapshot = Snapshot(items=[item(1, inbox.READY)], milestone="bolt/x")
         tracker = FakeTracker(snapshot, comments={

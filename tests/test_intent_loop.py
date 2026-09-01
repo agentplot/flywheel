@@ -101,10 +101,16 @@ class FakeTracker:
 class ScriptedRunner:
     """A session runner with no session behind it."""
 
-    def __init__(self, states=(), report="the report"):
+    def __init__(self, states=(), report="the report", roster=None):
         self.states = list(states) or [WaitState.SETTLED_DONE]
         self.report = report
+        #: name -> WaitState, for the ghost reconciliation; a name not
+        #: scripted reads WORKING so nothing is reset by accident.
+        self.roster = dict(roster or {})
         self.launched, self.closed = [], []
+
+    def state(self, name):
+        return self.roster.get(name, WaitState.WORKING)
 
     def launch(self, spec):
         self.launched.append(spec)
@@ -203,6 +209,64 @@ class DryCycleTest(unittest.TestCase):
                          "a settled tracker must produce no write at all")
         self.assertEqual(self._guards(cycle3), (),
                          "and must keep producing none")
+
+
+class ResumeInSessionTest(unittest.TestCase):
+    """Problem 13: a loop killed mid-charge leaves items marked
+    in-session that no session owns; every filter is blind to them, so
+    the operator reset #24/#25 by hand. The loop now asks the roster."""
+
+    GONE = "research-x-1"
+
+    def fixture(self, *labels, comments=None):
+        labels = labels or ("type:research", inbox.IN_PROGRESS,
+                            "stage:in-session")
+        snap = Snapshot(items=[item(1, *labels)])
+        tracker = FakeTracker(snap, comments=comments if comments is not None
+                              else {1: [{"body": intent.format_dispatch(
+                                  self.GONE, 1000.0)}]})
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        report = intent.Report(slug="x")
+        return snap, tracker, writer, report
+
+    def test_a_ghost_is_reset_to_ready_and_the_stage_dropped(self):
+        snap, tracker, writer, report = self.fixture()
+        runner = ScriptedRunner(roster={self.GONE: WaitState.GONE})
+        wrote = intent.resume_in_session(writer, runner, config(apply=True),
+                                         snap, report)
+        self.assertTrue(wrote)
+        self.assertIn(("remove_label", 1, inbox.IN_PROGRESS), tracker.calls)
+        self.assertIn(("remove_label", 1, inbox.STAGE_IN_SESSION),
+                      tracker.calls)
+        self.assertIn(("add_label", 1, inbox.READY), tracker.calls)
+        self.assertTrue(any(n.startswith("#1 was in-session")
+                            for n in report.notes), report.notes)
+
+    def test_a_live_session_is_left_strictly_alone(self):
+        snap, tracker, writer, report = self.fixture()
+        runner = ScriptedRunner()   # unknown names read WORKING
+        wrote = intent.resume_in_session(writer, runner, config(apply=True),
+                                         snap, report)
+        self.assertFalse(wrote)
+        self.assertEqual(tracker.calls, [])
+
+    def test_the_operators_flip_is_never_walked_back(self):
+        # stage:done outranks the roster: the work finished, collection
+        # owns it — a reset here would redo finished work.
+        snap, tracker, writer, report = self.fixture(
+            "type:research", inbox.IN_PROGRESS, "stage:in-session",
+            inbox.STAGE_DONE)
+        runner = ScriptedRunner(roster={self.GONE: WaitState.GONE})
+        self.assertFalse(intent.resume_in_session(
+            writer, runner, config(apply=True), snap, report))
+        self.assertEqual(tracker.calls, [])
+
+    def test_an_item_with_no_dispatch_marker_is_left_alone(self):
+        snap, tracker, writer, report = self.fixture(comments={1: []})
+        runner = ScriptedRunner(roster={self.GONE: WaitState.GONE})
+        self.assertFalse(intent.resume_in_session(
+            writer, runner, config(apply=True), snap, report))
+        self.assertEqual(tracker.calls, [])
 
 
 class ResumeCollectTest(unittest.TestCase):
