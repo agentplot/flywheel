@@ -920,15 +920,22 @@ def intent_inbox(snapshot, slug):
 class DispatchInbox:
     triage: tuple = ()
     relay: tuple = ()
+    #: board work awaiting the operator's approval — batch parents and
+    #: plan cards at Status Backlog on open milestones. They carry a
+    #: milestone and no standing label, so neither queue above ever
+    #: matched them: elaborations and bolt cards parked at Backlog were
+    #: invisible to dispatch and no round was ever poked for them.
+    round: tuple = ()
 
     @property
     def empty(self):
-        return not (self.triage or self.relay)
+        return not (self.triage or self.relay or self.round)
 
 
 def dispatch_inbox(snapshot):
-    """Open issues with no milestone (triage), and open issues labelled
-    `needs-operator` (relay).
+    """Open issues with no milestone (triage), open issues labelled
+    `needs-operator` (relay), and Backlog board objects awaiting
+    approval (round).
 
     The relay half has **no milestone condition** — an escalation from a
     running bolt has a milestone and still needs relaying. Narrowing this to
@@ -944,6 +951,14 @@ def dispatch_inbox(snapshot):
     item drops out of this filter for good.
     """
     live = [i for i in snapshot.items if i.is_open or i.merge_closed]
+    # The same predicate the round derivation uses (`round_inbox`), so
+    # the poke and the round can never disagree about what stands. The
+    # rows are the underlying issues, looked up by number, because the
+    # delivery payload wants number+title.
+    parked = {b.number for b in snapshot.batches
+              if b.status == STATUS_BACKLOG and b.milestone_state == "open"}
+    parked |= {c.number for c in snapshot.plan_cards
+               if c.status == STATUS_BACKLOG and c.milestone_state == "open"}
     return DispatchInbox(
         # A plan card is open and unmilestoned BY CONTRACT — it is the
         # planner's, awaiting board approval, and it is never triage.
@@ -961,6 +976,7 @@ def dispatch_inbox(snapshot):
         # deliveries of one wait carry two contradictory imperatives.
         relay=tuple(i for i in live if NEEDS_OPERATOR in i.labels
                     and DISPATCH_STANDING not in i.labels),
+        round=tuple(i for i in live if i.number in parked),
     )
 
 

@@ -62,6 +62,14 @@ class RenderTest(unittest.TestCase):
         self.assertIn("run the round", text)
         self.assertNotIn("\n", text)
 
+    def test_round_names_the_backlog_work_and_the_round_imperative(self):
+        # Problem 12: Backlog board work never poked dispatch at all.
+        text = dispatch_mcp.render_round(self.ITEMS)
+        self.assertIn("#12", text)
+        self.assertIn("Backlog", text)
+        self.assertIn("run the round", text)
+        self.assertNotIn("\n", text)
+
 
 class SessionSemanticsTest(unittest.TestCase):
 
@@ -141,11 +149,11 @@ class ProtocolTest(unittest.TestCase):
         self.assertIn("tools", reply["result"]["capabilities"])
         self.assertEqual(reply["result"]["serverInfo"]["version"], "9.9.9")
 
-    def test_tools_list_carries_all_three_tools_with_both_schemas(self):
+    def test_tools_list_carries_every_tool_with_both_schemas(self):
         out = self.rpc([{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}])
         tools = json.loads(out)["result"]["tools"]
         self.assertEqual([t["name"] for t in tools],
-                         ["relay", "triage", "status"])
+                         ["relay", "triage", "round", "status"])
         for tool in tools:
             self.assertIn("inputSchema", tool)
             self.assertIn("outputSchema", tool)

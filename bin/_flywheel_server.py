@@ -495,8 +495,9 @@ class Server:
         relay need a mind and a Discord channel; everything else here is a
         process.
 
-        Both queues are serviced in one pass, one tool call each, relay
-        first — escalations outrank intake. The composition of what
+        The queues are serviced in one pass, one tool call each, relay
+        first — escalations outrank intake — with the round queue
+        (Backlog board work awaiting approval) last. The composition of what
         dispatch actually reads is the proxy's; this pass owes it items,
         not prose. A non-delivery is a ledgered divergence with its
         reason and a pass failure — dispatch absent is a fact now, never
@@ -515,7 +516,8 @@ class Server:
             self._delivered_sets.clear()
             return 0
         if self.dry_run:
-            for kind, items in (("relay", box.relay), ("triage", box.triage)):
+            for kind, items in (("relay", box.relay), ("triage", box.triage),
+                                ("round", box.round)):
                 if items:
                     self.log(f"would {kind}: "
                              + ", ".join(f"#{i.number}" for i in items))
@@ -523,7 +525,8 @@ class Server:
         failures = 0
         with self.dispatch() as d:
             for kind, call, items in (("relay", d.relay, box.relay),
-                                      ("triage", d.triage, box.triage)):
+                                      ("triage", d.triage, box.triage),
+                                      ("round", d.round, box.round)):
                 if not items:
                     self._delivered_sets.pop(kind, None)
                     continue

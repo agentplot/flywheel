@@ -202,3 +202,6 @@ class DispatchOverMcp:
 
     def triage(self, items: list) -> dict:
         return self._mcp.call("triage", {"items": items})
+
+    def round(self, items: list) -> dict:
+        return self._mcp.call("round", {"items": items})

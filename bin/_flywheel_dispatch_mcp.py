@@ -92,6 +92,16 @@ TOOLS = [
         "outputSchema": _DELIVERY,
     },
     {
+        "name": "round",
+        "description": "Hand dispatch the board work parked at Backlog — "
+                       "batch parents and plan cards awaiting the "
+                       "operator's approval. Returns whether the batch "
+                       "was delivered to dispatch, with the reason when "
+                       "it was not.",
+        "inputSchema": _ITEMS,
+        "outputSchema": _DELIVERY,
+    },
+    {
         "name": "status",
         "description": "Whether dispatch is reachable right now, and what "
                        "it is doing.",
@@ -116,6 +126,16 @@ def render_relay(items: list) -> str:
     refs = "; ".join(_ref(i) for i in items)
     return (f"needs-operator items await relay: {refs} — DM each item's "
             "assignee with the question and the link")
+
+
+def render_round(items: list) -> str:
+    # Backlog board objects — elaboration parents and bolt plan cards —
+    # awaiting the operator's approval. Nothing but a round can release
+    # them, so the imperative is the same as triage's: run the round.
+    refs = "; ".join(_ref(i) for i in items)
+    return (f"board work awaits approval at Backlog: {refs} — run the "
+            "round: derive it with flywheel-round and render the plan on "
+            "both surfaces so the operator can flip, hold, or drop them")
 
 
 def render_triage(items: list) -> str:
@@ -251,6 +271,9 @@ class DispatchProxy:
     def triage(self, items: list) -> dict:
         return self.deliver(render_triage(items))
 
+    def round(self, items: list) -> dict:
+        return self.deliver(render_round(items))
+
 
 # -- the protocol loop -------------------------------------------------------
 
@@ -289,6 +312,8 @@ def handle(msg: dict, proxy: DispatchProxy, version: str = "0") -> dict | None:
             payload = proxy.relay(arguments.get("items") or [])
         elif name == "triage":
             payload = proxy.triage(arguments.get("items") or [])
+        elif name == "round":
+            payload = proxy.round(arguments.get("items") or [])
         elif name == "status":
             payload = proxy.status()
         else:

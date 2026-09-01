@@ -140,6 +140,10 @@ class FakeDispatch:
         self.calls.append(("triage", items))
         return self.result
 
+    def round(self, items):
+        self.calls.append(("round", items))
+        return self.result
+
 
 def a_server(tracker=None, run=None, popen=None, clock=None, **kw):
     config = server.ServerConfig(
@@ -345,6 +349,27 @@ class PassTest(unittest.TestCase):
                          "https://github.com/agentplot/flywheel/issues/1")
         self.assertIn("title", relay_items[0])
         self.assertEqual(dispatch.calls[1][1][0]["number"], 2)
+
+    def test_backlog_board_work_pokes_the_round_queue(self):
+        # Problem 12 (willdan): elaborations and bolt cards parked at
+        # Backlog carry a milestone, matched neither queue, and dispatch
+        # was never poked — the operator's whole flow stalled unseen.
+        snap = Snapshot(
+            items=[item(9, inbox.ELABORATION, milestone="intent/a")],
+            batches=[inbox.Batch(number=9, kind=inbox.ELABORATION,
+                                 status=inbox.STATUS_BACKLOG,
+                                 milestone="intent/a")])
+        dispatch = FakeDispatch()
+        box = a_server(tracker=FakeTracker(snap), dispatch=dispatch)
+        box.pass_once()
+        kinds = [kind for kind, _items in dispatch.calls]
+        self.assertIn("round", kinds)
+        round_items = next(i for k, i in dispatch.calls if k == "round")
+        self.assertEqual(round_items[0]["number"], 9)
+        box.pass_once()
+        rounds = [k for k, _ in dispatch.calls if k == "round"]
+        self.assertEqual(len(rounds), 1,
+                         "an unchanged parked set is delivered once")
 
     def test_one_pass_opens_one_dispatch_session_for_both_calls(self):
         snap = Snapshot(items=[

@@ -6,7 +6,8 @@ profile, and every design type skill point here rather than restating
 the protocol. The object-graph rules are in `tracker.md` beside this
 file; the invocations are in `herdr.md`; the unit-card grammar and the
 bolt-selection guidance are the `bolt-planning` skill's and are not
-repeated here.
+repeated here. The full trigger-flow map — every channel and event
+that produces a round, end to end — is `design/dispatch-flow.md`.
 
 A dispatch plan is a batch of routed outcomes facing the operator as one
 approval — every proposal already placed, every choice already made, the
@@ -32,9 +33,12 @@ job list — so no writer has to remember a label for its decision to
 appear, and a stray label cannot invent one. The one annotation is a
 published payload, which is genuinely new information: the label
 nominates the anchor, the marker carries the address. Backlog batches
-and cards render as approve rows; the apply's Ready step releases
-them, and approving directly on the board remains the fallback for a
-round never taken. The close-ready labels and marker the loop writes
+and cards render as an **approvals** container — derived rows over
+board objects that already exist, grouped by milestone with a set-all
+control per group, routed `leave | ready | drop` and seeded `leave` so
+an untouched row writes nothing; the apply's Ready step releases the
+`ready` rows, and approving directly on the board remains the fallback
+for a round never taken. The close-ready labels and marker the loop writes
 remain for operator visibility (Waiting On Me) and the server's poke —
 the round does not depend on them.
 
@@ -286,6 +290,22 @@ every control. Per row, one route:
   maps, ubiquitous language — is the books' job, a standing design
   thread.
 
+**Derived approvals rows** — the round's Backlog board objects — carry
+their own three routes, because the object already exists and nothing
+is filed:
+
+- **leave** — the seed; parked as it stands, no write of any kind. The
+  server's poke dedupe keeps an unchanged parked set from re-poking.
+- **ready** — the operator's board approval, applied at step 5:
+  `flywheel-board … --status Ready` on the batch parent or card.
+- **drop** — the operator declines the proposed work for good: close
+  the card or batch parent `closed:declined` with a one-line comment.
+  A dropped object is gone from every later round — the books or the
+  planner re-derive the work fresh if it is ever wanted again. This is
+  the operator's word applied through the round, not a triage
+  re-route; the "an existing plan card is never triage" rule does not
+  bar it.
+
 A **retarget** re-files a row under another container of the same kind.
 "This needs more design first" is a send-back of the plan with a note,
 never a routing value.
@@ -410,7 +430,10 @@ operator's board approval. Steps the round lacks are skipped.
    elaboration parent and card, immediately after 4 and never before
    it. A card filed onto an open running bolt moves with the rest: the
    round's approval IS the board approval, and the live bolt loop
-   expands it mid-flight.
+   expands it mid-flight. Derived approvals rows routed `ready` flip
+   here too; rows routed `drop` are closed `closed:declined` with a
+   one-line comment in the same step; rows left at `leave` get no
+   write of any kind.
 6. **Milestone closes** — close each close row still checked; the close
    releases the landing, and the loop and the archive do the rest. A
    container that filed cards onto a bolt in step 3 forces that bolt's

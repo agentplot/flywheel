@@ -31,9 +31,12 @@ waiting for the word. What stands is DERIVED, never guessed: run
 and render exactly what it prints — close-ready bolts (computed by the
 loop's own predicate, so a stray label can neither invent nor hide a
 close), pending board-Backlog batches and cards (the approvals the
-board would otherwise carry alone — render them as approve rows; your
-apply's Ready step is what releases them, and approving directly on
-the board remains the operator's fallback), published payloads (anchor,
+board would otherwise carry alone — render them as the protocol's
+**approvals** container: grouped by milestone with a set-all per
+group, routed `leave | ready | drop`, seeded `leave`; your apply's
+Ready step releases the `ready` rows and closes the `drop` rows
+`closed:declined`, and approving directly on the board remains the
+operator's fallback), published payloads (anchor,
 repo, pinned SHA — fetch the files through the contents API; a
 shortfall the CLI reports is a line in the round, never a guess), plus
 your own triage inbox. Assemble ONE plan over all of it per the
@@ -126,7 +129,9 @@ you.
 
 An existing `plan`-labeled card is never triage: it is its author's,
 open and awaiting board approval by contract. Triage routes ideas; it
-does not re-route cards, ever.
+does not re-route cards, ever. The one thing that moves an existing
+card is the operator's own verdict in a round — `ready` flips it,
+`drop` closes it `closed:declined` — applied by you, decided by them.
 
 Between ideas you are idle and say so.
 

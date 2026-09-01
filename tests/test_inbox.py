@@ -401,6 +401,45 @@ class DispatchInboxTest(unittest.TestCase):
         self.assertEqual(inbox.dispatch_inbox(snap).triage, ())
 
 
+class DispatchRoundQueueTest(unittest.TestCase):
+    """Problem 12 (willdan fleet): elaborations and bolt cards parked at
+    Backlog carry a milestone and no standing label, so they matched
+    neither queue — dispatch was never poked and the work sat invisible."""
+
+    def snap(self, status=inbox.STATUS_BACKLOG, milestone_state="open"):
+        return Snapshot(
+            items=[item(9, inbox.ELABORATION, milestone="intent/a"),
+                   item(30, inbox.PLAN, milestone="bolt/x")],
+            batches=[Batch(number=9, kind=inbox.ELABORATION, status=status,
+                           milestone="intent/a",
+                           milestone_state=milestone_state)],
+            plan_cards=[inbox.PlanCard(number=30, title="Unit: u",
+                                       status=status, milestone="bolt/x",
+                                       milestone_state=milestone_state)])
+
+    def test_backlog_batches_and_cards_fill_the_round_queue(self):
+        box = inbox.dispatch_inbox(self.snap())
+        self.assertEqual(sorted(i.number for i in box.round), [9, 30])
+        self.assertFalse(box.empty)
+
+    def test_ready_board_work_is_released_not_pending(self):
+        box = inbox.dispatch_inbox(self.snap(status=inbox.STATUS_READY))
+        self.assertEqual(box.round, ())
+
+    def test_a_closed_milestones_board_work_stands_for_no_round(self):
+        box = inbox.dispatch_inbox(self.snap(milestone_state="closed"))
+        self.assertEqual(box.round, ())
+
+    def test_the_round_queue_matches_the_round_derivation(self):
+        # The poke and the round must never disagree about what stands.
+        snap = self.snap()
+        box, round_box = inbox.dispatch_inbox(snap), inbox.round_inbox(snap)
+        self.assertEqual(
+            sorted(i.number for i in box.round),
+            sorted([b.number for b in round_box.backlog_batches]
+                   + [c.number for c in round_box.backlog_cards]))
+
+
 class DispatchStandingTest(unittest.TestCase):
     """`dispatch:standing` widens triage and narrows relay — the round is
     triage's own plan, never a parallel queue."""

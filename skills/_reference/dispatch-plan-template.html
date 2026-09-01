@@ -181,6 +181,17 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
        the payload's done_items), and a typed note is the dead-end steer
        (commented on the items, stage:done withheld, a fresh session
        carries it).
+     An "approvals" container is the round's derived-backlog section —
+       board objects that ALREADY EXIST at Status Backlog (elaboration
+       parents, bolt plan cards), one row each: { key, number,
+       milestone, title, oneliner, badge?, badgeClass?, srcId? }. Rows
+       are grouped by milestone, each group headed by a set-all select
+       so a whole milestone flips in one gesture (per-row selects still
+       override after). Routes leave | ready | drop, seeded LEAVE —
+       approving new work must never require touching the parked rows,
+       and an untouched row writes nothing. ready → board Status Ready
+       (releases the loop); drop → closed:declined, gone from every
+       later round. Nothing here files anything: the object exists.
      An empty context or left_out hides that section. -->
 <script id="plan-data" type="application/json">
 {
@@ -299,7 +310,12 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
   // with a note, never a routing value.
   const ROUTES = { intent: ["approve", "backlog", "drop"],
                    bolt: ["approve", "backlog", "drop"],
-                   finished: ["approve"] };
+                   finished: ["approve"],
+                   // Derived Backlog rows already exist on the board:
+                   // leave writes nothing (and is the seed — approving
+                   // new work never requires touching the parked rows),
+                   // ready flips board Status, drop closes for good.
+                   approvals: ["leave", "ready", "drop"] };
 
   function routesFor(container) {
     const routes = [...ROUTES[container.kind]];
@@ -313,6 +329,8 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     return routes;
   }
 
+  const rowSelects = {};  // row key -> its route <select>, for set-all
+
   function selectFor(key, routes) {
     const sel = document.createElement("select");
     sel.className = "select select-sm w-full";
@@ -320,6 +338,27 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     seeded[key] = routes[0];
     routing[key] = routes[0];
     sel.addEventListener("change", () => { routing[key] = sel.value; preview(); });
+    rowSelects[key] = sel;
+    return sel;
+  }
+
+  // One control, a whole group: a set-all select in a group header
+  // drives every row select under it — delaying or releasing an entire
+  // milestone is one gesture, and per-row selects still override after.
+  function setAllControl(keys, routes) {
+    const sel = document.createElement("select");
+    sel.className = "select select-xs font-normal";
+    sel.append(new Option("set all…", ""));
+    for (const r of routes) sel.append(new Option(`all → ${r}`, r));
+    sel.addEventListener("change", () => {
+      if (!sel.value) return;
+      for (const key of keys) {
+        routing[key] = sel.value;
+        if (rowSelects[key]) rowSelects[key].value = sel.value;
+      }
+      sel.value = "";
+      preview();
+    });
     return sel;
   }
 
@@ -488,9 +527,43 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
     return sec;
   }
 
+  function approvalsSection(c) {
+    // Derived backlog: board objects that already exist, awaiting the
+    // operator. Grouped by milestone; each group's set-all flips the
+    // whole milestone at once. Seeded LEAVE — untouched rows write
+    // nothing and the plan stays one gesture for the new work.
+    const sec = document.createElement("section");
+    const h = document.createElement("h2");
+    h.className = "text-xs font-bold uppercase tracking-widest opacity-50 mb-2";
+    h.textContent = "Awaiting approval at Backlog — ";
+    sec.append(h);
+    const groups = new Map();
+    for (const item of c.rows || []) {
+      const m = item.milestone || "(no milestone)";
+      if (!groups.has(m)) groups.set(m, []);
+      groups.get(m).push(item);
+    }
+    for (const [milestone, rows] of groups) {
+      const head = document.createElement("div");
+      head.className = "flex items-baseline justify-between mt-3 mb-1 gap-3";
+      const name = document.createElement("span");
+      name.className = "text-xs font-mono opacity-70";
+      name.textContent = milestone;
+      head.append(name, setAllControl(rows.map((r) => r.key),
+                                      ROUTES.approvals));
+      sec.append(head);
+      const list = document.createElement("div");
+      list.className = "rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200";
+      for (const item of rows) list.append(row(item, ROUTES.approvals));
+      sec.append(list);
+    }
+    return sec;
+  }
+
   function containerSection(c) {
     if (c.kind === "close") return closeSection(c);
     if (c.kind === "finished") return finishedSection(c);
+    if (c.kind === "approvals") return approvalsSection(c);
     const sec = document.createElement("section");
     const head = document.createElement("div");
     head.className = "flex items-baseline justify-between mb-2 gap-3 flex-wrap";
@@ -552,6 +625,11 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
         ? `the deliverable: ${c.deliverable || c.oneliner}`
         : c.oneliner;
       sec.append(d);
+    }
+    if ((c.rows || []).length > 1) {
+      // The container IS the milestone here — one control delays or
+      // releases everything under it at once.
+      head.append(setAllControl(c.rows.map((r) => r.key), routesFor(c)));
     }
     const list = document.createElement("div");
     list.className = "rounded-box border border-base-content/10 divide-y divide-base-content/10 bg-base-200";
