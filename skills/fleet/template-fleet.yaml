@@ -35,6 +35,21 @@ hosts:
 # teams:
 #   Platform: workstation
 
+# Credentials — the org's own GitHub App, inherited by EVERY actor the
+# manifest launches: the server exports these into its environment (so
+# the loop processes and in-process tracker calls resolve them), and
+# writes them to ~/.config/flywheel/orgs/<org>.env, which
+# `flywheel-token --org <org>` sources — so a session in any worktree
+# mints the right org's token with zero env plumbing. Keys:
+#   FLYWHEEL_GH_APP_ID  — the GitHub App's id
+#   FLYWHEEL_GH_APP_KEY — the app's .pem: a path (relative resolves
+#                         against this folder) or op:<vault>/<item>
+#   FLYWHEEL_GH_ORG     — optional; defaults to the tracker's org
+#
+# credentials:
+#   FLYWHEEL_GH_APP_ID: 4562912
+#   FLYWHEEL_GH_APP_KEY: op:MyVault/myorg-flywheel-app.pem
+
 # Dispatch — the org's one standing agent, started by `flywheel dispatch`
 # (never by `flywheel up`; the server reaches it through the plugin's
 # dispatch MCP server). Keys:

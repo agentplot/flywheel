@@ -75,6 +75,26 @@ books:
         self.assertEqual(m["top"]["project"], "Fly")
         self.assertNotIn("project", m["teams"])
 
+    def test_the_credentials_block_parses(self):
+        # Problem 10 (willdan fleet): the org's app id squatted in
+        # dispatch.env and every non-dispatch actor re-read it by hand.
+        m = parse(MINIMAL + """\
+credentials:
+  FLYWHEEL_GH_APP_ID: 4562912
+  FLYWHEEL_GH_APP_KEY: op:Vault/willdan-app.pem
+""")
+        self.assertEqual(m["credentials"]["FLYWHEEL_GH_APP_ID"], "4562912")
+        self.assertEqual(m["credentials"]["FLYWHEEL_GH_APP_KEY"],
+                         "op:Vault/willdan-app.pem")
+
+    def test_an_absent_credentials_block_is_an_empty_map(self):
+        self.assertEqual(parse(MINIMAL)["credentials"], {})
+
+    def test_an_unknown_credentials_key_is_refused_by_name(self):
+        message = refusal(MINIMAL + "credentials:\n  GH_TOKEN: nope\n")
+        self.assertIn("GH_TOKEN", message)
+        self.assertIn("FLYWHEEL_GH_APP_ID", message)
+
 
 DISPATCH = """\
 dispatch:

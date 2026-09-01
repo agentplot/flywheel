@@ -76,6 +76,7 @@ recognized; a `#` inside a value is part of the value.
 
 import json
 import os
+import shlex
 import shutil
 import signal
 import socket
@@ -939,6 +940,27 @@ def planner_charge(env: dict, fallback_cwd: Path):
     return charge
 
 
+def write_org_env(org: str, credentials: dict) -> None:
+    """The per-org credential overlay, 0600, sourced by flywheel-token.
+
+    Written on every serve so fleet.yaml stays the one source of truth —
+    editing the manifest and restarting the fleet is the whole update
+    story. Values are shell-quoted single lines; the parser on the other
+    side is `.`-sourcing bash."""
+    path = (Path(os.environ.get("XDG_CONFIG_HOME")
+                 or Path.home() / ".config") / "flywheel" / "orgs"
+            / f"{org}.env")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = "".join(f"{k}={shlex.quote(v)}\n"
+                        for k, v in sorted(credentials.items()))
+        path.write_text(lines)
+        path.chmod(0o600)
+    except OSError as error:
+        print(f"warning: could not write {path}: {error} — panes fall "
+              f"back to the per-user config", file=sys.stderr)
+
+
 def serve(manifest: dict, host: str, session: str, env: dict,
           interval: int, once: bool, dry_run: bool) -> int:
     # The loops this daemon spawns inherit ITS environment, and their herdr
@@ -946,7 +968,29 @@ def serve(manifest: dict, host: str, session: str, env: dict,
     # silently address the default session and drive panes nobody watches.
     if "HERDR_SOCKET_PATH" in env:
         os.environ["HERDR_SOCKET_PATH"] = env["HERDR_SOCKET_PATH"]
+    # The fleet's credentials, exported once at the same seam: the
+    # server, every loop process it spawns, and every in-process
+    # tracker/planner call resolve the org's own GitHub App instead of
+    # whatever ~/.config/flywheel/env happens to hold. A key path is
+    # resolved against the manifest's root, the way dispatch.env's
+    # DISCORD_STATE_DIR already is; `op:` refs pass through verbatim
+    # for flywheel-token to resolve.
+    credentials = {}
+    for key, value in (manifest.get("credentials") or {}).items():
+        if key == "FLYWHEEL_GH_APP_KEY" and value and not value.startswith("op:"):
+            resolved = Path(value).expanduser()
+            if not resolved.is_absolute():
+                resolved = manifest["root"] / resolved
+            value = str(resolved)
+        os.environ[key] = value
+        credentials[key] = value
     config = server_config(manifest, host, interval)
+    if credentials:
+        # The per-org overlay `flywheel-token --org <org>` sources: panes
+        # inherit the herdr daemon's environment, not this one, so the
+        # file is what lets a session in any worktree resolve the org's
+        # own app with zero env plumbing.
+        write_org_env(config.org, credentials)
     tracker = inbox.Tracker(resolve_token(config.org), config.org, config.repo,
                             project_title=config.project)
     dispatch_ledger = ledger_mod.RunLedger(

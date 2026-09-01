@@ -33,16 +33,31 @@ key_path="${FLYWHEEL_GH_APP_KEY:-}"
 org="${FLYWHEEL_GH_ORG:-}"
 use_cache=1
 
+flag_app_id=""
+flag_key=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --app-id) app_id="$2"; shift 2 ;;
-    --key)    key_path="$2"; shift 2 ;;
+    --app-id) app_id="$2"; flag_app_id="$2"; shift 2 ;;
+    --key)    key_path="$2"; flag_key="$2"; shift 2 ;;
     --org)    org="$2"; shift 2 ;;
     --no-cache) use_cache=0; shift ;;
     -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "flywheel-token: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# Per-org overlay: the org's own app id and key, written by `flywheel up`
+# from fleet.yaml's `credentials:` block. `--org` names an org, and an
+# org names its own app — so the overlay wins over the per-user file and
+# the ambient environment (both of which default to whichever org was
+# configured first), while explicit flags still win over everything.
+org_file="${XDG_CONFIG_HOME:-$HOME/.config}/flywheel/orgs/${org}.env"
+if [ -n "$org" ] && [ -r "$org_file" ]; then
+  # shellcheck disable=SC1090
+  . "$org_file"
+  app_id="${flag_app_id:-${FLYWHEEL_GH_APP_ID:-$app_id}}"
+  key_path="${flag_key:-${FLYWHEEL_GH_APP_KEY:-$key_path}}"
+fi
 
 missing=()
 [ -n "$app_id" ]   || missing+=("--app-id / FLYWHEEL_GH_APP_ID")

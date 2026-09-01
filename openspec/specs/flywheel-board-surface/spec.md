@@ -41,20 +41,31 @@ parents carry the fields; sub-issues carry none.
 - **THEN** the missing fields are created and present fields are left
   unchanged
 
-### Requirement: Views arrive by template copy
+### Requirement: Views are converged from the template
 
-Because Project views cannot be created through the API,
-`flywheel-setup` SHALL copy the org Project from a hand-built
-template project (default title "Flywheel Template") carrying the six
-views — Kanban, Roadmap, Triage, Waiting On Me, In Flight, Landed —
-and SHALL warn when no template exists and a bare Project is created
-whose views need one-time hand configuration.
+`flywheel-setup` SHALL converge the org Project's views on the
+template project's set (default title "Flywheel Template", carrying
+the six views — Kanban, Roadmap, Triage, Waiting On Me, In Flight,
+Landed): a missing Project is still copied from the template (views
+and fields in one act), and a pre-existing Project has its views
+diffed by name against the template's — missing views created
+(`createProjectV2View`, name + layout) and each view's filter
+converged (`updateProjectV2View`). An existing view's layout and name
+are left alone: renames on a live board are the operator's. Setup
+SHALL warn, not fail, when no template project exists.
+
+#### Scenario: a pre-existing project with the single default view
+
+- **WHEN** `flywheel-setup` runs against an org whose Project already
+  exists with only the default table view
+- **THEN** the template's views are created on it and their filters
+  set, and the run reports each view converged
 
 #### Scenario: no template
 
 - **WHEN** the org has no project titled "Flywheel Template"
-- **THEN** setup creates a bare Project and prints the one-time
-  hand-configuration warning
+- **THEN** setup creates a bare Project, converges no views, and
+  prints the hand-configuration warning
 
 
 ### Requirement: A spent approval leaves the board

@@ -185,7 +185,7 @@ def ensure_labels(token, org, repo):
     return created
 
 
-def ensure_project(token, org, title, template=None):
+def org_projects(token, org):
     data = graphql(token, """
       query($org: String!) {
         organization(login: $org) {
@@ -193,14 +193,26 @@ def ensure_project(token, org, title, template=None):
           projectsV2(first: 100) { nodes { id title number } }
         }
       }""", {"org": org})
-    org_id = data["organization"]["id"]
-    nodes = data["organization"]["projectsV2"]["nodes"]
+    return data["organization"]["id"], data["organization"]["projectsV2"]["nodes"]
+
+
+def find_project(token, org, title):
+    _org_id, nodes = org_projects(token, org)
+    for node in nodes:
+        if node["title"] == title:
+            return node["id"]
+    return None
+
+
+def ensure_project(token, org, title, template=None):
+    org_id, nodes = org_projects(token, org)
     for node in nodes:
         if node["title"] == title:
             return node["id"], node["number"], False
-    # Views cannot be created through the API; copying a hand-built
-    # template project is the one way to arrive with the board and
-    # roadmap views preset. The copy brings views and fields both.
+    # Copying a hand-built template project is still the cheapest way to
+    # arrive with views AND fields preset; `ensure_views` converges the
+    # views afterwards either way, so a pre-existing project is no
+    # longer stuck with whatever views it happened to have.
     if template:
         for node in nodes:
             if node["title"] == template:
@@ -223,6 +235,61 @@ def ensure_project(token, org, title, template=None):
         }
       }""", {"owner": org_id, "title": title})["createProjectV2"]["projectV2"]
     return created["id"], created["number"], True
+
+
+def project_views(token, project_id):
+    nodes = graphql(token, """
+      query($project: ID!) {
+        node(id: $project) {
+          ... on ProjectV2 {
+            views(first: 20) { nodes { id name layout filter } }
+          }
+        }
+      }""", {"project": project_id})["node"]["views"]["nodes"]
+    return {v["name"]: v for v in nodes}
+
+
+def ensure_views(token, project_id, template_id):
+    """Converge the project's views on the template's set, by name.
+
+    The `createProjectV2View` / `updateProjectV2View` mutations exist
+    now (create takes name+layout; the filter lands via update), so a
+    pre-existing project is no longer stuck with the single default
+    table the willdan board shipped with (problem 11). The diff-by-name,
+    create-only-the-missing shape is `ensure_fields`'s; an existing
+    view's filter is converged, its layout left alone — renames and
+    layout changes on a live board are the operator's.
+    """
+    if not template_id or template_id == project_id:
+        return ["no template project to converge views from"]
+    want = project_views(token, template_id)
+    have = project_views(token, project_id)
+    made = []
+    for name, view in want.items():
+        target = have.get(name)
+        if target is None:
+            created = graphql(token, """
+              mutation($project: ID!, $name: String!,
+                       $layout: ProjectV2ViewLayout!) {
+                createProjectV2View(input: {projectId: $project,
+                                            name: $name, layout: $layout}) {
+                  projectV2View { id name filter }
+                }
+              }""", {"project": project_id, "name": name,
+                     "layout": view["layout"]})
+            target = created["createProjectV2View"]["projectV2View"]
+            made.append(f"created view '{name}'")
+        if (view.get("filter") or "") != (target.get("filter") or ""):
+            graphql(token, """
+              mutation($view: ID!, $filter: String!) {
+                updateProjectV2View(input: {viewId: $view,
+                                            filter: $filter}) {
+                  projectV2View { id }
+                }
+              }""", {"view": target["id"],
+                     "filter": view.get("filter") or ""})
+            made.append(f"converged filter on '{name}'")
+    return made
 
 
 def ensure_link(token, org, repo, project_id):
@@ -379,6 +446,14 @@ def main():
 
     made = ensure_fields(token, project_id, args.team or ["flywheel"])
     print("fields: " + ("; ".join(made) if made else "all present"))
+
+    try:
+        template_id = find_project(token, args.org, args.template)
+        views = ensure_views(token, project_id, template_id)
+        print("views: " + ("; ".join(views) if views else "all present"))
+    except GraphqlError as e:
+        print(f"views: not converged ({e}) — configure them by hand or "
+              f"re-run once the app can read the template project")
 
     checked = [args.repo, *(args.built_repos or [])]
     warned = check_app_repos(token, args.org, checked)

@@ -20,6 +20,15 @@ from pathlib import Path
 # than dropped — a typo must not vanish.
 DISPATCH_KEYS = {"host", "model", "channels", "env", "prompt"}
 
+# The fleet-level credentials block: environment every actor the
+# manifest launches inherits — the daemon, the loops it starts, and the
+# panes. Squatting the org's GitHub App id in `dispatch.env` left every
+# non-dispatch actor re-reading dispatch's block by hand (problem 10,
+# willdan fleet). `FLYWHEEL_GH_APP_KEY` accepts `flywheel-token`'s
+# `op:<vault>/<item>` form as well as a pem path.
+CREDENTIAL_KEYS = {"FLYWHEEL_GH_APP_ID", "FLYWHEEL_GH_APP_KEY",
+                   "FLYWHEEL_GH_ORG"}
+
 # Manifest keys retired as the fleet's shape settled, each matched and
 # refused with its fix. The server starts loop PROCESSES, which have a
 # working directory and no model, and dispatch — the one standing agent —
@@ -57,6 +66,7 @@ def parse_manifest(path: Path) -> dict:
     dispatch: dict = {}
     teams: dict[str, str] = {}
     books: dict[str, dict] = {}
+    credentials: dict[str, str] = {}
     top: dict[str, str] = {}
     section = None
     current_host = None
@@ -72,6 +82,8 @@ def parse_manifest(path: Path) -> dict:
             section, in_env = "dispatch", False
         elif line == "teams:":
             section = "teams"
+        elif line == "credentials:":
+            section = "credentials"
         elif line == "books:":
             section, current_book = "books", None
         elif not line.startswith(" ") and ":" in line:
@@ -99,6 +111,9 @@ def parse_manifest(path: Path) -> dict:
         elif section == "teams" and line.startswith("  "):
             k, _, v = line.strip().partition(":")
             teams[k.strip()] = v.strip().strip('"')
+        elif section == "credentials" and line.startswith("  "):
+            k, _, v = line.strip().partition(":")
+            credentials[k.strip()] = v.strip().strip('"')
         elif section == "books" and line.startswith("  ") and not line.startswith("    "):
             current_book = line.strip().rstrip(":")
             books[current_book] = {}
@@ -106,8 +121,8 @@ def parse_manifest(path: Path) -> dict:
             k, _, v = line.strip().partition(":")
             books[current_book][k.strip()] = v.strip().strip('"')
     manifest = {"top": top, "hosts": hosts, "dispatch": dispatch,
-                "teams": teams, "books": books, "root": path.parent,
-                "path": path}
+                "teams": teams, "books": books, "credentials": credentials,
+                "root": path.parent, "path": path}
     validate(manifest)
     return manifest
 
@@ -129,5 +144,10 @@ def validate(manifest: dict) -> None:
     for team, host in manifest["teams"].items():
         if host not in manifest["hosts"]:
             problems.append(f"teams: {team} → '{host}' is not in hosts:")
+    for key in manifest.get("credentials") or {}:
+        if key not in CREDENTIAL_KEYS:
+            problems.append(
+                f"credentials: unknown key `{key}:` — the block takes "
+                f"{', '.join(sorted(CREDENTIAL_KEYS))}")
     if problems:
         sys.exit("manifest invalid:\n  " + "\n  ".join(problems))
