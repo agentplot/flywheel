@@ -4,7 +4,8 @@ One day of driving `bolt/switchboard-stage1` (WilldanGroup, tracker
 `willdan-blueprints`, built repo `switchboard-kit`) through real
 construction surfaced the problems below. Each entry is written to task
 an agent: symptom, evidence, root cause where established, and the fix
-shape. Two are already fixed on this repo's `main`; the rest are open.
+shape. 1–5 and 15 are fixed on this repo's `main` (1 with an open
+residual); the rest are open.
 
 The operating context that shaped all of them: the org uses per-unit
 `Type: bolt-direct` (no verify stage), `wt merge` (worktrunk) as the
@@ -34,6 +35,10 @@ deterministic session name, guarded against still-working panes) and
 landed merge**. Pinned by
 `test_a_bolt_direct_merge_reaps_the_build_pane`. First live proof: the
 respawned loop reaped `build-appsync-api-stack` at its merge.
+Extended by `f73f47c9`: the pane now closes at build-settle (the
+session stays resumable by its deterministic id; `go_fix` and a red
+merge gate resume it in a fresh pane), with the merge-site close kept
+as the backstop reaper.
 **Residual:** the guard can close an item before its batch is driven
 (stage re-derived from a hand-merged branch); those paths skip every
 close site, so guard-closed items still leak their panes — reap on
@@ -55,10 +60,6 @@ when their operation is not in progress). Note the running loop only
 picks this up on respawn; until then the operator repairs by hand
 (`git rebase --abort` in the bolt worktree).
 
----
-
-## Open — launch and session lifecycle
-
 ### 3. Transient launch failures cost a full cycle and are never retried
 
 **Symptom:** repeatedly, one per cycle:
@@ -73,11 +74,14 @@ picks this up on respawn; until then the operator repairs by hand
 Each failure marks the stage `failed` and the batch waits a whole cycle
 (and the next cycle often hits a different transient).
 
-**Fix shape:** retry with backoff inside the launch path; on
-`agent_not_ready`/`pane_busy` for a pane bearing the target session
-name, adopt or close-and-relaunch that pane rather than erroring. The
-deterministic session id makes relaunch safe — `go_fix` already relies
-on exactly that.
+**Fixed:** `daddf6cd` — `agent start` gets the fleet driver's 300s
+(`839387a2` had only reached `bin/flywheel`); not_ready and startup
+timeout retry with backoff like pane_busy, with a roster check first
+(an agent that came up behind a failed start is adopted, not
+re-started); launch reuse is health-checked — a blocked pane that never
+reached its composer is reaped and relaunched, one whose composer is
+live is a real question and is reused. Pinned by
+`LaunchRobustnessTest` / `ReuseHealthTest`.
 
 ### 4. The loop cannot seed workspace trust for new worktrees
 
@@ -89,9 +93,11 @@ hand-seeded ~15 paths into `~/.claude.json`
 newly planned item re-created the problem (#66–#69 all failed their
 first spec launch).
 
-**Fix shape:** before launching into a worktree, the loop (or the
-launcher in `_flywheel_sessions.py`) writes `hasTrustDialogAccepted`
-for that path. Do it at worktree creation time, in one place.
+**Fixed:** `daddf6cd` — `seed_workspace_trust()` in
+`_flywheel_sessions.py`, called by both the herdr and headless launch
+paths with the spec's cwd: atomic read-modify-write of
+`~/.claude.json`, idempotent, best-effort (an unwritable config just
+means the dialog may appear). Pinned by `TrustSeedTest`.
 
 ### 5. Settle detection can fire while the session is still working
 
@@ -104,10 +110,12 @@ the branch had "moved past" the merge.
 **Root cause (probable):** the herdr wait reads `agent_status`, and a
 momentary `idle` between turns reads as settled.
 
-**Fix shape:** settle on an artifact the session writes when actually
-done (the report/marker comment pattern already exists —
-`<!-- flywheel:session ... -->`), or require N consecutive idle reads,
-or both. The pane status is a hint, not a verdict.
+**Fixed:** `daddf6cd` — `HerdrRunner.wait` believes settled-done only
+after it holds across three spaced roster reads (`settle_reads` /
+`settle_gap_s`); blocked and gone still return on the first read.
+Pinned by `SettleDebounceTest`. The artifact-witness half (a
+done-marker the session writes) stays open as a possible second layer
+for long-reporting sessions.
 
 ---
 
@@ -123,6 +131,11 @@ bolt branch, but the SHAs were rewritten by the rebase, so
 
 **Fix shape:** derive merged-ness by patch-id (`git cherry` /
 `git patch-id`) or by the recorded merge evidence, not raw ancestry.
+Largely defused by 15's fix (`f73f47c9`): the merge now rebases the
+feature, not the bolt branch, and `--no-squash` lands branch commits
+as themselves — SHAs are only rewritten on the feature side before
+they land. Keep open until a live day confirms no more spurious
+demotions.
 
 ### 7. An item carrying `needs-operator` can still be auto-closed
 
@@ -215,7 +228,9 @@ live roster; re-charge or reset stale ones.
 - **Session-name truncation:** herdr names truncate
   (`spec-writing-zudoku-portal-deplo`, `build-switchboard-edge-through-f`)
   — harmless today, but name-based reaping (fix 1) must match on the
-  truncated form the roster actually carries.
+  truncated form the roster actually carries. `f73f47c9` replaced the
+  bolt loop's lossy right-cut with a digest tail, so two long slugs
+  sharing a prefix can no longer collapse into one name.
 
 ### 14. Backoff holds outlive the operator's unpause
 
@@ -247,12 +262,14 @@ runs `wt merge build/<slug> --no-remove` **from the bolt worktree**, so
 wt rebases the bolt branch onto the build branch — the integration line
 is the thing rewritten, every time.
 
-**Fix shape:** run the merge from the build worktree with the bolt
-branch as TARGET (`cwd=build worktree, wt merge <bolt-branch>`), so the
-feature is what gets rebased and the bolt branch is append-only. That
-also makes problem 6's ancestry checks sound again and confines a
-conflict strand to the feature worktree. Decide squash policy explicitly
-(`--no-squash` to keep per-commit history).
+**Fixed:** `f73f47c9` — `merge_stage` runs `wt merge <bolt-branch>
+--no-squash --no-remove` from the build worktree: the feature is what
+gets rebased, the bolt branch is append-only, the conflict aborts moved
+with it, and `--no-squash` lands branch commits as themselves — which
+is what makes problem 6's ancestry checks sound again. `--no-remove`
+stays because the guard still re-derives stages from the `build/<slug>`
+branch. The construction skill had documented this direction all along;
+the code now matches it.
 
 ### 16. Batches for never-specced items claim spec=done, build=done, then fail merges silently
 
