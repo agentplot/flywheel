@@ -148,6 +148,62 @@ class TokenRefreshTest(unittest.TestCase):
             t._gh("tok", "api", "/x")
 
 
+class SnapshotBlockerResolutionTest(unittest.TestCase):
+    """A blocker closed COMPLETED is in neither fetched set; unseen-is-open
+    then holds its dependents forever (live: #70 blocked_by closed #71)."""
+
+    def _tracker(self, blocker_state="closed"):
+        def gh(token, verb, path, *rest):
+            if "issues?state=open" in path:
+                return [[{
+                    "number": 70, "state": "open", "title": "planning",
+                    "body": "",
+                    "labels": [{"name": "state:ready"},
+                               {"name": "type:planning"}],
+                    "milestone": {"title": "intent/x", "state": "open"},
+                }]]
+            if "state=closed&labels=" in path:
+                return [[]]
+            if "milestones?state=closed" in path:
+                return [[]]
+            if path.endswith("/issues/70/dependencies/blocked_by"):
+                return [{"number": 71}]
+            if path.endswith("/issues/71"):
+                return {"number": 71, "state": blocker_state,
+                        "title": "research", "body": "", "labels": []}
+            return []
+        return inbox.Tracker("tok", "o", "r", gh=gh,
+                             graphql=lambda *a, **k: {})
+
+    def test_a_completed_blocker_is_resolved_and_releases_its_dependent(self):
+        snap = self._tracker().snapshot(milestone="intent/x")
+        self.assertIsNotNone(snap.item(71))
+        self.assertEqual(snap.open_blockers(snap.item(70)), [])
+
+    def test_a_still_open_unfetched_blocker_still_blocks(self):
+        snap = self._tracker(blocker_state="open").snapshot(
+            milestone="intent/x")
+        self.assertEqual(snap.open_blockers(snap.item(70)), [71])
+
+    def test_an_unreadable_blocker_stays_treated_as_open(self):
+        def gh(token, verb, path, *rest):
+            if "issues?state=open" in path:
+                return [[{
+                    "number": 70, "state": "open", "title": "planning",
+                    "body": "", "labels": [{"name": "state:ready"}],
+                    "milestone": {"title": "intent/x", "state": "open"},
+                }]]
+            if path.endswith("/issues/70/dependencies/blocked_by"):
+                return [{"number": 71}]
+            if path.endswith("/issues/71"):
+                raise SystemExit("HTTP 404")
+            return [[]] if "--paginate" in rest else []
+        t = inbox.Tracker("tok", "o", "r", gh=gh, graphql=lambda *a, **k: {})
+        snap = t.snapshot(milestone="intent/x")
+        self.assertIsNone(snap.item(71))
+        self.assertEqual(snap.open_blockers(snap.item(70)), [71])
+
+
 class ServerInboxTest(unittest.TestCase):
 
     def test_a_ready_or_in_progress_item_gives_its_milestone_a_run_job(self):

@@ -1622,6 +1622,28 @@ class Tracker:
                 milestone_state=("closed" if row_milestone in closed else "open"),
             ))
 
+        # A blocker closed as COMPLETED is in neither fetched set, so
+        # `open_blockers` — whose unseen-is-open default is the right
+        # safety for a blocker it truly cannot read — would hold its
+        # dependents forever (observed live 2026-09-01: #70 blocked_by
+        # the closed #71, silently undispatchable, #73 stalled behind
+        # it). Resolve every unseen blocker number explicitly; one that
+        # still cannot be read stays treated as open.
+        seen = {i.number for i in items}
+        unseen = sorted(
+            ({n for i in items for n in i.blocked_by}
+             | {n for c in cards for n in c.blocked_by}) - seen)
+        for number in unseen:
+            try:
+                raw = self._gh(self.token, "api",
+                               f"/repos/{self.org}/{self.repo}/issues/{number}")
+            except (Exception, SystemExit):
+                # gh failures surface as SystemExit; an unreadable blocker
+                # keeps the unseen-is-open treatment.
+                continue
+            if raw and "number" in raw:
+                items.append(Item.from_api(raw))
+
         items = backfill_parentage(items, batches)
 
         return TrackerSnapshot(
