@@ -926,6 +926,61 @@ def _run_subprocess(argv, cwd=None, env=None, timeout=None):
 
 
 # ---------------------------------------------------------------------------
+# The yield protocol — how a batch pipeline asks for time
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Wait:
+    """A pipeline's request for one session to settle.
+
+    A stage generator yields this whenever it would have blocked in
+    `sessions.supervise`; whoever runs the generator answers with the
+    terminal `Supervision` — inline (`run_gen`, the serial shape) or by
+    polling many pipelines' waits round-robin on one thread (the fan-out
+    scheduler). The supervisor carries the clock state between polls, so
+    the notify/stall budgets survive interleaving.
+    """
+    runner: object
+    handle: object
+    supervisor: object
+
+    def result(self, chunk=sessions.WAIT_CHUNK_S):
+        """Block until the session settles — the serial caller's answer."""
+        return next(filter(None, iter(
+            lambda: self.supervisor.poll(self.runner, self.handle, chunk),
+            object())))
+
+
+class MergeGate:
+    """A pipeline's request to enter the one serialized stage.
+
+    The bolt branch is shared state; everything before it is isolated per
+    batch. The serial runner grants immediately; the fan-out scheduler
+    admits one holder at a time, lowest batch number first.
+    """
+
+    def result(self, chunk=None):
+        return None
+
+
+def run_gen(gen):
+    """Exhaust a session generator inline — today's blocking shape.
+
+    Every public stage method is its generator run through this, so the
+    scaffold guard, the landing, and every direct test caller keep the
+    call-and-return contract while the cycle scheduler interleaves the
+    same generators.
+    """
+    request = None
+    while True:
+        try:
+            request = (gen.send(request.result()) if request is not None
+                       else next(gen))
+        except StopIteration as stop:
+            return stop.value
+
+
+# ---------------------------------------------------------------------------
 # The loop
 # ---------------------------------------------------------------------------
 
@@ -1354,6 +1409,13 @@ class BoltLoop:
         """
         return [n for n in numbers if inbox.set_stage(self.tracker, n, stage)]
 
+    def _plan_mode(self, plan_mode):
+        """The batch's own flag when the caller threads it; the bolt-typed
+        default otherwise (a direct call, a test). Threaded rather than
+        stored because interleaved batches of different types must never
+        read each other's mode."""
+        return self.active_plan_mode if plan_mode is None else bool(plan_mode)
+
     def pause(self, numbers, reason):
         """Invariant 7: the label marks a live wait, applied at the moment
         of blocking, with the reason on the item."""
@@ -1371,11 +1433,17 @@ class BoltLoop:
     # -- driving a session -------------------------------------------------
 
     def drive(self, stage, spec, numbers=(), close=True, expect_prompted=False):
+        return run_gen(self.drive_gen(stage, spec, numbers, close=close,
+                                      expect_prompted=expect_prompted))
+
+    def drive_gen(self, stage, spec, numbers=(), close=True,
+                  expect_prompted=False):
         """Launch (idempotently), supervise on a real clock, collect.
 
-        `supervise` is called once per PROMPT, which is what makes "the
-        clock restarts after a plan approval" true without a counter to
-        reset by hand.
+        A generator: it yields `Wait` whenever a session must settle and
+        returns the `StageOutcome`. `settle_gen` is entered once per
+        PROMPT, which is what makes "the clock restarts after a plan
+        approval" true without a counter to reset by hand.
         """
         runner = self.runner(stage)
         try:
@@ -1393,9 +1461,14 @@ class BoltLoop:
             origin = self._clock()
             if numbers and not expect_prompted:
                 self.mark_launch(numbers, spec.name, origin)
-        return self.settle(stage, runner, handle, numbers, origin, close=close)
+        return (yield from self.settle_gen(stage, runner, handle, numbers,
+                                           origin, close=close))
 
     def settle(self, stage, runner, handle, numbers, origin, close=True):
+        return run_gen(self.settle_gen(stage, runner, handle, numbers,
+                                       origin, close=close))
+
+    def settle_gen(self, stage, runner, handle, numbers, origin, close=True):
         notified = {"fired": False}
 
         def on_notify(_handle, elapsed):
@@ -1404,9 +1477,9 @@ class BoltLoop:
                 f"Session `{handle.name}` has been working ~{int(elapsed // 60)} "
                 f"minutes without settling. This is a live wait — dispatch relays it."))
 
-        watch = sessions.supervise(
-            runner, handle, on_notify=on_notify, clock=self._clock, origin=origin,
-            notified=self._already_notified(numbers))
+        watch = yield Wait(runner, handle, sessions.Supervisor(
+            on_notify=on_notify, clock=self._clock, origin=origin,
+            notified=self._already_notified(numbers)))
         # Clear only the notice THIS watch raised. `watch.notified` is also
         # true when the label pre-existed — an andon escalation or an earlier
         # run's notice — and clearing on that read ate a live andon four
@@ -2293,7 +2366,10 @@ class BoltLoop:
         match = re.search(r"Landing:\s*(merge|pr)\b", self.merge_criteria() or "", re.I)
         return match.group(1).lower() if match else "merge"
 
-    def spec_stage(self, batch, repo=None, book=None):
+    def spec_stage(self, batch, repo=None, book=None, plan_mode=None):
+        return run_gen(self.spec_stage_gen(batch, repo, book, plan_mode))
+
+    def spec_stage_gen(self, batch, repo=None, book=None, plan_mode=None):
         """The type's strategy, run as prompts on one spec session.
 
         `ff` is one command; `new+ff` lands the proposal first; `new+continue`
@@ -2301,7 +2377,7 @@ class BoltLoop:
         boundaries between these prompts — where a review attaches when
         extensions arrive. Green means the change validates, run here.
         """
-        if self.active_plan_mode:
+        if self._plan_mode(plan_mode):
             return StageOutcome("spec", "skipped",
                                 "plan-mode path: the approved plan is the spec")
         repo = repo or self._sole_repo()
@@ -2321,7 +2397,7 @@ class BoltLoop:
         invocations = list(self.params.config.invocations)
         order = sessions.work_order(f"{invocations[0]} {change}",
                                     self.spec_brief(batch, change, book))
-        outcome = self.drive("spec", self.spec_for(
+        outcome = yield from self.drive_gen("spec", self.spec_for(
             "spec", name, cwd, order), batch.numbers, close=False)
         runner, handle = self.runner("spec"), outcome.handle
         for invocation in invocations[1:]:
@@ -2331,8 +2407,8 @@ class BoltLoop:
             for _ in range(rounds):
                 origin = self._clock()
                 runner.send(handle, f"{invocation} {change}")
-                outcome = self.settle("spec", runner, handle, batch.numbers,
-                                      origin, close=False)
+                outcome = yield from self.settle_gen(
+                    "spec", runner, handle, batch.numbers, origin, close=False)
                 if not outcome.ok or self.change_validates(change, cwd=cwd):
                     break
         if outcome.ok and not self.change_validates(change, cwd=cwd):
@@ -2365,13 +2441,17 @@ class BoltLoop:
             f"Record what you specced as a comment on each item. Commit by pathspec; "
             f"do not merge and do not push — the loop merges. Deliver by settling.")
 
-    def build_stage(self, batch, repo=None):
+    def build_stage(self, batch, repo=None, plan_mode=None):
+        return run_gen(self.build_stage_gen(batch, repo, plan_mode))
+
+    def build_stage_gen(self, batch, repo=None, plan_mode=None):
         """`/opsx:apply`, or the plan-mode path where the bolt declares it."""
+        plan_mode = self._plan_mode(plan_mode)
         repo = repo or self._sole_repo()
         change = batch.change or batch.slug
         name = session_name("build", batch.slug)
-        if not self.active_plan_mode and not self.deliverables(batch, repo,
-                                                               change):
+        if not plan_mode and not self.deliverables(batch, repo,
+                                                   change):
             # Symmetric with spec's already-validates skip — but a commit on
             # the branch proves only that something was committed, and a
             # spec session's planning artifacts satisfy that alone (observed
@@ -2390,8 +2470,8 @@ class BoltLoop:
                 self.close_build_pane(None, batch)
                 return StageOutcome("build", "done",
                                     "already built — the tree proves it")
-        if self.active_plan_mode:
-            outcome = self.plan_mode_build(batch, name, repo)
+        if plan_mode:
+            outcome = yield from self.plan_mode_build_gen(batch, name, repo)
         else:
             # The order is the command and the commit rule, nothing else:
             # the session is launched IN the build worktree, the slug alone
@@ -2408,14 +2488,15 @@ class BoltLoop:
                 return StageOutcome("build", "failed",
                                     f"wt could not provide build/{batch.slug}"
                                     f" in {repo}")
-            outcome = self.drive("build", self.spec_for(
+            outcome = yield from self.drive_gen("build", self.spec_for(
                 "build", name, cwd, order), batch.numbers, close=False)
         if not outcome.ok:
             return outcome
         missing = self.deliverables(batch, repo,
-                                    change=None if self.active_plan_mode else change)
+                                    change=None if plan_mode else change)
         if missing:
-            outcome = self.reprompt_deliverables(batch, outcome, missing, repo)
+            outcome = yield from self.reprompt_deliverables_gen(
+                batch, outcome, missing, repo, plan_mode)
         if outcome.ok:
             # The build settled with its deliverables — the pane closes NOW,
             # not at the merge. The session stays resumable by its
@@ -2427,7 +2508,13 @@ class BoltLoop:
             outcome.handle = None
         return outcome
 
-    def reprompt_deliverables(self, batch, outcome, missing, repo=None):
+    def reprompt_deliverables(self, batch, outcome, missing, repo=None,
+                              plan_mode=None):
+        return run_gen(self.reprompt_deliverables_gen(batch, outcome, missing,
+                                                      repo, plan_mode))
+
+    def reprompt_deliverables_gen(self, batch, outcome, missing, repo=None,
+                                  plan_mode=None):
         """Settle without deliverables is ONE re-prompt, then needs-operator."""
         repo = repo or self._sole_repo()
         runner, handle = self.runner("build"), outcome.handle
@@ -2453,11 +2540,12 @@ class BoltLoop:
         runner.send(handle, (
             f"Your batch settled without the deliverables the contract names: {told}. "
             f"Finish exactly those and settle again — no new scope."))
-        again = self.settle("build", runner, handle, batch.numbers, origin, close=False)
+        again = yield from self.settle_gen("build", runner, handle,
+                                           batch.numbers, origin, close=False)
         if not again.ok:
             return again
         still = self.deliverables(batch, repo,
-                                  change=None if self.active_plan_mode else
+                                  change=None if self._plan_mode(plan_mode) else
                                   (batch.change or batch.slug))
         if still:
             self.pause(batch.numbers, (
@@ -2467,6 +2555,9 @@ class BoltLoop:
         return again
 
     def plan_mode_build(self, batch, name, repo=None):
+        return run_gen(self.plan_mode_build_gen(batch, name, repo))
+
+    def plan_mode_build_gen(self, batch, name, repo=None):
         """The plan-mode path: the approved plan is the spec surrogate.
 
         The session is started in `--permission-mode plan` and settles at
@@ -2506,11 +2597,13 @@ class BoltLoop:
             origin = self._clock()
             self.mark_launch(batch.numbers, name, origin)
         while True:
-            outcome = self.settle("build", runner, handle, batch.numbers,
-                                  origin, close=False)
+            outcome = yield from self.settle_gen("build", runner, handle,
+                                                 batch.numbers, origin,
+                                                 close=False)
             if outcome.status in ("stalled", "failed"):
                 return outcome
-            verdict, why = self.judge_plan(batch, handle, outcome.report)
+            verdict, why = yield from self.judge_plan_gen(batch, handle,
+                                                          outcome.report)
             if verdict == "approved":
                 # The approved plan IS the spec surrogate on this path, so
                 # the approval is where `stage:planned` is earned.
@@ -2574,6 +2667,9 @@ class BoltLoop:
             f"Deliver by settling.")
 
     def judge_plan(self, batch, handle, pane):
+        return run_gen(self.judge_plan_gen(batch, handle, pane))
+
+    def judge_plan_gen(self, batch, handle, pane):
         """Is this plan the claim's plan? One session, one parsed line."""
         claims = "\n\n---\n\n".join(
             f"#{i.number} {i.title}\n{i.body or '(body empty)'}" for i in batch.items)
@@ -2592,7 +2688,7 @@ class BoltLoop:
              f"APPROVED: <the plan in one sentence>\n"
              f"or\n"
              f"RETURNED: <which claim, which part of the plan, in one or two sentences>"))
-        outcome = self.drive("plan", self.spec_for(
+        outcome = yield from self.drive_gen("plan", self.spec_for(
             "plan", name, self.params.repo_dir, order))
         if not outcome.ok:
             return "unreadable", "the approver did not answer"
@@ -2615,7 +2711,10 @@ class BoltLoop:
         else:
             runner.close_named(session_name("build", batch.slug))
 
-    def verify_stage(self, batch, build, repo=None):
+    def verify_stage(self, batch, build, repo=None, plan_mode=None):
+        return run_gen(self.verify_stage_gen(batch, build, repo, plan_mode))
+
+    def verify_stage_gen(self, batch, build, repo=None, plan_mode=None):
         """`/opsx:verify` -> a findings file -> the review's ruling.
 
         Verify runs vanilla and writes what it found to a file the loop
@@ -2625,7 +2724,7 @@ class BoltLoop:
         session, or escalate. Work sessions do work, the review judges,
         the loop does bookkeeping.
         """
-        if self.active_plan_mode:
+        if self._plan_mode(plan_mode):
             return StageOutcome("verify", "skipped",
                                 "plan-mode path: there is no change to verify against")
         repo = repo or self._sole_repo()
@@ -2645,7 +2744,7 @@ class BoltLoop:
                 f"Write the findings to {VERIFY_REPORT} in this worktree — "
                 f"plain markdown, or the single word {NO_FINDINGS} if there "
                 f"are none. Fix nothing."))
-            outcome = self.drive("verify", self.spec_for(
+            outcome = yield from self.drive_gen("verify", self.spec_for(
                 "verify", name, cwd, order), batch.numbers)
             if not outcome.ok:
                 return outcome
@@ -2665,7 +2764,8 @@ class BoltLoop:
             if clean:
                 report = (f"Verify reported no findings, but `openspec "
                           f"validate {change} --strict` is not green.")
-            ruling = self.review_stage(batch, change, cwd, report)
+            ruling = yield from self.review_stage_gen(batch, change, cwd,
+                                                      report)
             if ruling["action"] == "proceed":
                 self.close_build_pane(build, batch)
                 self.mark_verified(batch, repo)
@@ -2681,7 +2781,7 @@ class BoltLoop:
             prompt = ruling.get("prompt") or (
                 f"Verify raised these findings against what you built. Go fix "
                 f"them — no new scope.\n\n{report}")
-            fixed = self.go_fix(batch, build, prompt, repo)
+            fixed = yield from self.go_fix_gen(batch, build, prompt, repo)
             if not fixed.ok:
                 return fixed
         self.pause(batch.numbers, (
@@ -2690,6 +2790,9 @@ class BoltLoop:
         return StageOutcome("verify", "paused", "fix rounds exhausted")
 
     def review_stage(self, batch, change, cwd, report):
+        return run_gen(self.review_stage_gen(batch, change, cwd, report))
+
+    def review_stage_gen(self, batch, change, cwd, report):
         """The operator's proxy: the one act of judgment in the cycle.
 
         Are these findings blocking, and what exactly should the build
@@ -2717,7 +2820,7 @@ class BoltLoop:
              f"reason; an escalation on merge-ready work pauses the bolt "
              f"for nothing.\n\n"
              f"FINDINGS>>>\n{report}\n<<<FINDINGS"))
-        outcome = self.drive("review", self.spec_for(
+        outcome = yield from self.drive_gen("review", self.spec_for(
             "review", name, cwd, order), batch.numbers)
         if not outcome.ok:
             return {"action": "escalate",
@@ -2734,6 +2837,9 @@ class BoltLoop:
         return ruling
 
     def go_fix(self, batch, build, prompt, repo=None):
+        return run_gen(self.go_fix_gen(batch, build, prompt, repo))
+
+    def go_fix_gen(self, batch, build, prompt, repo=None):
         """The review's prompt — to the same build session, warm.
 
         The prompt arrives verbatim from the review's ruling (or the
@@ -2759,8 +2865,9 @@ class BoltLoop:
                 # Reattach never re-sends an order; the findings still must
                 # arrive.
                 runner.send(handle, prompt)
-            outcome = self.settle("build", runner, handle, batch.numbers,
-                                  self._clock(), close=False)
+            outcome = yield from self.settle_gen(
+                "build", runner, handle, batch.numbers, self._clock(),
+                close=False)
             if outcome.status == "blocked":
                 self.pause(batch.numbers, (
                     f"The build session asked a question during a go-fix round. Its "
@@ -2768,14 +2875,19 @@ class BoltLoop:
             return outcome
         origin = self._clock()
         runner.send(handle, prompt)
-        outcome = self.settle("build", runner, handle, batch.numbers, origin, close=False)
+        outcome = yield from self.settle_gen("build", runner, handle,
+                                             batch.numbers, origin,
+                                             close=False)
         if outcome.status == "blocked":
             self.pause(batch.numbers, (
                 f"The build session asked a question during a go-fix round. Its pane is "
                 f"open and waiting.\n\n{outcome.report}"))
         return outcome
 
-    def merge_stage(self, batch, repo=None, build=None):
+    def merge_stage(self, batch, repo=None, build=None, plan_mode=None):
+        return run_gen(self.merge_stage_gen(batch, repo, build, plan_mode))
+
+    def merge_stage_gen(self, batch, repo=None, build=None, plan_mode=None):
         """Merge-back through the gate — a static step, no session.
 
         Merging is bookkeeping: the command is fixed, the gate is the
@@ -2847,7 +2959,7 @@ class BoltLoop:
                     f"rounds; the loop paused the batch.\n\n{output}"))
                 return StageOutcome("merge", "paused", "gate red after refix",
                                     report=output)
-            fixed = self.go_fix(
+            fixed = yield from self.go_fix_gen(
                 batch, build or StageOutcome("build", "done"),
                 (f"The merge gate is red for {branch}. Fix exactly what it "
                  f"names — no new scope — and commit by pathspec.\n\n{output}"),
@@ -2858,7 +2970,8 @@ class BoltLoop:
             return StageOutcome("merge", "failed",
                                 f"{branch} is not an ancestor of "
                                 f"{self.params.bolt_branch} after wt merge")
-        change = None if self.active_plan_mode else (batch.change or batch.slug)
+        change = (None if self._plan_mode(plan_mode)
+                  else (batch.change or batch.slug))
         note = ""
         if change:
             # Archive on green is a loop write now, like every other piece
@@ -3317,16 +3430,108 @@ class BoltLoop:
         return [row for batch in batches
                 for row in self._batch_plan(batch).values()]
 
-    def _drive(self, batch, stage_name, stage_call):
+    def _drive_gen(self, batch, stage_name, stage_gen):
         """One drive stage, its expect written before and its actual after."""
         row = self._batch_plan(batch).get(stage_name)
         if row:
             self.ledger.expect(row["step"], row["trigger"], row["expected"])
-        outcome = stage_call()
+        outcome = yield from stage_gen
         self.ledger.actual(f"{outcome.stage}:{batch.slug}",
                            f"{outcome.status}: {outcome.detail}",
                            ok=outcome.ok)
         return outcome
+
+    def batch_pipeline(self, batch, binding, snapshot):
+        """One batch's whole drive — andon check to merge — as a generator.
+
+        Yields `Wait` for every session settle and one `MergeGate` before
+        the serialized merge stage; returns `(outcomes, merged)`. Every
+        write inside is per-batch (labels, comments, panes, its own
+        worktree), which is what makes interleaving pipelines safe on one
+        thread.
+        """
+        repo, book = binding[1]["repo"], binding[1].get("book")
+        paused, found = self.andon(batch.numbers)
+        if found:
+            self.pause([paused], f"A session raised the andon cord: {found.reason}")
+            self.ledger.note(f"andon on #{paused}: {found.reason}")
+            return [StageOutcome("batch", "paused",
+                                 f"andon on #{paused}: {found.reason}")], False
+        self.flip_in_progress(batch.numbers)
+        try:
+            config = self.unit_config(batch, snapshot)
+        except LoopError as error:
+            self.pause(batch.numbers, f"The unit names a type the loop "
+                                      f"cannot load: {error}")
+            return [StageOutcome("batch", "paused", str(error))], False
+        plan_mode = config.plan
+        outcomes = []
+        if config.runs("spec"):
+            spec = yield from self._drive_gen(
+                batch, "spec",
+                self.spec_stage_gen(batch, repo, book, plan_mode))
+            outcomes.append(spec)
+            if not spec.ok:
+                return outcomes, False
+            # `spec.ran`, not `spec.ok`: on the plan-mode path the spec
+            # stage is SKIPPED — there is no change to validate — and
+            # `plan_mode_build` writes `stage:planned` at the approval
+            # instead, the one boundary that path actually has.
+            if spec.ran:
+                self.set_stage(batch.numbers, inbox.STAGE_PLANNED)
+        build = StageOutcome("build", "skipped",
+                             "the type declares no build stage")
+        if config.runs("build"):
+            build = yield from self._drive_gen(
+                batch, "build", self.build_stage_gen(batch, repo, plan_mode))
+            outcomes.append(build)
+            if not build.ok:
+                return outcomes, False
+            # `build.ran` is the deliverables check having passed, not
+            # the session's word: no commit on the branch and the stage
+            # paused.
+            if build.ran:
+                self.set_stage(batch.numbers, inbox.STAGE_BUILT)
+                # The tracker comment is the loop's — bookkeeping was
+                # never the builder's job, and the work order no longer
+                # points the session at the tracker at all.
+                sha = self.head_sha(f"build/{batch.slug}", repo)
+                for n in batch.numbers:
+                    self.tracker.comment(
+                        n, f"Built on build/{batch.slug} as {sha}.")
+        if config.runs("verify"):
+            verify = yield from self._drive_gen(
+                batch, "verify",
+                self.verify_stage_gen(batch, build, repo, plan_mode))
+            outcomes.append(verify)
+            if not verify.ok:
+                return outcomes, False
+            # `verify.ran`, not `verify.ok`: the plan-mode path skips
+            # verify while `bolt-quick` still DECLARES it, so `ok` alone
+            # would label an item verified with no session ever run.
+            if verify.ran:
+                self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
+        if config.runs("merge"):
+            yield MergeGate()
+            merge = yield from self._drive_gen(
+                batch, "merge",
+                self.merge_stage_gen(batch, repo, build, plan_mode))
+            outcomes.append(merge)
+            if merge.ran:
+                # merge_stage returns done only on ancestry git confirmed.
+                # `ran` rather than `ok` for the same reason as the three
+                # boundaries above: all four write off "did it happen",
+                # so a stage that later learns to skip cannot quietly
+                # start labelling itself.
+                self.set_stage(batch.numbers, inbox.STAGE_MERGED)
+            if merge.ok:
+                # The build pane closed at build-settle; this is the
+                # backstop reaper for whatever survived anyway — a
+                # go-fix round's pane, a predecessor loop's orphan.
+                self.close_build_pane(build, batch)
+                self.close_merged(batch.items, repo)
+                return outcomes, True
+        return outcomes, False
 
     def release_after(self, held, resolved, outcomes):
         """A batch merged mid-cycle can satisfy a held sibling's `after:`
@@ -3430,95 +3635,20 @@ class BoltLoop:
                              + ", ".join(f"#{n}" for n in batch.numbers))
             outcomes.append(StageOutcome("batch", "paused", reason))
         for batch, binding in resolved:
-            repo, book = binding[1]["repo"], binding[1].get("book")
-            paused, found = self.andon(batch.numbers)
-            if found:
-                self.pause([paused], f"A session raised the andon cord: {found.reason}")
-                self.ledger.note(f"andon on #{paused}: {found.reason}")
-                outcomes.append(StageOutcome("batch", "paused",
-                                             f"andon on #{paused}: {found.reason}"))
-                continue
-            self.flip_in_progress(batch.numbers)
-            try:
-                config = self.unit_config(batch, snapshot)
-            except LoopError as error:
-                self.pause(batch.numbers, f"The unit names a type the loop "
-                                          f"cannot load: {error}")
-                outcomes.append(StageOutcome("batch", "paused", str(error)))
-                continue
-            self.active_plan_mode = config.plan
-            if config.runs("spec"):
-                spec = self._drive(batch, "spec",
-                                   lambda: self.spec_stage(batch, repo, book))
-                outcomes.append(spec)
-                if not spec.ok:
-                    continue
-                # `spec.ran`, not `spec.ok`: on the plan-mode path the spec
-                # stage is SKIPPED — there is no change to validate — and
-                # `plan_mode_build` writes `stage:planned` at the approval
-                # instead, the one boundary that path actually has.
-                if spec.ran:
-                    self.set_stage(batch.numbers, inbox.STAGE_PLANNED)
-            build = StageOutcome("build", "skipped",
-                                 "the type declares no build stage")
-            if config.runs("build"):
-                build = self._drive(batch, "build",
-                                    lambda: self.build_stage(batch, repo))
-                outcomes.append(build)
-                if not build.ok:
-                    continue
-                # `build.ran` is the deliverables check having passed, not
-                # the session's word: no commit on the branch and the stage
-                # paused.
-                if build.ran:
-                    self.set_stage(batch.numbers, inbox.STAGE_BUILT)
-                    # The tracker comment is the loop's — bookkeeping was
-                    # never the builder's job, and the work order no longer
-                    # points the session at the tracker at all.
-                    sha = self.head_sha(f"build/{batch.slug}", repo)
-                    for n in batch.numbers:
-                        self.tracker.comment(
-                            n, f"Built on build/{batch.slug} as {sha}.")
-            if config.runs("verify"):
-                verify = self._drive(batch, "verify",
-                                     lambda: self.verify_stage(batch, build,
-                                                               repo))
-                outcomes.append(verify)
-                if not verify.ok:
-                    continue
-                # `verify.ran`, not `verify.ok`: the plan-mode path skips
-                # verify while `bolt-quick` still DECLARES it, so `ok` alone
-                # would label an item verified with no session ever run.
-                if verify.ran:
-                    self.set_stage(batch.numbers, inbox.STAGE_VERIFIED)
-            if config.runs("merge"):
-                merge = self._drive(batch, "merge",
-                                    lambda: self.merge_stage(batch, repo,
-                                                             build))
-                outcomes.append(merge)
-                if merge.ran:
-                    # merge_stage returns done only on ancestry git confirmed.
-                    # `ran` rather than `ok` for the same reason as the three
-                    # boundaries above: all four write off "did it happen",
-                    # so a stage that later learns to skip cannot quietly
-                    # start labelling itself.
-                    self.set_stage(batch.numbers, inbox.STAGE_MERGED)
-                if merge.ok:
-                    # The build pane closed at build-settle; this is the
-                    # backstop reaper for whatever survived anyway — a
-                    # go-fix round's pane, a predecessor loop's orphan.
-                    self.close_build_pane(build, batch)
-                    self.close_merged(batch.items, repo)
-                    merged += 1
-                    self._merged += 1
-                    # A merge can satisfy a held sibling's `after:` gate
-                    # RIGHT NOW. Re-splitting only at cycle start made
-                    # #68/#69 wait out the rest of the cycle plus a whole
-                    # planning pass after #67 closed mid-cycle (problem
-                    # 9). Re-evaluate against a fresh snapshot and append
-                    # the released batches to this same drive.
-                    if held:
-                        held = self.release_after(held, resolved, outcomes)
+            batch_outcomes, did_merge = run_gen(
+                self.batch_pipeline(batch, binding, snapshot))
+            outcomes.extend(batch_outcomes)
+            if did_merge:
+                merged += 1
+                self._merged += 1
+                # A merge can satisfy a held sibling's `after:` gate
+                # RIGHT NOW. Re-splitting only at cycle start made
+                # #68/#69 wait out the rest of the cycle plus a whole
+                # planning pass after #67 closed mid-cycle (problem
+                # 9). Re-evaluate against a fresh snapshot and append
+                # the released batches to this same drive.
+                if held:
+                    held = self.release_after(held, resolved, outcomes)
         result.outcomes = tuple(outcomes)
         if merged == 0:
             result.stopped = ("no batch reached the bolt branch this cycle — "

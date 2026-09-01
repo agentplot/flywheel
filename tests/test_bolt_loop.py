@@ -238,6 +238,15 @@ TREE = Path(_TREE.name)
     "Acceptance suites green on the bolt branch.\nLanding: merge\n")
 
 
+def returning(fn):
+    """Patch a `*_gen` seam with a plain value: a generator function whose
+    RETURN value is `fn(*args)` — the shape `yield from` unwraps."""
+    def gen(*args, **kw):
+        return fn(*args, **kw)
+        yield  # never reached; makes this a generator function
+    return gen
+
+
 def a_loop(tracker, runner=None, shell=None, clock=None, plan=False,
            strategy="ff", ledger=None, **overrides):
     fields = dict(slug="x", org="o", repo="r", repo_dir=str(TREE), type_name="bolt-quick",
@@ -1115,7 +1124,8 @@ class StageTest(unittest.TestCase):
             states=[WaitState.SETTLED_BLOCKED] * 12,
             reports=["a plan"] * 12)
         program = a_loop(tracker, runner=runner, plan=True)
-        program.judge_plan = lambda batch, handle, pane: ("returned", "claim #1 dropped")
+        program.judge_plan_gen = returning(
+            lambda batch, handle, pane: ("returned", "claim #1 dropped"))
         outcome = program.plan_mode_build(self.batch(1, change=None), "build-x")
         self.assertEqual(outcome.status, "paused")
         self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
@@ -1127,7 +1137,7 @@ class StageTest(unittest.TestCase):
                                 reports=["a plan", "built it"])
         program = a_loop(tracker, runner=runner, plan=True)
         verdicts = iter([("approved", "fine"), ("unreadable", "finished")])
-        program.judge_plan = lambda *a: next(verdicts)
+        program.judge_plan_gen = returning(lambda *a: next(verdicts))
         outcome = program.plan_mode_build(self.batch(1, change=None), "build-x")
         self.assertEqual(runner.keys, [("build-x", ("enter",))])
         self.assertEqual(outcome.status, "done")
@@ -1622,7 +1632,7 @@ class StageLabelTest(unittest.TestCase):
         # never returns.
         verdicts = iter([("approved", "matches the claim"),
                          ("unreadable", "finished")])
-        program.judge_plan = lambda *a: next(verdicts)
+        program.judge_plan_gen = returning(lambda *a: next(verdicts))
         program.cycle(1)
         self.assertNotIn(inbox.STAGE_VERIFIED, self.stages_written(tracker),
                          "no verify session ran, so no verify label")
