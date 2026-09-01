@@ -1,7 +1,7 @@
 {
   "name": "flywheel",
   "description": "Two coupled loops for turning intent into built code: a design loop that burns fog into decisions, and a construction loop that drives proposals to merged. They meet at one operator gate.",
-  "version": "0.16.7",
+  "version": "0.17.0",
   "author": {
     "name": "agentplot",
     "url": "https://github.com/agentplot"
