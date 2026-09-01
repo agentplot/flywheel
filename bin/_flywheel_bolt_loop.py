@@ -2411,8 +2411,12 @@ class BoltLoop:
                                 f"from {self.params.bolt_branch} in {repo}")
         # A resumed batch whose change already validates needs no spec
         # session — green is green, and re-driving one costs a session per
-        # restart for work that is provably done.
+        # restart for work that is provably done. A predecessor's finished
+        # spec pane may still stand under the deterministic name; reap it
+        # here, the way build's already-built skip reaps its pane.
         if self.change_validates(change, cwd=cwd):
+            self.runner("spec").close_named(session_name("spec-writing",
+                                                         change))
             return StageOutcome("spec", "done",
                                 "the change already validates — nothing to spec")
         name = session_name("spec-writing", change)
@@ -2646,6 +2650,10 @@ class BoltLoop:
             return StageOutcome("build", "failed",
                                 f"wt could not provide build/{batch.slug}")
         spec = self.spec_for("build", name, cwd, order, plan_mode=True)
+        # The judge flow this path used to run left a `plan-<slug>` pane
+        # per batch; the flow is gone and nothing else will ever address
+        # that name, so a resumed batch reaps its predecessor's orphan.
+        runner.close_named(session_name("plan", batch.slug))
         try:
             handle = runner.launch(spec)
         except sessions.SessionError as error:
