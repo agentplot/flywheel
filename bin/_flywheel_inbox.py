@@ -1768,7 +1768,7 @@ class Tracker:
         meta = self._project_meta()
         if not meta:
             return
-        project_id, status_field_id, item_ids = meta
+        project_id, status_field_id, item_ids, _options = meta
         item_id = item_ids.get(number)
         if not item_id:
             return
@@ -1811,7 +1811,39 @@ class Tracker:
             if not items["pageInfo"]["hasNextPage"]:
                 break
             cursor = items["pageInfo"]["endCursor"]
-        return project["id"], field["id"], item_ids
+        options = {o["name"]: o["id"] for o in field.get("options") or ()}
+        return project["id"], field["id"], item_ids, options
+
+    def set_board_status(self, number, name):
+        """Place an issue's board row at a Status option, by name.
+
+        Adds the issue to the project first when it has no row — a
+        parent filed without any board write is exactly as invisible to
+        the Backlog predicates as one parked wrong, and the placement
+        guard exists for that case. A missing project, field, or option
+        is a no-op, not an error: placement is a repair, never a gate.
+        """
+        meta = self._project_meta()
+        if not meta:
+            return False
+        project_id, field_id, item_ids, options = meta
+        option_id = options.get(name)
+        if not option_id:
+            return False
+        item_id = item_ids.get(number)
+        if not item_id:
+            raw = self._gh(self.token, "api",
+                           f"/repos/{self.org}/{self.repo}/issues/{number}")
+            content_id = (raw or {}).get("node_id")
+            if not content_id:
+                return False
+            added = self._graphql(self.token, _ADD_ITEM_MUTATION, {
+                "project": project_id, "content": content_id})
+            item_id = added["addProjectV2ItemById"]["item"]["id"]
+        self._graphql(self.token, _SET_STATUS_MUTATION, {
+            "project": project_id, "item": item_id,
+            "field": field_id, "option": option_id})
+        return True
 
     def close_issue(self, number, comment=None, reason=CLOSED_DONE):
         if reason:
@@ -1830,7 +1862,8 @@ _PROJECT_META_QUERY = """
         nodes {
           id title
           fields(first: 30) {
-            nodes { ... on ProjectV2SingleSelectField { id name } }
+            nodes { ... on ProjectV2SingleSelectField {
+              id name options { id name } } }
           }
         }
       }
@@ -1857,6 +1890,21 @@ _CLEAR_STATUS_MUTATION = """
     clearProjectV2ItemFieldValue(input: {
       projectId: $project, itemId: $item, fieldId: $field
     }) { projectV2Item { id } }
+  }"""
+
+_SET_STATUS_MUTATION = """
+  mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+    updateProjectV2ItemFieldValue(input: {
+      projectId: $project, itemId: $item, fieldId: $field,
+      value: { singleSelectOptionId: $option }
+    }) { projectV2Item { id } }
+  }"""
+
+_ADD_ITEM_MUTATION = """
+  mutation($project: ID!, $content: ID!) {
+    addProjectV2ItemById(input: {
+      projectId: $project, contentId: $content
+    }) { item { id } }
   }"""
 
 _BOARD_QUERY = """

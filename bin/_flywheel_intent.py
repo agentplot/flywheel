@@ -424,12 +424,38 @@ def wait_listed(tracker, numbers, milestone, tries=8, pause=5,
     return False
 
 
+def apply_board_place(writer, config, snapshot):
+    """An open elaboration parent with NO board Status goes to Backlog.
+
+    Every Backlog predicate — the round derivation, the server's poke,
+    the operator's own board — keys on Status, and a parent filed
+    without the board write is invisible to all of them: the willdan
+    fleet sat with five elaborations nobody's round ever carried
+    (problem 12 residual, 2026-09-01). Placement is a repair, not an
+    approval — Backlog is exactly where a filed-and-unapproved batch
+    belongs, and the operator's flip is still the only release.
+    """
+    if snapshot is None or writer.tracker is None:
+        return
+    place = getattr(writer.tracker, "set_board_status", None)
+    if place is None:
+        return
+    for batch in snapshot.batches:
+        if (batch.kind == ELABORATION and batch.status is None
+                and batch.milestone == config.milestone
+                and batch.milestone_state == "open"):
+            if writer.apply and place(batch.number, STATUS_BACKLOG):
+                writer._record("board", f"#{batch.number}",
+                               "placed at Backlog")
+
+
 def run_guards(writer, inbox, snapshot, config):
-    """All three, every cycle, in order, each idempotent. Returns its writes."""
+    """All four, every cycle, in order, each idempotent. Returns its writes."""
     mark = writer.mark()
     apply_flip_consume(writer, inbox.queued_to_flip)
     apply_ready_consume(writer, getattr(inbox, "spent_ready", ()))
     apply_compose(writer, inbox.orphan_queued, config, snapshot)
+    apply_board_place(writer, config, snapshot)
     return writer.since(mark)
 
 

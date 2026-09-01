@@ -211,6 +211,55 @@ class DryCycleTest(unittest.TestCase):
                          "and must keep producing none")
 
 
+class BoardPlaceTest(unittest.TestCase):
+    """Problem 12 residual: a parent filed without the board write is
+    invisible to every Backlog predicate — the round, the poke, the
+    board itself. The guard places it; the operator's flip still rules."""
+
+    class PlacingTracker(FakeTracker):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.placed = []
+
+        def set_board_status(self, number, name):
+            self.placed.append((number, name))
+            return True
+
+    def snap(self, status):
+        return Snapshot(
+            items=[item(9, inbox.ELABORATION)],
+            batches=[inbox.Batch(number=9, kind=inbox.ELABORATION,
+                                 status=status, milestone="intent/x")])
+
+    def test_a_statusless_open_parent_is_placed_at_backlog(self):
+        snap = self.snap(status=None)
+        tracker = self.PlacingTracker(snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        intent.apply_board_place(writer, config(apply=True), snap)
+        self.assertEqual(tracker.placed, [(9, inbox.STATUS_BACKLOG)])
+
+    def test_a_parent_already_on_the_board_is_left_alone(self):
+        for status in (inbox.STATUS_BACKLOG, inbox.STATUS_READY):
+            snap = self.snap(status=status)
+            tracker = self.PlacingTracker(snap)
+            writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+            intent.apply_board_place(writer, config(apply=True), snap)
+            self.assertEqual(tracker.placed, [], status)
+
+    def test_a_dry_run_places_nothing(self):
+        snap = self.snap(status=None)
+        tracker = self.PlacingTracker(snap)
+        writer = intent.Writer(tracker=tracker, apply=False, snapshot=snap)
+        intent.apply_board_place(writer, config(apply=False), snap)
+        self.assertEqual(tracker.placed, [])
+
+    def test_a_tracker_without_the_method_is_a_no_op(self):
+        snap = self.snap(status=None)
+        writer = intent.Writer(tracker=FakeTracker(snap), apply=True,
+                               snapshot=snap)
+        intent.apply_board_place(writer, config(apply=True), snap)  # no raise
+
+
 class ResumeInSessionTest(unittest.TestCase):
     """Problem 13: a loop killed mid-charge leaves items marked
     in-session that no session owns; every filter is blind to them, so

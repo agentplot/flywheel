@@ -226,6 +226,14 @@ Backlog rows as an **approvals** container: grouped by milestone with
 a set-all per group, routed `leave | ready | drop`, seeded `leave` —
 `ready` flips the board, `drop` closes `closed:declined` for good.
 The full trigger map is `design/dispatch-flow.md`.
+**Residual (found on live repair, 2026-09-01):** every open willdan
+elaboration parent (#13/#27/#47/#72/#74) sat at **no board Status at
+all** — never placed at Backlog by whoever filed it — and a
+no-Status parent is invisible to the Backlog predicate, exactly as
+invisible as before the fix. Repaired by hand (`flywheel-board
+--status Backlog`). Fix shape: a guard that puts an open
+elaboration/unit parent with no board Status at Backlog, so a missed
+board write degrades to a one-pass delay instead of a silent stall.
 
 ### 13. Server restarts strand `stage:in-session` ghosts
 
