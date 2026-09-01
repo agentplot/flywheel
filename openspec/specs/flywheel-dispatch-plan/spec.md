@@ -249,6 +249,14 @@ Step 5 is the one exception to an actor never moving an item to
 `state:ready`: dispatch applying the operator's explicit approval given
 in the round it ran.
 
+#### Scenario: An elaboration batch is released by Approve-as-seeded
+
+- **WHEN** a round's approvals container carries an elaboration batch at
+  Backlog and the operator approves the plan without touching its row
+- **THEN** the row applies as `ready` — the elaboration's seed — and
+  step 5 moves the batch to board Status Ready; only a `stale` card or
+  other non-elaboration row seeds `leave`
+
 #### Scenario: The loop restarts mid-apply
 
 - **WHEN** a loop process restarts after the apply's `stage:done` writes

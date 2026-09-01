@@ -187,11 +187,15 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
        milestone, title, oneliner, badge?, badgeClass?, srcId? }. Rows
        are grouped by milestone, each group headed by a set-all select
        so a whole milestone flips in one gesture (per-row selects still
-       override after). Routes leave | ready | drop, seeded LEAVE —
-       approving new work must never require touching the parked rows,
-       and an untouched row writes nothing. ready → board Status Ready
-       (releases the loop); drop → closed:declined, gone from every
-       later round. Nothing here files anything: the object exists.
+       override after). Routes leave | ready | drop. Seed READY for an
+       elaboration batch — it is on the round to be released, and
+       Approve-as-seeded must run it (five leave-seeded elaborations
+       once survived four approved rounds untouched). Seed LEAVE for
+       stale cards and every other row — approving new work must never
+       require touching the parked rows, and an untouched leave row
+       writes nothing. ready → board Status Ready (releases the loop);
+       drop → closed:declined, gone from every later round. Nothing
+       here files anything: the object exists.
      An empty context or left_out hides that section. -->
 <script id="plan-data" type="application/json">
 {

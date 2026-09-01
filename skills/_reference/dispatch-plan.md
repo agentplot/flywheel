@@ -35,10 +35,15 @@ published payload, which is genuinely new information: the label
 nominates the anchor, the marker carries the address. Backlog batches
 and cards render as an **approvals** container — derived rows over
 board objects that already exist, grouped by milestone with a set-all
-control per group, routed `leave | ready | drop` and seeded `leave` so
-an untouched row writes nothing; the apply's Ready step releases the
-`ready` rows, and approving directly on the board remains the fallback
-for a round never taken. The close-ready labels and marker the loop writes
+control per group, routed `leave | ready | drop`. An elaboration batch
+seeds `ready` — it is live design work whose whole reason for being on
+the round is release, and Approve-as-seeded must mean "run it"
+(measured live 2026-09-01: five elaborations leave-seeded survived four
+approved rounds untouched while the operator believed each Approve had
+released them). A `stale` card and every other row seeds `leave`, so an
+untouched parked row still writes nothing. The apply's Ready step
+releases the `ready` rows, and approving directly on the board remains
+the fallback for a round never taken. The close-ready labels and marker the loop writes
 remain for operator visibility (Waiting On Me) and the server's poke —
 the round does not depend on them.
 
@@ -294,10 +299,14 @@ every control. Per row, one route:
 their own three routes, because the object already exists and nothing
 is filed:
 
-- **leave** — the seed; parked as it stands, no write of any kind. The
+- **leave** — parked as it stands, no write of any kind. The seed for
+  `stale` cards and any row that is not an elaboration batch. The
   server's poke dedupe keeps an unchanged parked set from re-poking.
 - **ready** — the operator's board approval, applied at step 5:
-  `flywheel-board … --status Ready` on the batch parent or card.
+  `flywheel-board … --status Ready` on the batch parent or card. The
+  seed for an elaboration batch: the row exists to be released, and the
+  operator's Approve must release it — flipping to `leave` is the
+  deliberate act, not the accident.
 - **drop** — the operator declines the proposed work for good: close
   the card or batch parent `closed:declined` with a one-line comment.
   A dropped object is gone from every later round — the books or the
