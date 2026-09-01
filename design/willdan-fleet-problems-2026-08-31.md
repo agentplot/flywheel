@@ -253,3 +253,32 @@ feature is what gets rebased and the bolt branch is append-only. That
 also makes problem 6's ancestry checks sound again and confines a
 conflict strand to the feature worktree. Decide squash policy explicitly
 (`--no-squash` to keep per-commit history).
+
+### 16. Batches for never-specced items claim spec=done, build=done, then fail merges silently
+
+**Symptom:** #56 (`catalog-index`) and #57 (`closer-reference-first-build`)
+have no change directory in any worktree and no `build/<slug>` branch —
+yet their batches logged `spec · done · the change already validates —
+nothing to spec`, `build · done · settled` / `already built — the tree
+proves it`, then `merge · paused · merge conflict` — and **no tracker
+write of any kind landed on either item** (no pause comment, no
+needs-operator, no session comment).
+
+**Evidence against the obvious cause:** `openspec validate catalog-index
+--strict` exits 1 ("Unknown item") in the bolt worktree, in a fresh
+build worktree base, and in the blueprints repo-dir — every cwd
+`change_validates` (bin/_flywheel_bolt_loop.py:1171) could plausibly use.
+So the short-circuit at :2224 fired on something else — suspects: the
+loop's `shell()` failing in a way that reads as returncode 0 in its
+environment, or batch.change resolving to a different name than the
+item's `Change:` line. The silent pauses (no comment/label) suggest the
+same write path failed too.
+
+**Why it matters:** a ready item can sit forever "in progress" with the
+loop believing it is built, while nothing was ever created — invisible
+unless someone greps branches.
+
+**Fix shape:** reproduce with the loop's own environment; make
+`change_validates` fail closed only on a *validated* change (distinguish
+"invalid" from "unknown"/command failure); make `pause()` failures loud;
+assert a `build/<slug>` branch exists before `build=done` can be claimed.
