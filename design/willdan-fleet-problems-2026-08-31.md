@@ -212,3 +212,16 @@ live roster; re-charge or reset stale ones.
   (`spec-writing-zudoku-portal-deplo`, `build-switchboard-edge-through-f`)
   — harmless today, but name-based reaping (fix 1) must match on the
   truncated form the roster actually carries.
+
+### 14. Backoff holds outlive the operator's unpause
+
+**Symptom:** after the operator repaired a paused batch (labels cleared,
+branch merged by hand), the four affected panes sat idle for minutes —
+the server was `holding 55s/119s — it exited with the tracker unchanged`
+from the *previous* run and could not see that the tracker had changed.
+
+**Fix shape:** the hold's purpose is to avoid re-driving unchanged
+paused work, so key it to tracker state: re-snapshot before honoring a
+hold, or clear the hold when the snapshot differs from the one the held
+run exited on (cheap: compare the needs-operator set and updated-at
+cursors).
