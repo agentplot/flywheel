@@ -4,8 +4,9 @@ One day of driving `bolt/switchboard-stage1` (WilldanGroup, tracker
 `willdan-blueprints`, built repo `switchboard-kit`) through real
 construction surfaced the problems below. Each entry is written to task
 an agent: symptom, evidence, root cause where established, and the fix
-shape. 1–5 and 15 are fixed on this repo's `main` (1 with an open
-residual); the rest are open.
+shape. 1–15 are fixed on this repo's `main` (1 with an open residual:
+guard-closed items skip the pane reaper); 16 is open. Running loops
+pick fixes up on their next server respawn.
 
 The operating context that shaped all of them: the org uses per-unit
 `Type: bolt-direct` (no verify stage), `wt merge` (worktrunk) as the
@@ -119,7 +120,7 @@ for long-reporting sessions.
 
 ---
 
-## Open — guard and tracker semantics
+## Guard and tracker semantics
 
 ### 6. Stage derivation uses SHA ancestry; wt's rebase-merges break it
 
@@ -129,13 +130,12 @@ merged — `git cherry` shows every branch commit patch-equivalent on the
 bolt branch, but the SHAs were rewritten by the rebase, so
 `merge-base --is-ancestor` says unmerged.
 
-**Fix shape:** derive merged-ness by patch-id (`git cherry` /
-`git patch-id`) or by the recorded merge evidence, not raw ancestry.
-Largely defused by 15's fix (`f73f47c9`): the merge now rebases the
-feature, not the bolt branch, and `--no-squash` lands branch commits
-as themselves — SHAs are only rewritten on the feature side before
-they land. Keep open until a live day confirms no more spurious
-demotions.
+**Fixed:** `f73f47c9` defused the cause (the merge rebases the
+feature, not the bolt branch; `--no-squash` lands commits as
+themselves), and `2afb194e` closed the remainder: a green merge
+records `refs/flywheel/merged/<branch>` (durable witness), and
+`batch_merged` answers witness-first, then ancestry, then `git cherry`
+patch-equivalence — all three callers inherit it.
 
 ### 7. An item carrying `needs-operator` can still be auto-closed
 
@@ -143,8 +143,10 @@ demotions.
 while it carried `needs-operator` and its build session had explicitly
 held half the work on an andon. The operator had to reopen it.
 
-**Fix shape:** `needs-operator` (and an unanswered andon) must block
-close/merge bookkeeping for that item, full stop.
+**Fixed:** `2afb194e` — `close_merged` skips any item carrying
+`needs-operator` or an unanswered andon, the same check the landing
+already made. Pinned by `MergeCloseTest`'s needs-operator and andon
+counter-cases.
 
 ### 8. Andons raised from built-repo worktrees never reach the tracker
 
@@ -154,23 +156,28 @@ nothing, so the operator discovered them by reading panes. One session
 also reported it could not comment on its own item from the
 switchboard-kit worktree.
 
-**Two halves:** (a) org App installations must include every built repo
-(operator action, but `flywheel-setup` could verify and warn); (b) the
-loop should collect an andon block from a settled session's output and
-post it to the item itself — the session should not need tracker access
-for its andon to count.
+**Fixed:** `2afb194e`, both halves — (a) `flywheel-setup --built-repo`
+checks each built repo against the App installation and warns on a
+miss; (b) `settle()` parses the andon marker out of the settled pane's
+collect, posts the canonical `format_andon` to the item, and pauses
+the batch — tracker-as-truth for idempotence, so an already-posted or
+operator-ANSWERED andon in scrollback never re-posts or re-pauses. The
+construction profile now says the report marker counts.
 
 ### 9. Batch dependencies are snapshotted at cycle start
 
 **Symptom:** #67 closed mid-cycle; #68/#69 (`after: 1` on it) still
 waited out the rest of that cycle plus the whole next planning pass.
 
-**Fix shape:** re-evaluate `after:` gates when a batch completes within
-the cycle, or at least at merge bookkeeping time.
+**Fixed:** `16962147` — every merged batch re-splits the held set
+against a fresh snapshot (`release_after`) and appends the released
+batches to the same drive; the sibling runs in the cycle its blocker
+merges. Pinned by
+`test_a_mid_cycle_merge_releases_a_held_after_sibling_same_cycle`.
 
 ---
 
-## Open — fleet and setup
+## Fleet and setup
 
 ### 10. Per-org credentials live only under `dispatch.env`
 
@@ -179,8 +186,13 @@ willdan bolt planner had to read `fleet.yaml`'s `dispatch.env` block to
 find `FLYWHEEL_GH_APP_ID=4562912` / the pem path. Every non-dispatch
 actor repeats this.
 
-**Fix shape:** hoist credentials to a fleet-level block (`fleet.env` or
-per-org `credentials:`), resolved by every actor the manifest launches.
+**Fixed:** `29474f2f` — fleet.yaml's top-level `credentials:` block,
+exported by the server at the socket seam (daemon + loop processes +
+in-process tracker calls) and written to
+`~/.config/flywheel/orgs/<org>.env`, which `flywheel-token --org`
+sources as an overlay — a session in any worktree mints the right
+org's token. **Operator action:** move willdan's `FLYWHEEL_GH_*` out
+of `dispatch.env` into `credentials:` and restart the fleet.
 
 ### 11. `flywheel-setup` doesn't converge Project views
 
@@ -193,11 +205,13 @@ Waiting On Me / In Flight / Landed / Bolt Unit Tracker / Intent
 Elaboration Tracker (tables), filters copied from the agentplot
 template project.
 
-**Fix shape:** add view convergence to `flywheel-setup` using the
-template project's view set as the source of truth. Also:
-`linkProjectV2ToRepository` needs a permission the App lacks
-(`Resource not accessible by integration`) — either add the permission
-to the App manifest or document the one manual click.
+**Fixed:** `29474f2f` — `ensure_views` converges the project's views
+on the template's set by name (create by name+layout, converge
+filters; layouts/renames left to the operator), on both the
+fresh-copy and pre-existing paths; mutation shapes verified against
+the live schema and the board-surface spec amended. The
+`linkProjectV2ToRepository` permission gap was already a documented
+soft-skip in `ensure_link`; the one manual click stands documented.
 
 ### 12. Backlog batches aren't delivered to dispatch
 
@@ -205,13 +219,25 @@ The drafted issue body exists in the willdan operator session's
 scratchpad (`backlog-nudge-issue.md`): plan cards parked at Backlog
 never surface in a round unless the operator notices them.
 
+**Fixed:** `1b406685` — `dispatch_inbox` gains a `round` queue (the
+same Backlog predicate as `round_inbox`), the server pokes dispatch on
+it with the standard dedupe, and the plan surface renders derived
+Backlog rows as an **approvals** container: grouped by milestone with
+a set-all per group, routed `leave | ready | drop`, seeded `leave` —
+`ready` flips the board, `drop` closes `closed:declined` for good.
+The full trigger map is `design/dispatch-flow.md`.
+
 ### 13. Server restarts strand `stage:in-session` ghosts
 
 **Symptom:** loops killed mid-charge leave items marked in-session that
 no session owns; the operator reset #24/#25 by hand early in the day.
 
-**Fix shape:** on loop start, re-derive in-session items against the
-live roster; re-charge or reset stale ones.
+**Fixed:** `16962147` — `resume_in_session` runs before collection on
+every intent-loop cycle: an open item at in-progress + in-session
+whose dispatch-marker session is GONE from the roster is reset to
+ready (stage dropped, comment says why); the next cycle redispatches,
+resuming the conversation by its deterministic id. Live sessions and
+operator-touched items are left alone.
 
 ---
 
@@ -239,11 +265,12 @@ branch merged by hand), the four affected panes sat idle for minutes —
 the server was `holding 55s/119s — it exited with the tracker unchanged`
 from the *previous* run and could not see that the tracker had changed.
 
-**Fix shape:** the hold's purpose is to avoid re-driving unchanged
-paused work, so key it to tracker state: re-snapshot before honoring a
-hold, or clear the hold when the snapshot differs from the one the held
-run exited on (cheap: compare the needs-operator set and updated-at
-cursors).
+**Fixed:** `16962147` — the hold's fingerprint is the job reason PLUS
+a milestone tracker digest (item number/state/labels + board status)
+from the snapshot the pass already holds; an operator repair the
+reason string cannot see releases the hold next pass. The planner
+hold is fingerprinted over its cards' number/status/staleness the same
+way.
 
 ### 15. The loop runs `wt merge` in the inverted direction
 
