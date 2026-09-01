@@ -701,6 +701,23 @@ class AnalyseTest(unittest.TestCase):
         self.assertLessEqual(len(name), sessions.MAX_NAME)
         self.assertTrue(name.startswith("spec-writing-"))
 
+    def test_two_long_slugs_with_one_prefix_do_not_collapse_into_one_name(self):
+        # The name is what reuse, resume and reaping all key on. A plain
+        # right-cut collapsed `switchboard-edge-through-frontend` and
+        # `switchboard-edge-through-fastly` into the same truncated name —
+        # one batch's launch would adopt the other's pane.
+        first = loop.session_name("build", "switchboard-edge-through-frontend")
+        second = loop.session_name("build", "switchboard-edge-through-fastly")
+        self.assertNotEqual(first, second)
+        for name in (first, second):
+            self.assertLessEqual(len(name), sessions.MAX_NAME)
+            self.assertTrue(name.startswith("build-"))
+
+    def test_a_truncated_name_is_still_deterministic(self):
+        slug = "switchboard-edge-through-frontend"
+        self.assertEqual(loop.session_name("build", slug),
+                         loop.session_name("build", slug))
+
 
 # ---------------------------------------------------------------------------
 # The cycle — STOP, halt, and the ready set
@@ -797,6 +814,37 @@ class StageTest(unittest.TestCase):
         self.assertEqual(outcome.status, "done")
         self.assertNotIn(("remove_label", 1, inbox.NEEDS_OPERATOR),
                          tracker.writes)
+
+    def test_a_built_batch_closes_its_pane_at_settle_not_at_merge(self):
+        # Close at settle, resume on demand: the session stays resumable by
+        # its deterministic id and `go_fix` already handles a gone pane. A
+        # pane parked warm until the merge bought nothing but a day of "why
+        # is that done session still open" (willdan fleet, 2026-08-31).
+        counts = iter([Result(0, "0\n")])
+        shell = FakeShell({("git", "rev-list"):
+                           lambda: next(counts, Result(0, "3\n"))})
+        runner = ScriptedRunner()
+        outcome = a_loop(FakeTracker(), runner=runner, shell=shell).build_stage(
+            self.batch(1))
+        self.assertEqual(outcome.status, "done")
+        self.assertIn("build-add-thing", runner.closed)
+        self.assertIsNone(outcome.handle,
+                          "no later stage may whisper to a closed pane")
+
+    def test_a_red_gate_with_a_closed_pane_resumes_the_build_session(self):
+        # The other half of close-at-settle: the merge gate's refix must
+        # come back as a relaunch under the deterministic name, carrying
+        # the gate's output, not as a pause.
+        results = iter([Result(1, "gate: the books check failed"), Result(0)])
+        shell = FakeShell({("wt", "merge"): lambda: next(results),
+                           ("git", "merge-base"): Result(0)})
+        runner = ScriptedRunner()
+        build = loop.StageOutcome("build", "done")   # pane closed at settle
+        outcome = a_loop(FakeTracker(), runner=runner, shell=shell).merge_stage(
+            self.batch(1), build=build)
+        self.assertEqual(outcome.status, "done", "green on the retry")
+        self.assertEqual(runner.launched[0].name, "build-add-thing")
+        self.assertIn("the books check failed", runner.launched[0].order)
 
     def build_handle(self):
         return loop.StageOutcome("build", "done", handle=sessions.SessionHandle(
@@ -1012,9 +1060,18 @@ class StageTest(unittest.TestCase):
             self.batch(1))
         self.assertEqual(outcome.status, "done")
         self.assertEqual(runner.launched, [], "no merge session exists")
-        self.assertTrue(any(a[:4] == ("wt", "merge", "build/add-thing",
-                                      "--no-remove")
+        # Problem 15 (willdan fleet): the merge runs FROM the build worktree
+        # with the bolt branch as target — the feature is what gets rebased
+        # and the integration line stays append-only. --no-squash keeps the
+        # branch commits landing as themselves, which is what keeps
+        # ancestry-based merged-ness sound.
+        self.assertTrue(any(a[:5] == ("wt", "merge", "bolt/x",
+                                      "--no-squash", "--no-remove")
                             for a, _ in shell.calls))
+        self.assertFalse(any(a[:2] == ("wt", "merge")
+                             and "build/add-thing" in a
+                             for a, _ in shell.calls),
+                         "the build branch is never the merge TARGET")
 
     def test_a_red_gate_goes_back_to_the_build_session_with_the_output(self):
         results = iter([Result(1, "gate: the books check failed"), Result(0)])
@@ -1330,9 +1387,10 @@ class StageLabelTest(unittest.TestCase):
                          ["spec", "build", "merge"])
 
     def test_a_bolt_direct_merge_reaps_the_build_pane(self):
-        # With no verify stage the merge is the build conversation's end —
-        # the only close site this type reaches. Without it every builder
-        # pane leaks (the panes Chuck kept finding open, 2026-08-31).
+        # The pane closes at build-settle now; the merge keeps its close as
+        # the backstop reaper — a go-fix round's pane, a predecessor loop's
+        # orphan. Either way a bolt-direct cycle must end with the builder
+        # closed (the panes Chuck kept finding open, 2026-08-31).
         snapshot = self.a_ready_item()
         tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})
         program = self.direct(tracker)

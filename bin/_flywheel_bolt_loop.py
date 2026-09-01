@@ -846,8 +846,16 @@ def after_split(snapshot, items):
 
 def session_name(prefix, slug):
     """`<type>-<topic>`, capped where herdr caps it. The name IS the
-    classification, so the type prefix is never the part that gets cut."""
-    return f"{prefix}-{slug}"[:sessions.MAX_NAME]
+    classification, so the type prefix is never the part that gets cut —
+    and when the topic must be cut, its tail becomes a short digest of the
+    full name rather than vanishing: two slugs that agree for 27
+    characters (`switchboard-edge-through-f…`) must not collapse into one
+    name, because the name is what reuse, resume and reaping all key on."""
+    name = f"{prefix}-{slug}"
+    if len(name) <= sessions.MAX_NAME:
+        return name
+    digest = hashlib.sha1(name.encode()).hexdigest()[:4]
+    return f"{name[:sessions.MAX_NAME - 5]}-{digest}"
 
 
 # ---------------------------------------------------------------------------
@@ -2290,6 +2298,11 @@ class BoltLoop:
                      / "openspec" / "changes" / change / "tasks.md")
             unchecked = tasks.exists() and "- [ ]" in tasks.read_text()
             if not unchecked:
+                # A respawned loop may find its predecessor's finished
+                # build pane still open under the deterministic name;
+                # reap it here rather than waiting for the merge (guarded
+                # — a still-working pane is left alone).
+                self.close_build_pane(None, batch)
                 return StageOutcome("build", "done",
                                     "already built — the tree proves it")
         if self.active_plan_mode:
@@ -2318,6 +2331,15 @@ class BoltLoop:
                                     change=None if self.active_plan_mode else change)
         if missing:
             outcome = self.reprompt_deliverables(batch, outcome, missing, repo)
+        if outcome.ok:
+            # The build settled with its deliverables — the pane closes NOW,
+            # not at the merge. The session stays resumable by its
+            # deterministic id, and every later word to it (`go_fix`, a red
+            # merge gate) already handles a gone pane by resuming the same
+            # conversation fresh. A warm pane bought nothing but a day of
+            # "why is that done session still open".
+            self.close_build_pane(outcome, batch)
+            outcome.handle = None
         return outcome
 
     def reprompt_deliverables(self, batch, outcome, missing, repo=None):
@@ -2695,10 +2717,26 @@ class BoltLoop:
             return StageOutcome("merge", "failed",
                                 f"wt could not provide {self.params.bolt_branch} "
                                 f"in {repo}")
+        build_worktree = self.batch_worktree(batch, repo)
+        if build_worktree is None:
+            return StageOutcome("merge", "failed",
+                                f"wt could not provide {branch} in {repo}")
         output = ""
         for attempt in range(MAX_FIX_ROUNDS + 1):
-            proc = self.shell(["wt", "merge", branch, "--no-remove"],
-                              cwd=bolt_worktree)
+            # `wt merge`'s contract is "merge the CURRENT branch into
+            # TARGET — squash & rebase, fast-forward the target". Run from
+            # the bolt worktree, it rebased the BOLT branch onto the
+            # feature: the integration line was rewritten at every landing,
+            # rebases grew with the branch, and a conflict stranded the
+            # shared bolt worktree. So it runs from the build worktree with
+            # the bolt branch as target — the feature is what gets rebased
+            # and the bolt branch stays append-only. `--no-squash` keeps
+            # the branch commits landing as themselves, which is what keeps
+            # ancestry-based merged-ness checks sound; `--no-remove` keeps
+            # the worktree, whose branch the guard still re-derives from.
+            proc = self.shell(["wt", "merge", self.params.bolt_branch,
+                               "--no-squash", "--no-remove"],
+                              cwd=build_worktree)
             if proc.returncode == 0:
                 break
             output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
@@ -2707,9 +2745,11 @@ class BoltLoop:
                 # strand the worktree mid-rebase on a detached HEAD — where
                 # merge --abort is a no-op and every later batch's merge
                 # red-gates on "not on a branch". Abort both; each is a
-                # harmless no-op when its operation is not in progress.
-                self.shell(["git", "rebase", "--abort"], cwd=bolt_worktree)
-                self.shell(["git", "merge", "--abort"], cwd=bolt_worktree)
+                # harmless no-op when its operation is not in progress. The
+                # strand now lands in the FEATURE worktree — the shared
+                # bolt worktree stays clean either way.
+                self.shell(["git", "rebase", "--abort"], cwd=build_worktree)
+                self.shell(["git", "merge", "--abort"], cwd=build_worktree)
                 self.pause(batch.numbers, (
                     f"The merge of {branch} hit conflicts — a sibling moved "
                     f"under it. The loop aborted the merge and paused the "
@@ -3336,10 +3376,9 @@ class BoltLoop:
                     # start labelling itself.
                     self.set_stage(batch.numbers, inbox.STAGE_MERGED)
                 if merge.ok:
-                    # The merged batch needs its builder no more — on types
-                    # with a verify stage the pane closed there and this is
-                    # a no-op; on the rest (and after a loop restart ate the
-                    # handle) this is the only reaper.
+                    # The build pane closed at build-settle; this is the
+                    # backstop reaper for whatever survived anyway — a
+                    # go-fix round's pane, a predecessor loop's orphan.
                     self.close_build_pane(build, batch)
                     self.close_merged(batch.items, repo)
                     merged += 1

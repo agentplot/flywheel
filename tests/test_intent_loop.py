@@ -120,6 +120,9 @@ class ScriptedRunner:
     def close(self, handle):
         self.closed.append(handle.name)
 
+    def close_named(self, name):
+        self.closed.append(name)
+
 
 class Clock:
     def __init__(self, now=1000.0):

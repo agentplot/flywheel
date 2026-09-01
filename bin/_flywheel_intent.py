@@ -59,7 +59,7 @@ from _flywheel_inbox import (CLOSED_DONE, ELABORATION, INTENT_PREFIX,  # noqa: E
                              find_andon, intent_inbox, set_needs_operator,
                              set_stage, unblocked)
 from _flywheel_ledger import NullLedger
-from _flywheel_sessions import (MAX_NAME, SessionHandle, SessionSpec,
+from _flywheel_sessions import (MAX_NAME, SessionSpec,
                                 WaitState, runner_for,
                                 supervise, work_order)
 
@@ -1108,7 +1108,11 @@ def merge_resumed(inbox, writer, runner, config, snapshot, report, collected):
                              f"merge for the {kind} session.",)
         if runner is not None:
             try:
-                runner.close(SessionHandle(name=name, runner="herdr"))
+                # By NAME: this path runs in a process that never launched
+                # the pane, so a synthesized handle carries no tab_id and a
+                # `close(handle)` on it was a silent no-op — the pane it
+                # meant to reap stayed open forever.
+                runner.close_named(name)
             except Exception:            # a pane already gone is not a fault
                 pass
 

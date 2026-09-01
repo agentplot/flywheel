@@ -120,9 +120,11 @@ is the practice shared by every stage the loop does run:
   specced — the type is the scrutiny the operator chose at
   approval, and an unknown type pauses the batch rather than running
   a downgraded loop.
-- **Merging**: session branch to bolt branch through the gate
-  (`wt merge <bolt-branch> --no-remove -C <worktree>`, never
-  `--yes`). At that merge-back the loop closes each item
+- **Merging**: session branch to bolt branch through the gate, run
+  from the build worktree so the feature is what gets rebased and the
+  bolt branch stays append-only
+  (`wt merge <bolt-branch> --no-squash --no-remove -C <worktree>`,
+  never `--yes`). At that merge-back the loop closes each item
   `closed:merged` with the merge SHA — which is what checks it off on
   its unit parent's native bar. Bolt branch to main through the merge
   gate, one
