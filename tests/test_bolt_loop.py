@@ -748,6 +748,47 @@ class CycleTest(unittest.TestCase):
         result = a_loop(FakeTracker(snapshot)).cycle(1)
         self.assertIn("blocked", result.stopped)
 
+    def test_an_andon_in_the_pane_reaches_the_tracker_and_pauses(self):
+        # Problem 8 (willdan fleet): two well-formed andons sat in panes
+        # while their items showed nothing — the session could not reach
+        # the tracker from the built-repo worktree. The loop reads the
+        # marker out of the settled pane, posts the canonical form to
+        # the item itself, and pauses the batch.
+        snapshot = Snapshot(items=[item(1, inbox.READY, change="add-thing")],
+                            milestone="bolt/x")
+        tracker = FakeTracker(snapshot)
+        runner = ScriptedRunner(reports=[
+            "Work held.\n" + inbox.format_andon("the spec contradicts D4")]
+            * 4)
+        result = a_loop(tracker, runner=runner).cycle(1)
+        posted = [w for w in tracker.writes if w[0] == "comment"
+                  and inbox.ANDON_OPEN in w[2]]
+        self.assertEqual(len(posted), 1, "the canonical marker, once")
+        self.assertIn("the spec contradicts D4", posted[0][2])
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+        self.assertIn("paused", [o.status for o in result.outcomes])
+
+    def test_an_answered_andon_in_scrollback_does_not_re_pause(self):
+        # A resumed pane's scrollback can still show an andon the
+        # operator already answered on the item (#166's shape by a new
+        # route): the tracker is the truth, and no re-post, no re-pause.
+        snapshot = Snapshot(items=[item(1, inbox.READY, change="add-thing")],
+                            milestone="bolt/x")
+        tracker = FakeTracker(snapshot, comments={1: [
+            {"body": inbox.format_andon("the spec contradicts D4")},
+            {"body": inbox.ANDON_ANSWERED + "\nProceed; D4 is superseded."},
+            {"body": "built it"}]})
+        runner = ScriptedRunner(reports=[
+            "scrollback\n" + inbox.format_andon("the spec contradicts D4")]
+            * 4)
+        shell = FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                           ("git", "merge-base"): Result(0)})
+        result = a_loop(tracker, runner=runner, shell=shell).cycle(1)
+        posted = [w for w in tracker.writes if w[0] == "comment"
+                  and inbox.ANDON_OPEN in w[2]]
+        self.assertEqual(posted, [], "the tracker already carries it")
+        self.assertNotIn("paused", [o.status for o in result.outcomes])
+
     def test_a_mid_cycle_merge_releases_a_held_after_sibling_same_cycle(self):
         # Problem 9 (willdan fleet): #67 closed mid-cycle; #68/#69
         # (`after:` on it) still waited out the rest of that cycle plus
@@ -1106,6 +1147,27 @@ class StageTest(unittest.TestCase):
                              for a, _ in shell.calls),
                          "the build branch is never the merge TARGET")
 
+    def test_a_green_merge_records_its_durable_witness_ref(self):
+        # Problem 6's durable half: the witness survives the SHA rewrite
+        # a later restart's ancestry read would trip on.
+        class MergeAware(FakeShell):
+            def __call__(self, argv, cwd=None, env=None, timeout=None):
+                if tuple(argv[:2]) == ("git", "merge-base"):
+                    self.calls.append((tuple(argv), cwd))
+                    merged = any(a[:2] == ("wt", "merge")
+                                 for a, _ in self.calls)
+                    return Result(0 if merged else 1)
+                return super().__call__(argv, cwd=cwd, env=env,
+                                        timeout=timeout)
+        shell = MergeAware({("git", "rev-parse"): Result(0, "abc1234\n")})
+        outcome = a_loop(FakeTracker(), shell=shell).merge_stage(self.batch(1))
+        self.assertEqual(outcome.status, "done")
+        self.assertTrue(any(
+            a[:3] == ("git", "update-ref",
+                      "refs/flywheel/merged/build/add-thing")
+            for a, _ in shell.calls),
+            "a green merge records its durable witness ref")
+
     def test_a_red_gate_goes_back_to_the_build_session_with_the_output(self):
         results = iter([Result(1, "gate: the books check failed"), Result(0)])
         shell = FakeShell({("wt", "merge"): lambda: next(results),
@@ -1295,6 +1357,42 @@ class StageLabelTest(unittest.TestCase):
             self.in_flight(inbox.STAGE_MERGED), self.shell(ancestor=1),
             seed=[inbox.IN_PROGRESS, inbox.STAGE_MERGED])
         self.assertIn(("remove_label", 1, inbox.STAGE_MERGED), tracker.writes)
+        self.assertIn(("add_label", 1, inbox.STAGE_BUILT), tracker.writes)
+
+    def test_patch_equivalent_commits_prevent_the_merged_demotion(self):
+        # Problem 6 (willdan fleet): wt's rebase-merge rewrites SHAs, so
+        # ancestry says "unmerged" about genuinely merged work and the
+        # guard demoted #54 merged -> built. git cherry answers by
+        # patch-id, which survives the rewrite: no `+` line, merged.
+        shell = self.reshell(ancestor=1)
+        shell.answers[("git", "cherry")] = Result(0, "- abc123\n- def456\n")
+        tracker, actions = self.reconcile(
+            self.in_flight(inbox.STAGE_MERGED), shell,
+            seed=[inbox.IN_PROGRESS, inbox.STAGE_MERGED])
+        self.assertNotIn(("remove_label", 1, inbox.STAGE_MERGED),
+                         tracker.writes)
+
+    def test_a_recorded_merge_witness_prevents_the_demotion(self):
+        # The durable half: merge_stage records refs/flywheel/merged on
+        # green, and a witness matching the branch tip outranks ancestry.
+        shell = self.reshell(ancestor=1)
+        shell.answers[("git", "show-ref")] = Result(0, "abc1234\n")
+        tracker, actions = self.reconcile(
+            self.in_flight(inbox.STAGE_MERGED), shell,
+            seed=[inbox.IN_PROGRESS, inbox.STAGE_MERGED])
+        self.assertNotIn(("remove_label", 1, inbox.STAGE_MERGED),
+                         tracker.writes)
+
+    def test_unmerged_new_commits_still_demote(self):
+        # A `+` line means a branch commit with no patch-equivalent on
+        # the bolt branch — real unmerged work, and the demotion stands.
+        shell = self.reshell(ancestor=1)
+        shell.answers[("git", "cherry")] = Result(0, "- abc123\n+ new789\n")
+        tracker, actions = self.reconcile(
+            self.in_flight(inbox.STAGE_MERGED), shell,
+            seed=[inbox.IN_PROGRESS, inbox.STAGE_MERGED])
+        self.assertIn(("remove_label", 1, inbox.STAGE_MERGED),
+                      tracker.writes)
         self.assertIn(("add_label", 1, inbox.STAGE_BUILT), tracker.writes)
 
     def test_verified_is_never_walked_back_because_git_cannot_witness_it(self):
@@ -2146,14 +2244,45 @@ class MergeCloseTest(unittest.TestCase):
                             if w[0] == "close"))
 
     def test_every_work_item_closes_whatever_labels_it_carries(self):
-        # Expansion-born items carry no type label; no carve-out exempts an
-        # item from its merge close.
+        # Expansion-born items carry no type label; no TYPE carve-out
+        # exempts an item from its merge close. (A live wait is the one
+        # thing that does — the tests below.)
         tracker = FakeTracker()
         program = a_loop(tracker, shell=self.shell())
         program.close_merged([
             item(1, inbox.IN_PROGRESS),
             item(5, inbox.IN_PROGRESS, title="an expansion-born item")])
         self.assertEqual(sorted(n for n, _ in tracker.reasons), [1, 5])
+
+    def test_needs_operator_blocks_the_merge_close(self):
+        # Problem 7 (willdan fleet): #66 was closed closed:merged while
+        # carrying needs-operator with half its work held on an andon —
+        # the operator had to reopen it. A live wait blocks bookkeeping.
+        tracker = FakeTracker()
+        tracker.add_label(1, inbox.NEEDS_OPERATOR)
+        tracker.writes.clear()
+        closed = a_loop(tracker, shell=self.shell()).close_merged([
+            item(1, inbox.IN_PROGRESS, inbox.NEEDS_OPERATOR),
+            item(2, inbox.IN_PROGRESS)])
+        self.assertEqual(closed, [2], "the waited-on item stays open")
+        self.assertNotIn(1, tracker.closed)
+
+    def test_an_unanswered_andon_blocks_the_merge_close(self):
+        tracker = FakeTracker(comments={1: [{
+            "body": inbox.format_andon("half the work is held")}]})
+        closed = a_loop(tracker, shell=self.shell()).close_merged([
+            item(1, inbox.IN_PROGRESS)])
+        self.assertEqual(closed, [])
+        self.assertNotIn(1, tracker.closed)
+
+    def test_an_answered_andon_no_longer_blocks_the_close(self):
+        tracker = FakeTracker(comments={1: [
+            {"body": inbox.format_andon("half the work is held")},
+            {"body": inbox.ANDON_ANSWERED + "\nProceed as built."}]})
+        closed = a_loop(tracker, shell=self.shell()).close_merged([
+            item(1, inbox.IN_PROGRESS)])
+        self.assertEqual(closed, [1],
+                         "an answered andon is a resolved wait")
 
     def test_a_full_cycle_merges_and_closes_in_one_go(self):
         snapshot = Snapshot(items=[item(1, inbox.READY,

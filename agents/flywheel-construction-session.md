@@ -51,9 +51,12 @@ a design-level finding is queued for the intent, not fixed in place.
 THE ANDON CORD — if the work has gone wrong in a way no further round
 inside your batch will fix (the spec contradicts the decision it cites,
 the tree contradicts the spec), stop, hold the batch, and report. Raise
-it as the structured marker in your item comment — the form is in the
-plugin's `skills/_reference/tracker.md`. The loop recognizes that marker
-as code and will not read a stop out of your prose, so a report alone
+it as the structured marker — the form is in the plugin's
+`skills/_reference/tracker.md` — in your item comment when the tracker
+is reachable, and in your final report either way: the loop reads the
+marker out of your settled pane and posts it to the item itself, so a
+built-repo worktree with no tracker access still stops the line. The
+loop recognizes only the marker, never prose, so a report without it
 holds nothing. Stopping on a defect is expected behaviour.
 
 THE FINDING-ROUTING RULE — a finding goes in your report and nowhere

@@ -141,6 +141,35 @@ def graphql(token, query, variables=None):
     return data["data"]
 
 
+def check_app_repos(token, org, repos):
+    """Warn on every repo the org's App installation cannot see.
+
+    A build session in a built-repo worktree authenticates as the App;
+    a repo outside the installation cannot be commented on from there,
+    so andons and reports silently go nowhere (problem 8a, willdan
+    fleet). Best-effort and advisory: the check needs the installation
+    endpoint, which the token may not be allowed to read — that reads
+    as "unverifiable", never as a failure."""
+    warnings = []
+    for repo in sorted(set(repos)):
+        proc = subprocess.run(
+            ["gh", "api", f"/repos/{org}/{repo}/installation"],
+            env=dict(os.environ, GH_TOKEN=token),
+            capture_output=True, text=True)
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip()
+            if "404" in err or "Not Found" in err:
+                warnings.append(
+                    f"{org}/{repo}: the App is NOT installed — sessions "
+                    f"working its worktrees cannot comment or raise "
+                    f"andons on the tracker. Add the repo to the App "
+                    f"installation.")
+            else:
+                warnings.append(f"{org}/{repo}: installation unverifiable "
+                                f"({err.splitlines()[0] if err else 'no detail'})")
+    return warnings
+
+
 def ensure_labels(token, org, repo):
     existing = {
         l["name"]
@@ -321,6 +350,11 @@ def main():
                          "project is missing; built by hand once per org")
     ap.add_argument("--team", action="append", default=None,
                     help="Team option; repeatable (default: flywheel)")
+    ap.add_argument("--built-repo", action="append", default=None,
+                    metavar="NAME", dest="built_repos",
+                    help="built repo the fleet's sessions work in; "
+                         "repeatable — each is checked against the App "
+                         "installation and a miss is warned, not failed")
     args = ap.parse_args()
 
     token = os.environ.get("GH_TOKEN")
@@ -345,6 +379,13 @@ def main():
 
     made = ensure_fields(token, project_id, args.team or ["flywheel"])
     print("fields: " + ("; ".join(made) if made else "all present"))
+
+    checked = [args.repo, *(args.built_repos or [])]
+    warned = check_app_repos(token, args.org, checked)
+    for line in warned:
+        print(f"WARNING: {line}")
+    if not warned:
+        print(f"app installation: covers {', '.join(sorted(set(checked)))}")
 
 
 if __name__ == "__main__":

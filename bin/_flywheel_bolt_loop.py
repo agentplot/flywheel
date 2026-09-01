@@ -1135,20 +1135,66 @@ class BoltLoop:
             return False
         return self._any_commits(f"{base}..{branch}", cwd=repo)
 
+    def record_merged(self, branch, repo):
+        """Green merge, recorded where git keeps durable facts — the
+        `record_base` pattern at the other end of the branch's life. The
+        witness is what survives rebases: `wt merge` rewrites the
+        feature's SHAs on the way in, so a restarted loop's ancestry
+        read can say "unmerged" about work that landed (#54's demotions,
+        problem 6). The ref pins the tip that was merged."""
+        sha = (self.git("rev-parse", branch, cwd=repo).stdout or "").strip()
+        if sha:
+            self.git("update-ref", f"refs/flywheel/merged/{branch}", sha,
+                     cwd=repo)
+
+    def merge_witnessed(self, branch, repo):
+        """Does the recorded merge witness still match the branch tip?
+        A branch that moved past its witness has new work — the witness
+        is spent, never a blanket answer."""
+        ref = self.git("show-ref", "--hash", "--verify",
+                       f"refs/flywheel/merged/{branch}", cwd=repo)
+        recorded = (ref.stdout or "").strip()
+        if ref.returncode != 0 or not recorded:
+            return False
+        tip = (self.git("rev-parse", branch, cwd=repo).stdout or "").strip()
+        return bool(tip) and tip == recorded
+
+    def patch_equivalent(self, branch, repo):
+        """Is every branch commit patch-equivalent to one on the bolt
+        branch? `git cherry` answers by patch-id, which survives the SHA
+        rewrite a rebase-merge performs — the fallback for branches
+        merged before the witness ref existed."""
+        base = self.branch_base(branch, repo)
+        if not base:
+            return False
+        proc = self.git("cherry", self.params.bolt_branch, branch, base,
+                        cwd=repo)
+        if proc.returncode != 0:
+            return False
+        lines = [l for l in (proc.stdout or "").splitlines() if l.strip()]
+        return bool(lines) and not any(l.startswith("+") for l in lines)
+
     def batch_merged(self, batch, repo):
         """Git's answer to "does this batch still need driving": a build
-        branch that advanced past its cut point and is fully an ancestor
-        of the bolt branch awaits only the landing. A branch that does not
+        branch that advanced past its cut point and is fully merged into
+        the bolt branch awaits only the landing. A branch that does not
         exist is work not yet started; one that never advanced is work
-        never done."""
+        never done. Merged-ness is answered three ways, cheapest first:
+        the recorded witness ref, raw ancestry, then patch-equivalence
+        (`git cherry`) — because a rebase-merge rewrites SHAs and bare
+        ancestry then demotes genuinely merged items (problem 6)."""
         branch = f"build/{batch.slug}"
         if self.git("rev-parse", "--verify", "--quiet", branch,
                     cwd=repo).returncode != 0:
             return False
         if not self.branch_advanced(branch, repo):
             return False
-        return self.git("merge-base", "--is-ancestor", branch,
-                        self.params.bolt_branch, cwd=repo).returncode == 0
+        if self.merge_witnessed(branch, repo):
+            return True
+        if self.git("merge-base", "--is-ancestor", branch,
+                    self.params.bolt_branch, cwd=repo).returncode == 0:
+            return True
+        return self.patch_equivalent(branch, repo)
 
     def ensure_bolt_worktree(self, repo):
         """The bolt branch and its worktree in one built repo, cut lazily
@@ -1375,6 +1421,31 @@ class BoltLoop:
         if watch.state == sessions.WaitState.GONE:
             return StageOutcome(stage, "failed", "the session is gone", handle)
         collected = runner.collect(handle)
+        # An andon raised in-pane counts even when the session could not
+        # reach the tracker (problem 8: two well-formed andons sat in
+        # panes while their items showed nothing). The loop posts the
+        # canonical marker itself — re-emitted via format_andon, never a
+        # paste of pane text (composer ghost hazard) — once per item,
+        # and the batch pauses the way a tracker-raised andon pauses it.
+        found = inbox.parse_andon(collected.report or "")
+        if found and numbers:
+            anchor = numbers[0]
+            comments = self.tracker.comments(anchor) or ()
+            bodies = [c.get("body", "") if isinstance(c, dict) else str(c)
+                      for c in comments]
+            posted = any(f"ANDON: {found.reason}" in b for b in bodies)
+            if not posted:
+                self.tracker.comment(anchor, inbox.format_andon(found.reason))
+            if not posted or inbox.find_andon(comments):
+                # A pane andon the tracker has already seen ANSWERED is
+                # scrollback, not a fresh stop (#166's shape); anything
+                # else is live and pauses the batch.
+                self.pause(numbers, (
+                    f"Session `{handle.name}` raised the andon cord in "
+                    f"its pane: {found.reason}"))
+                return StageOutcome(stage, "paused",
+                                    f"andon from the pane: {found.reason}",
+                                    handle, collected.report)
         if watch.state == sessions.WaitState.SETTLED_BLOCKED:
             return StageOutcome(stage, "blocked", "settled blocked — a question or a "
                                 "permission ask the operator answers in the pane",
@@ -2788,6 +2859,9 @@ class BoltLoop:
                            cwd=bolt_worktree)
             else:
                 note = " (openspec archive failed; left for hand cleanup)"
+        # The witness ref: rebase-merges rewrite SHAs, so ancestry alone
+        # forgets this fact on the next restart (problem 6).
+        self.record_merged(branch, repo)
         return StageOutcome("merge", "done", f"{branch} merged{note}")
 
     def close_merged(self, items, repo=None, sha=None):
@@ -2817,6 +2891,21 @@ class BoltLoop:
         closed = []
         for item in items:
             if self.tracker.closed_with(item.number, inbox.CLOSED_MERGED):
+                continue
+            # A live wait blocks the close, full stop (problem 7 —
+            # #66 was auto-closed over an unanswered andon and the
+            # operator had to reopen it). `needs-operator` and an
+            # unanswered andon each mean a human still owes this item
+            # an answer; bookkeeping never closes a question. Same
+            # check the landing already makes (:the land_stage guard),
+            # now at the merge boundary too.
+            if self.tracker.has_label(item.number, inbox.NEEDS_OPERATOR):
+                self._log(f"#{item.number} not closed — needs-operator "
+                          f"stands")
+                continue
+            if inbox.find_andon(self.tracker.comments(item.number)):
+                self._log(f"#{item.number} not closed — an unanswered "
+                          f"andon stands")
                 continue
             self.tracker.close(
                 item.number,
