@@ -768,6 +768,21 @@ class CycleTest(unittest.TestCase):
         self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
         self.assertIn("paused", [o.status for o in result.outcomes])
 
+    def test_an_andon_posted_to_the_tracker_but_absent_from_the_report_still_pauses(self):
+        # Observed live (#75, 2026-09-01): the session posted a
+        # well-formed andon straight to its item and left the marker out
+        # of its final output. Report parsing alone read that settle as
+        # done — no pause, no needs-operator, invisible to dispatch.
+        snapshot = Snapshot(items=[item(1, inbox.READY, change="add-thing")],
+                            milestone="bolt/x")
+        tracker = FakeTracker(snapshot, comments={1: [
+            {"body": inbox.format_andon("the carrier is unruled")}]})
+        runner = ScriptedRunner(reports=["Stopped the line; andon on the item."]
+                                * 4)
+        result = a_loop(tracker, runner=runner).cycle(1)
+        self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
+        self.assertIn("paused", [o.status for o in result.outcomes])
+
     def test_an_answered_andon_in_scrollback_does_not_re_pause(self):
         # A resumed pane's scrollback can still show an andon the
         # operator already answered on the item (#166's shape by a new

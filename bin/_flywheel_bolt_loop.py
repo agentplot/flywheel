@@ -1446,6 +1446,20 @@ class BoltLoop:
                 return StageOutcome(stage, "paused",
                                     f"andon from the pane: {found.reason}",
                                     handle, collected.report)
+        if not found and numbers:
+            # The report is not the only carrier: a session that posted its
+            # andon straight to the item and left the marker out of its
+            # final output would otherwise settle as done — no pause, no
+            # needs-operator, invisible to dispatch (observed live: #75's
+            # spec writer, 2026-09-01).
+            anchor, tracker_andon = self.andon(numbers)
+            if tracker_andon:
+                self.pause(numbers, (
+                    f"Session `{handle.name}` raised the andon cord on "
+                    f"#{anchor}: {tracker_andon.reason}"))
+                return StageOutcome(stage, "paused",
+                                    f"andon on #{anchor}: {tracker_andon.reason}",
+                                    handle, collected.report)
         if watch.state == sessions.WaitState.SETTLED_BLOCKED:
             return StageOutcome(stage, "blocked", "settled blocked — a question or a "
                                 "permission ask the operator answers in the pane",
