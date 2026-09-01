@@ -2703,6 +2703,12 @@ class BoltLoop:
                 break
             output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
             if "conflict" in output.lower():
+                # wt merge rebases before it merges, so the conflict can
+                # strand the worktree mid-rebase on a detached HEAD — where
+                # merge --abort is a no-op and every later batch's merge
+                # red-gates on "not on a branch". Abort both; each is a
+                # harmless no-op when its operation is not in progress.
+                self.shell(["git", "rebase", "--abort"], cwd=bolt_worktree)
                 self.shell(["git", "merge", "--abort"], cwd=bolt_worktree)
                 self.pause(batch.numbers, (
                     f"The merge of {branch} hit conflicts — a sibling moved "
