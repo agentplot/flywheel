@@ -55,7 +55,7 @@ from _flywheel_inbox import (CLOSED_DONE, DISPATCH_STANDING, ELABORATION,  # noq
                              resolve_change_id,
                              IN_PROGRESS, NEEDS_OPERATOR, QUEUED, READY,
                              STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
-                             STATUS_BACKLOG, Tracker,
+                             STATUS_BACKLOG, STATUS_DONE, Tracker,
                              TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, parse_andon,
                              set_needs_operator, set_stage, unblocked)
@@ -278,6 +278,12 @@ class Writer:
         self._record("close", f"#{number}", reason or "")
         if self.apply and self.tracker:
             self.tracker.close_issue(number, comment, reason)
+            # The board lane follows the close — a closed card left at
+            # Backlog haunts the operator's kanban as pending work
+            # (best-effort; a board without Done is a no-op).
+            place = getattr(self.tracker, "set_board_status", None)
+            if place:
+                place(number, STATUS_DONE)
 
     def command(self, argv, cwd=None, what=""):
         """A subprocess that changes the world — `flywheel-batch`, `wt`, herdr

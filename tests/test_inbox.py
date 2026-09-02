@@ -297,15 +297,20 @@ class ServerInboxTest(unittest.TestCase):
         self.assertFalse(merged.is_open)
         self.assertFalse(landed.merge_closed)
 
-    def test_a_queued_batch_parent_is_not_composable_work(self):
-        # A unit or elaboration parent is a container, never compose's work;
-        # counting it kept a job open forever (first boot, 2026-08-13).
+    def test_an_open_intent_container_names_a_reconciliation_job(self):
+        # A container is never compose's work — but an open elaboration
+        # parent with every member closed named NO job at all, so the
+        # reconciler that closes it never ran and #72/#74 sat open on
+        # the board for a day (willdan, 2026-09-02). An intent container
+        # sweeps a run job; a bolt unit parent still does not (its
+        # close-ready path covers it).
         snap = Snapshot(items=[
             item(9, inbox.QUEUED, inbox.ELABORATION, milestone="intent/a"),
             item(8, inbox.QUEUED, inbox.UNIT, milestone="bolt/b"),
         ])
-        self.assertEqual([j for j in inbox.server_inbox(snap) if j.kind == "run"],
-                         [])
+        jobs = [j for j in inbox.server_inbox(snap) if j.kind == "run"]
+        self.assertEqual([j.milestone for j in jobs], ["intent/a"])
+        self.assertIn("reconciliation", jobs[0].why)
 
     def test_a_backlog_batch_is_not(self):
         snap = Snapshot(batches=[Batch(9, kind=inbox.UNIT,

@@ -3043,27 +3043,36 @@ class BoltLoop:
         for item in items:
             if self.tracker.closed_with(item.number, inbox.CLOSED_MERGED):
                 continue
-            # A live wait blocks the close, full stop (problem 7 —
+            # An unanswered andon blocks the close, full stop (problem 7 —
             # #66 was auto-closed over an unanswered andon and the
-            # operator had to reopen it). `needs-operator` and an
-            # unanswered andon each mean a human still owes this item
-            # an answer; bookkeeping never closes a question. Same
-            # check the landing already makes (:the land_stage guard),
-            # now at the merge boundary too.
-            if self.tracker.has_label(item.number, inbox.NEEDS_OPERATOR):
-                self._log(f"#{item.number} not closed — needs-operator "
-                          f"stands")
-                continue
+            # operator had to reopen it): a human still owes this item an
+            # answer, and bookkeeping never closes a question.
             if inbox.find_andon(self.tracker.comments(item.number)):
                 self._log(f"#{item.number} not closed — an unanswered "
                           f"andon stands")
                 continue
+            # A bare `needs-operator` with no andon behind it cannot
+            # outlive the merge: the branch is ON the bolt, which is the
+            # resolution applied. Blocking the close on the stale label
+            # deadlocked #111/#119/#120 — merged for hours, never closed,
+            # no path ever clearing the pause whose cause was gone.
+            if self.tracker.has_label(item.number, inbox.NEEDS_OPERATOR):
+                inbox.clear_needs_operator(self.tracker, item.number)
+                self.tracker.comment(item.number, (
+                    "The wait this label marked is resolved — the batch "
+                    "merged; clearing `needs-operator` with the close."))
             self.tracker.close(
                 item.number,
                 f"Merged to {self.params.bolt_branch} as {sha}. Awaiting the "
                 f"landing, which upgrades this to `closed:done` with the "
                 f"landing SHA.",
                 reason=inbox.CLOSED_MERGED)
+            # The board lane follows the close: a closed card left at
+            # Backlog haunts the operator's kanban as pending work
+            # (best-effort — a board without Done is a no-op).
+            place = getattr(self.tracker, "set_board_status", None)
+            if place:
+                place(item.number, inbox.STATUS_DONE)
             closed.append(item.number)
         return closed
 

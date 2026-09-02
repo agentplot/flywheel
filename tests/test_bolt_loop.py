@@ -2421,18 +2421,22 @@ class MergeCloseTest(unittest.TestCase):
             item(5, inbox.IN_PROGRESS, title="an expansion-born item")])
         self.assertEqual(sorted(n for n, _ in tracker.reasons), [1, 5])
 
-    def test_needs_operator_blocks_the_merge_close(self):
-        # Problem 7 (willdan fleet): #66 was closed closed:merged while
-        # carrying needs-operator with half its work held on an andon —
-        # the operator had to reopen it. A live wait blocks bookkeeping.
+    def test_a_stale_bare_needs_operator_does_not_outlive_the_merge(self):
+        # #111/#119/#120 (willdan, 2026-09-02): merged for hours, never
+        # closed — their pauses' causes were resolved, nothing cleared
+        # the label, and the close skipped on it forever. The merge IS
+        # the resolution applied: a bare label with no andon behind it
+        # is cleared with the close. Problem 7's live-wait guard is the
+        # ANDON check — see the next test.
         tracker = FakeTracker()
         tracker.add_label(1, inbox.NEEDS_OPERATOR)
         tracker.writes.clear()
         closed = a_loop(tracker, shell=self.shell()).close_merged([
             item(1, inbox.IN_PROGRESS, inbox.NEEDS_OPERATOR),
             item(2, inbox.IN_PROGRESS)])
-        self.assertEqual(closed, [2], "the waited-on item stays open")
-        self.assertNotIn(1, tracker.closed)
+        self.assertEqual(closed, [1, 2])
+        self.assertIn(("remove_label", 1, inbox.NEEDS_OPERATOR),
+                      tracker.writes)
 
     def test_an_unanswered_andon_blocks_the_merge_close(self):
         tracker = FakeTracker(comments={1: [{

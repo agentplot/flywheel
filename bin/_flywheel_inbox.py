@@ -112,6 +112,7 @@ CLOSED_REASONS = (CLOSED_DONE, CLOSED_MERGED, CLOSED_DECLINED,
 
 STATUS_BACKLOG = "Backlog"
 STATUS_READY = "Ready"
+STATUS_DONE = "Done"
 
 INTENT_PREFIX = "intent/"
 BOLT_PREFIX = "bolt/"
@@ -622,6 +623,17 @@ def server_inbox(snapshot, changes_dir=None, sweep=True):
             # are containers, not work — counting one keeps a job open
             # forever (compose_plan skips them for the same reason).
             add(item.milestone, "run", f"#{item.number} queued and unbatched")
+        elif (sweep and item.is_container
+              and item.milestone.startswith(INTENT_PREFIX)):
+            # A finished elaboration container names no work by the
+            # literal filter — every member closed, nothing ready — so
+            # its milestone never ran the reconciler that closes the
+            # container, and #72/#74 sat open on the board for a day.
+            # Over-approximate per the sweep's stated asymmetry: a
+            # container with nothing to reconcile costs one process
+            # start and a clean exit, then the backoff holds it.
+            add(item.milestone, "run",
+                f"#{item.number} open container awaiting reconciliation")
 
     for milestone in snapshot.closed_milestones:
         slug = milestone_slug(milestone)

@@ -190,6 +190,20 @@ machine the loop runs on. A card naming no system builds on the
 fleet's sole binding; a fleet holding several bindings pauses an
 unplaceable card for the operator rather than guessing a repo.
 
+**Every System line names a BOUND system, and only a bound one.** The
+run's brief carries the fleet's bindings; a card whose work lands in a
+repo no binding carries is a card the loop can only pause — an
+"unbound" system on a plan is a defect, not a proposal. Work for an
+unbound repo becomes a NOTE in the plan naming the binding it needs
+(book and repo), so the operator adds the binding first and a later
+run cards it. And one bolt SPANS systems by design: units on the same
+milestone carry different `System:` lines, and the loop cuts and
+manages a bolt branch per built repo — never invent a separate bolt
+(an "org-hygiene" bucket) just because the work touches several
+repos, and never card cross-repo tidying as its own bolt at all:
+chores ride the open bolt whose deliverable they serve, one chore
+card per system.
+
 ```markdown
 # Unit: <slug>
 

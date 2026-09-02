@@ -402,6 +402,7 @@ class Server:
         self.log = log or (lambda message: print(message, flush=True))
         self.processes = {}         # (milestone, kind) -> LoopProcess
         self.backoff = {}           # (milestone, kind) -> Backoff
+        self._job_missing = set()   # keys whose job was gone LAST pass too
         self.stopping = False
 
     # -- reads -------------------------------------------------------------
@@ -492,8 +493,15 @@ class Server:
         )
 
         failures = 0
-        for key in current.stop:
-            self.stop(key, "no job on the tracker")
+        # A running loop's OWN writes can erase its job for one pass —
+        # flip_consume moves the batch, a close empties the ready set —
+        # and stopping on that single reading killed the identity loop
+        # 132s in, before its reconcilers ran (observed 2026-09-02). One
+        # pass of grace: stop only a loop whose job stayed gone twice.
+        missing = set(current.stop)
+        for key in sorted(missing & self._job_missing):
+            self.stop(key, "no job on the tracker (two passes)")
+        self._job_missing = missing - self._job_missing
         for want in current.start:
             if not self.start(want, snapshot):
                 failures += 1
