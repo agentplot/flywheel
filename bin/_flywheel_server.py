@@ -392,6 +392,8 @@ class Server:
         self._deliveries = {}
         self._delivered_sets = {}   # kind -> frozenset of item numbers
         self._plan_charges = 0
+        self._plan_charged = {}     # system -> (book, specs) heads charged at
+        self._plan_spent = {}       # system -> heads a run found no work at
         self.heads = heads or git_heads
         self.run = run
         self.popen = popen
@@ -658,14 +660,36 @@ class Server:
 
         settle_s = int(binding.get("settle_minutes", 90)) * 60
         quiet = (self.clock() - book_epoch) >= settle_s
+        reap = getattr(self.planner, "reap", None)
         if fresh or not quiet or not self.planner:
             # Fresh cards mean the planning run is spent — reap its
             # settled pane so finished planner sessions stop piling up
             # on the roster (best-effort; a working pane is left alone).
-            reap = getattr(self.planner, "reap", None)
             if fresh and reap and not self.dry_run and reap(name):
                 self.log(f"plan {name}: reaped the settled planner pane — "
                          f"its cards are fresh")
+            return 0
+
+        # A run that settled with NO cards is spent too — "nothing to
+        # plan" is a legitimate finding, and the tracker cannot carry it:
+        # no card means nothing to be fresh. Read as "cards missing", it
+        # re-charged the same order into the same settled pane every pass
+        # (plan-willdan-blueprints, 2026-09-02). So a charge is remembered
+        # with the heads it ran against, and once its pane has settled
+        # with nothing filed the system holds until the book or the specs
+        # move — the same release every other hold here reads.
+        heads_key = (book_sha, specs_sha)
+        if (self._plan_charged.get(name) == heads_key and reap
+                and not self.dry_run and reap(name)):
+            del self._plan_charged[name]
+            self._plan_spent[name] = heads_key
+            self.log(f"plan {name}: the run filed no cards — nothing to "
+                     f"plan at book {book_sha}, specs {specs_sha}; pane "
+                     f"reaped, holding until they move")
+            self.ledger.note(f"plan {name}: spent with no cards at book "
+                             f"{book_sha}, specs {specs_sha}")
+            return 0
+        if self._plan_spent.get(name) == heads_key:
             return 0
 
         key = (f"plan/{name}", "planner")
@@ -694,6 +718,9 @@ class Server:
         charged = bool(self.planner(name, binding, order))
         self.ledger.actual(step, "charged" if charged else "charge failed",
                            ok=charged)
+        if charged:
+            self._plan_charged[name] = heads_key
+            self._plan_spent.pop(name, None)
         self.backoff.setdefault(key, Backoff()).record_exit(
             fingerprint, self.clock())
         return 0 if charged else 1

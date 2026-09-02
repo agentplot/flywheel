@@ -10,7 +10,7 @@ import io
 import json
 import unittest
 
-from context import dispatch_mcp
+from context import dispatch_mcp, herdr
 
 
 def roster_run(agents, calls=None):
@@ -36,6 +36,39 @@ def proxy_with(agents, calls=None):
         environ={"HERDR_SOCKET_PATH": "/tmp/sock"},
         run=roster_run(agents, calls), sleep=lambda s: None)
     return p
+
+
+class SendPromptTargetTest(unittest.TestCase):
+    """A pane herdr lists under its title alone is not addressable by
+    that title — the prompt goes to its pane id instead."""
+
+    def run_for(self, rows, calls):
+        def run(argv, **kwargs):
+            calls.append(list(argv))
+            out = type("Out", (), {})()
+            out.returncode, out.stderr = 0, ""
+            out.stdout = (json.dumps({"result": {"agents": rows}})
+                          if argv[:3] == ["herdr", "agent", "list"] else "{}")
+            return out
+        return run
+
+    def test_a_nameless_row_is_prompted_by_pane_id(self):
+        calls = []
+        rows = [{"terminal_title_stripped": "plan-x", "pane_id": "w1:p9",
+                 "agent_status": "working"}]
+        delivered, _ = herdr.send_prompt(
+            "plan-x", "go", {}, run=self.run_for(rows, calls),
+            sleep=lambda s: None)
+        self.assertTrue(delivered)
+        self.assertIn(["herdr", "agent", "prompt", "w1:p9", "go"], calls)
+
+    def test_a_named_row_is_prompted_by_name(self):
+        calls = []
+        rows = [{"name": "plan-x", "pane_id": "w1:p9",
+                 "agent_status": "working"}]
+        herdr.send_prompt("plan-x", "go", {}, run=self.run_for(rows, calls),
+                          sleep=lambda s: None)
+        self.assertIn(["herdr", "agent", "prompt", "plan-x", "go"], calls)
 
 
 class RenderTest(unittest.TestCase):

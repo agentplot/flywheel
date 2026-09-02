@@ -399,6 +399,50 @@ class PlannerTriggerTest(unittest.TestCase):
         self.assertTrue(any("reaped the settled planner pane" in line
                             for line in logs))
 
+    def test_a_run_that_files_no_cards_is_spent_until_the_heads_move(self):
+        # plan-willdan-blueprints (2026-09-02) found no construction work
+        # and filed nothing; "cards missing" then re-charged the same
+        # order into its settled pane every pass, forever.
+        charges, reaped = [], []
+        heads = {"book": "abc1234"}
+
+        def planner(name, b, order):
+            return charges.append(order) or True
+
+        planner.reap = lambda name: reaped.append(name) or True
+        daemon, logs = make_server(
+            books={"flywheel": BINDING}, planner=planner,
+            heads=lambda binding, run=None: (heads["book"],
+                                             1_000_000.0 - 90 * 60,
+                                             "def5678"))
+        empty = inbox.TrackerSnapshot()
+        daemon.plan_runs(empty)
+        self.assertEqual(len(charges), 1)
+        daemon.plan_runs(empty)             # the pane settled, no cards
+        self.assertEqual(reaped, ["flywheel"])
+        self.assertTrue(any("filed no cards" in line for line in logs))
+        daemon.backoff.clear()              # even with no hold in the way
+        daemon.plan_runs(empty)
+        self.assertEqual(len(charges), 1, "spent at these heads — no recharge")
+        heads["book"] = "bbb5678"           # the book moved
+        daemon.plan_runs(empty)
+        self.assertEqual(len(charges), 2)
+
+    def test_a_run_still_working_is_not_spent(self):
+        charges = []
+
+        def planner(name, b, order):
+            return charges.append(order) or True
+
+        planner.reap = lambda name: False   # pane still working
+        daemon, logs = make_server(
+            books={"flywheel": BINDING}, planner=planner,
+            heads=self.heads(1_000_000.0 - 90 * 60))
+        daemon.plan_runs(inbox.TrackerSnapshot())
+        daemon.plan_runs(inbox.TrackerSnapshot())
+        self.assertFalse(any("filed no cards" in line for line in logs))
+        self.assertEqual(daemon._plan_spent, {})
+
     def test_stale_card_is_marked_once_and_charges_when_settled(self):
         charges = []
         tracker = RecordingTracker()

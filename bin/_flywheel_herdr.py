@@ -68,8 +68,19 @@ def herdr_agents(env: dict, run=subprocess.run) -> dict[str, dict]:
 
 def send_prompt(name: str, text: str, env: dict,
                 run=subprocess.run, sleep=time.sleep) -> tuple[bool, str]:
-    """Deliver one prompt to the named agent — `(delivered, reason)`."""
-    sent = run(["herdr", "agent", "prompt", name, text],
+    """Deliver one prompt to the named agent — `(delivered, reason)`.
+
+    The roster row is the address: a pane listed under its title alone
+    (herdr reports some agents with no `name` — observed live on
+    plan-willdan-blueprints) is not reachable by that title, and the
+    prompt fails `agent_not_found`. So the target is the row's name when
+    it has one and its pane id otherwise."""
+    try:
+        row = herdr_agents(env, run=run).get(name, {})
+    except RuntimeError:
+        row = {}
+    target = row.get("name") or row.get("pane_id") or name
+    sent = run(["herdr", "agent", "prompt", target, text],
                capture_output=True, text=True, env=env)
     if sent.returncode != 0:
         return False, f"prompt to {name} failed: {sent.stderr.strip()}"
@@ -86,7 +97,7 @@ def send_prompt(name: str, text: str, env: dict,
             return False, str(e)
         if agent.get("agent_status") == "working":
             return True, ""
-        run(["herdr", "agent", "send-keys", name, "enter"],
+        run(["herdr", "agent", "send-keys", target, "enter"],
             capture_output=True, text=True, env=env)
     return False, (f"{name} never went to work on the prompt — read its pane "
                    "and prompt it by hand")
