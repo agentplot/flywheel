@@ -54,10 +54,12 @@ class Result:
 class FakeTracker:
     """The tracker's read and write surface, recorded rather than performed."""
 
-    def __init__(self, snapshot=None, comments=None, milestones=()):
+    def __init__(self, snapshot=None, comments=None, milestones=(),
+                 retired=()):
         self._snapshot = snapshot or Snapshot()
         self._comments = comments or {}
         self._milestones = list(milestones)
+        self._retired = list(retired)
         self.labels = {}
         self.writes = []
         self.closed = set()
@@ -80,6 +82,9 @@ class FakeTracker:
 
     def milestones(self, state="all"):
         return self._milestones
+
+    def retired_issues(self, milestone):
+        return [i for i in self._retired if i.milestone == milestone]
 
     def milestone(self, title):
         return next((m for m in self._milestones if m.get("title") == title), None)
@@ -135,11 +140,15 @@ class ScriptedRunner:
     scripts the review's JSON and writes nothing when exhausted.
     """
 
-    def __init__(self, states=(), reports=(), verify_files=(), rulings=()):
+    def __init__(self, states=(), reports=(), verify_files=(), rulings=(),
+                 panes=()):
         self.states = list(states) or [WaitState.SETTLED_DONE]
         self.reports = list(reports)
         self.verify_files = list(verify_files)
         self.rulings = list(rulings)
+        #: Names with a settled pane behind them — what `close_named`
+        #: can actually reap, as the herdr runner reports it.
+        self.panes = set(panes)
         self.launched, self.sent, self.keys, self.closed = [], [], [], []
 
     def _write(self, rel, content):
@@ -177,6 +186,7 @@ class ScriptedRunner:
 
     def close_named(self, name):
         self.closed.append(name)
+        return name in self.panes
 
 
 class FakeClock:
@@ -732,6 +742,60 @@ class AnalyseTest(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # The cycle — STOP, halt, and the ready set
 # ---------------------------------------------------------------------------
+
+class ReapRetiredTest(unittest.TestCase):
+    """An item retired off the bolt — declined, superseded, parked — leaves
+    the snapshot, and its paused session's pane and build worktree would
+    outlive every fact that could reap them (live: #90's
+    `spec-writing-atlas-provider-724d`)."""
+
+    def retired(self, **kw):
+        return item(90, "closed:declined", state="closed", milestone="bolt/x",
+                    change="atlas-provider-retirement", **kw)
+
+    def test_a_retired_items_pane_and_worktree_are_reaped(self):
+        pane = loop.session_name("spec-writing", "atlas-provider-retirement")
+        self.assertEqual(pane, "spec-writing-atlas-provider-724d")
+        runner = ScriptedRunner(panes={pane})
+        shell = FakeShell(answers={("wt", "list"): Result(0, stdout=json.dumps(
+            [{"branch": "build/atlas-provider-retirement", "path": "/wt/a"}]))})
+        tracker = FakeTracker(Snapshot(milestone="bolt/x"),
+                              retired=[self.retired()])
+        actions, halted = a_loop(tracker, runner=runner, shell=shell).guards(
+            Snapshot(milestone="bolt/x"))
+        self.assertIsNone(halted)
+        self.assertIn(pane, runner.closed)
+        self.assertIn(("wt", "remove", "build/atlas-provider-retirement",
+                       "--force", "--no-delete-branch", "--foreground"),
+                      [argv for argv, _ in shell.calls])
+        self.assertEqual(len(actions), 1)
+        self.assertIn("#90 closed:declined — reaped", actions[0])
+        self.assertIn(pane, actions[0])
+        self.assertIn("build/atlas-provider-retirement worktree", actions[0])
+
+    def test_a_retired_item_with_nothing_behind_it_is_silent(self):
+        # The normal case forever after: retired items accumulate on a
+        # milestone, and a reap that wrote an action each cycle would
+        # keep STOP from ever firing.
+        runner, shell = ScriptedRunner(), FakeShell()
+        tracker = FakeTracker(Snapshot(milestone="bolt/x"),
+                              retired=[self.retired()])
+        actions, _ = a_loop(tracker, runner=runner, shell=shell).guards(
+            Snapshot(milestone="bolt/x"))
+        self.assertEqual(actions, [])
+        self.assertNotIn(("wt", "remove"),
+                         [argv[:2] for argv, _ in shell.calls])
+
+    def test_a_retired_container_is_not_a_batch(self):
+        runner = ScriptedRunner(panes={"build-x-9"})
+        tracker = FakeTracker(Snapshot(milestone="bolt/x"), retired=[
+            item(9, inbox.UNIT, "closed:declined", state="closed",
+                 milestone="bolt/x")])
+        actions, _ = a_loop(tracker, runner=runner).guards(
+            Snapshot(milestone="bolt/x"))
+        self.assertEqual(actions, [])
+        self.assertEqual(runner.closed, [])
+
 
 class CycleTest(unittest.TestCase):
 

@@ -622,3 +622,29 @@ deliverable and the merge gate is its check.
 - **WHEN** a chore batch's merge gate is red
 - **THEN** the same go-fix path any build gets carries the gate's
   output back to the session, bounded by the same fix-round budget
+
+### Requirement: An item retired off the bolt takes its sessions with it
+
+A work item on a bolt milestone closed by any reason other than
+`closed:merged` — declined, superseded, parked, or closed with no
+reason — SHALL have the sessions cut for its batch reaped and its
+`build/<slug>` worktree removed by the loop's guards, on the next
+cycle. A paused batch keeps its pane open for the operator to read,
+and a retired item names no wait dispatch can surface, so the reap is
+the machinery's, never the operator's. The guard SHALL record an
+action only when something was actually reaped, so a milestone's
+accumulated retired items never keep the STOP condition from firing.
+
+#### Scenario: A declined item's paused session is reaped
+
+- **WHEN** an item whose batch is paused on an andon is closed
+  `closed:declined`
+- **THEN** the next cycle closes the batch's settled panes by name and
+  removes its build worktree, recording one action naming both
+
+#### Scenario: A retired item with nothing behind it is silent
+
+- **WHEN** a cycle runs on a milestone carrying retired items with no
+  pane or worktree left
+- **THEN** the guard records nothing and STOP fires as if the items
+  were not there

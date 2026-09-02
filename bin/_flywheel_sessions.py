@@ -324,7 +324,9 @@ class Runner:
         `close` needs the launch handle, which only the process that
         launched the session holds — a restarted loop has no handle to a
         pane its predecessor opened, and the pane outlives the process.
-        Best-effort: a name with nothing behind it is a no-op."""
+        Best-effort: a name with nothing behind it is a no-op. Returns
+        whether something was actually reaped, so a sweep can record
+        the reap and stay silent otherwise."""
 
 # ---------------------------------------------------------------------------
 # herdr — the supervised pane
@@ -602,6 +604,8 @@ class HerdrRunner(Runner):
         row = self.agents().get(name)
         if row is not None and row.get("agent_status") != "working":
             self._close_tab(row.get("tab_id"))
+            return True
+        return False
 
     # -- internals ---------------------------------------------------------
 
@@ -820,8 +824,9 @@ class HeadlessRunner(Runner):
     def close_named(self, name):
         recorded = self._read_registry(name)
         if recorded and self._alive(recorded.get("pid")):
-            return  # still working — a name is not proof it settled
+            return False  # still working — a name is not proof it settled
         self._registry(name).unlink(missing_ok=True)
+        return bool(recorded)
 
 
 # ---------------------------------------------------------------------------

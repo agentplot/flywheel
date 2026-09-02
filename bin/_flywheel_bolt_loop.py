@@ -1608,7 +1608,59 @@ class BoltLoop:
         # it into a plan card. Expansion of an approved card is the only
         # birth of work items.
         self.guard_stages(snapshot, actions)
+        self.guard_reap_retired(actions)
         return actions, None
+
+    #: The session prefixes a batch can leave behind, and the stage whose
+    #: runner opened each — the runner that opened a pane is the one that
+    #: can find it by name.
+    BATCH_SESSIONS = (("spec-writing", "spec"), ("build", "build"),
+                      ("verify", "build"), ("review", "build"),
+                      ("plan", "build"))
+
+    def guard_reap_retired(self, actions):
+        """4 — reap the sessions and worktree of an item retired off the bolt.
+
+        A batch paused on an andon keeps its pane open on purpose: the
+        operator reads the question there. When the answer is to retire the
+        item — `closed:declined`, `closed:superseded`, `closed:parked`, a
+        close with no reason — the item leaves the snapshot's scope, and
+        without this guard nothing ever reaps what was cut for it: the pane
+        sits idle on the roster and its `build/<slug>` worktree stays
+        attached (observed live: `spec-writing-atlas-provider-724d`, whose
+        item #90 was declined while it waited). A retired item names no
+        wait dispatch can show, so the machinery owes the close.
+
+        Records an action only for something actually reaped — a retired
+        item with nothing behind it is the normal, silent case, and the
+        STOP condition depends on that silence.
+        """
+        retired = getattr(self.tracker, "retired_issues", None)
+        if retired is None or self.dry_run:
+            return
+        items = [i for i in retired(self.params.milestone)
+                 if not i.is_container and inbox.UNIT not in i.labels]
+        repos = sorted({b["repo"] for b in (self.params.bindings or {}).values()}
+                       or {self._sole_repo()})
+        rows = {repo: self._wt_rows(repo) or [] for repo in repos}
+        for item in items:
+            slug = item.change or f"{self.params.slug}-{item.number}"
+            reason = next((l for l in sorted(item.labels)
+                           if l.startswith("closed:")), "closed")
+            reaped = [name for prefix, stage in self.BATCH_SESSIONS
+                      for name in [session_name(prefix, slug)]
+                      if self.runner(stage).close_named(name)]
+            branch = f"build/{slug}"
+            removed = [repo for repo, listed in rows.items()
+                       if any(r.get("branch") == branch for r in listed)
+                       and self.shell(["wt", "remove", branch, "--force",
+                                       "--no-delete-branch", "--foreground"],
+                                      cwd=repo).returncode == 0]
+            if reaped or removed:
+                actions.append(
+                    f"#{item.number} {reason} — reaped "
+                    + ", ".join([*reaped, *(f"{branch} worktree in {r}"
+                                            for r in removed)]))
 
     def guard_stages(self, snapshot, actions):
         """3 — re-derive `stage:built` and `stage:merged` from the tree.

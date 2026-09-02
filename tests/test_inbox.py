@@ -148,6 +148,46 @@ class TokenRefreshTest(unittest.TestCase):
             t._gh("tok", "api", "/x")
 
 
+class RetiredIssuesTest(unittest.TestCase):
+    """The read that finds items closed off a milestone by any reason but
+    the merge — what the snapshot excludes on purpose, and what a paused
+    session's reap needs."""
+
+    def _tracker(self, paths):
+        def gh(token, verb, path, *rest):
+            paths.append(path)
+            if "milestones?state=all" in path:
+                return [[{"number": 7, "title": "bolt/x"}]]
+            if "state=closed&milestone=7" in path:
+                return [[
+                    {"number": 90, "state": "closed", "title": "retire",
+                     "body": "Change: `atlas-provider-retirement`",
+                     "labels": [{"name": "closed:declined"}],
+                     "milestone": {"title": "bolt/x", "state": "open"}},
+                    {"number": 89, "state": "closed", "title": "merged",
+                     "body": "", "labels": [{"name": "closed:merged"}],
+                     "milestone": {"title": "bolt/x", "state": "open"}},
+                    {"number": 88, "state": "closed", "title": "a PR",
+                     "pull_request": {}, "labels": [],
+                     "milestone": {"title": "bolt/x", "state": "open"}},
+                ]]
+            return [[]]
+        return inbox.Tracker("tok", "o", "r", gh=gh,
+                             graphql=lambda *a, **k: {})
+
+    def test_merge_closed_and_pull_requests_are_not_retired(self):
+        paths = []
+        retired = self._tracker(paths).retired_issues("bolt/x")
+        self.assertEqual([i.number for i in retired], [90])
+        self.assertEqual(retired[0].change, "atlas-provider-retirement")
+        self.assertIn("closed:declined", retired[0].labels)
+
+    def test_an_unknown_milestone_reads_no_issues(self):
+        paths = []
+        self.assertEqual(self._tracker(paths).retired_issues("bolt/none"), [])
+        self.assertFalse(any("issues?state=closed" in p for p in paths))
+
+
 class SnapshotBlockerResolutionTest(unittest.TestCase):
     """A blocker closed COMPLETED is in neither fetched set; unseen-is-open
     then holds its dependents forever (live: #70 blocked_by closed #71)."""

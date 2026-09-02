@@ -1499,6 +1499,41 @@ class Tracker:
             if "pull_request" not in raw
         ]
 
+    def retired_issues(self, milestone):
+        """Items on `milestone` closed by any reason BUT `closed:merged`.
+
+        The snapshot carries open items and merge-closed ones and nothing
+        else, on purpose — a declined, superseded or parked item is out of
+        the work. But a session cut for that item does not close itself:
+        a batch paused on an andon keeps its pane open for the operator to
+        read, and when the operator's answer is to retire the item, the
+        pane (and the batch's build worktree) outlive every tracker fact
+        that could have reaped them. This is the read that finds them,
+        scoped by milestone number so a long-lived org's closed history is
+        never paged through.
+        """
+        pages = self._gh(
+            self.token, "api",
+            f"/repos/{self.org}/{self.repo}/milestones?state=all&per_page=100",
+            "--paginate", "--slurp",
+        )
+        number = next((m["number"] for page in pages for m in page
+                       if m.get("title") == milestone), None)
+        if number is None:
+            return []
+        pages = self._gh(
+            self.token, "api",
+            f"/repos/{self.org}/{self.repo}/issues"
+            f"?state=closed&milestone={number}&per_page=100",
+            "--paginate", "--slurp",
+        )
+        return [
+            Item.from_api(raw) for page in pages for raw in page
+            if "pull_request" not in raw
+            and not any(l.get("name") == CLOSED_MERGED
+                        for l in raw.get("labels", ()))
+        ]
+
     def closed_milestones(self):
         pages = self._gh(
             self.token, "api",
