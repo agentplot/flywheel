@@ -93,6 +93,7 @@ import _flywheel_inbox as inbox    # noqa: E402
 import _flywheel_ledger as ledger_mod  # noqa: E402
 import _flywheel_mcp_client as mcp_client  # noqa: E402
 import _flywheel_server as server  # noqa: E402
+import _flywheel_sessions as fleet_sessions  # noqa: E402
 from _flywheel_gh import GraphqlError, resolve_token  # noqa: E402
 from _flywheel_manifest import find_manifest, parse_manifest  # noqa: E402
 
@@ -709,6 +710,13 @@ def launch_agent(name: str, profile: str, model: str | None, cwd: Path,
                  tab_env: tuple = (), claude_args: tuple = (),
                  workspace_label: str | None = None) -> bool:
     print(f"starting {name} ({profile}, {model or 'default'})")
+    # The profile lives in the flywheel PLUGIN, and plugins load only
+    # where the cwd has an install record — a planner launched in a
+    # binding's repo without one gets "--agent 'flywheel-bolt-planner'
+    # not found" and a corpse tab (observed live: plan-atlas-kit,
+    # 2026-09-02). Same seeding HerdrRunner.launch already does.
+    fleet_sessions.seed_workspace_trust(cwd)
+    fleet_sessions.seed_plugin_install(cwd)
     tab_argv = ["herdr", "tab", "create", "--cwd", str(cwd),
                 "--label", name, "--no-focus"]
     if workspace_label:
