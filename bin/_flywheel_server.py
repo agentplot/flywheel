@@ -659,6 +659,13 @@ class Server:
         settle_s = int(binding.get("settle_minutes", 90)) * 60
         quiet = (self.clock() - book_epoch) >= settle_s
         if fresh or not quiet or not self.planner:
+            # Fresh cards mean the planning run is spent — reap its
+            # settled pane so finished planner sessions stop piling up
+            # on the roster (best-effort; a working pane is left alone).
+            reap = getattr(self.planner, "reap", None)
+            if fresh and reap and not self.dry_run and reap(name):
+                self.log(f"plan {name}: reaped the settled planner pane — "
+                         f"its cards are fresh")
             return 0
 
         key = (f"plan/{name}", "planner")

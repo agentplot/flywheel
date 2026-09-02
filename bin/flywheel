@@ -764,14 +764,21 @@ def launch_agent(name: str, profile: str, model: str | None, cwd: Path,
         return False
     # The pane's claude takes tens of seconds to reach its composer;
     # a prompt sent earlier strands unsubmitted or is lost outright.
-    # Wait for the session to report interactive_ready before charging.
-    for _attempt in range(30):
+    # Wait for the session to report interactive_ready before charging —
+    # 240s, because a devenv cold start regularly blew the old 120s and
+    # left plan-* panes alive with the order never delivered.
+    for _attempt in range(60):
         if herdr_agents(env).get(name, {}).get("interactive_ready"):
             break
         time.sleep(4)
     if prompt:
         if not send_prompt(name, prompt, env):
-            print(f"  {name} is alive but uncharged; prompt it by hand")
+            # An uncharged pane is a corpse, not a session: its order was
+            # never delivered, nothing will read it, and the retry path
+            # (the next charge) launches cleanly by the same name.
+            print(f"  {name}: the order was never delivered — reaping the "
+                  f"uncharged pane; the next charge retries")
+            close_tab()
             return False
     return True
 
@@ -938,6 +945,21 @@ def planner_charge(env: dict, fallback_cwd: Path):
         cwd = Path(binding.get("repo") or fallback_cwd)
         return start_actor(session, "flywheel-bolt-planner", None,
                            cwd, order, env)
+
+    def reap(name: str) -> bool:
+        """Close a settled planner pane whose run is spent — the server
+        calls this when a system's cards are fresh, so a finished
+        planning session stops haunting the roster."""
+        session = f"plan-{name}"
+        agent = herdr_agents(env).get(session)
+        if agent and agent.get("agent_status") in SETTLED:
+            subprocess.run(["herdr", "tab", "close",
+                            str(agent.get("tab_id"))],
+                           capture_output=True, text=True, env=env)
+            return True
+        return False
+
+    charge.reap = reap
     return charge
 
 

@@ -380,6 +380,25 @@ class PlannerTriggerTest(unittest.TestCase):
             plan_cards=[card(status="Backlog")]))
         self.assertEqual(charges, [])
 
+    def test_fresh_cards_reap_the_settled_planner_pane(self):
+        # A finished planning session sat idle on the roster forever
+        # (plan-switchboard, observed 2026-09-02): once its cards are
+        # fresh the run is spent, and the pane goes.
+        reaped = []
+
+        def planner(name, b, order):
+            return True
+
+        planner.reap = lambda name: reaped.append(name) or True
+        daemon, logs = make_server(
+            books={"flywheel": BINDING}, planner=planner,
+            heads=self.heads(1_000_000.0 - 90 * 60))
+        daemon.plan_runs(inbox.TrackerSnapshot(
+            plan_cards=[card(status="Backlog")]))
+        self.assertEqual(reaped, ["flywheel"])
+        self.assertTrue(any("reaped the settled planner pane" in line
+                            for line in logs))
+
     def test_stale_card_is_marked_once_and_charges_when_settled(self):
         charges = []
         tracker = RecordingTracker()
