@@ -62,6 +62,33 @@ class SendPromptTargetTest(unittest.TestCase):
         self.assertTrue(delivered)
         self.assertIn(["herdr", "agent", "prompt", "w1:p9", "go"], calls)
 
+    def test_a_turn_that_finished_inside_one_poll_counts_as_delivered(self):
+        # Re-sent an order it had completed, the planner answered "Idle."
+        # in two seconds — idle at every poll, read as never prompted.
+        calls, seq = [], {"n": 5}
+        rows = [{"name": "plan-x", "pane_id": "w1:p9", "agent_status": "idle",
+                 "state_change_seq": 5}]
+
+        def run(argv, **kwargs):
+            if argv[:3] == ["herdr", "agent", "prompt"]:
+                rows[0]["state_change_seq"] = 7
+            return self.run_for(rows, calls)(argv, **kwargs)
+        delivered, _ = herdr.send_prompt("plan-x", "go", {}, run=run,
+                                         sleep=lambda s: None)
+        self.assertTrue(delivered)
+        self.assertNotIn(["herdr", "agent", "send-keys", "plan-x", "enter"],
+                         calls)
+
+    def test_an_untaken_prompt_is_still_undelivered(self):
+        calls = []
+        rows = [{"name": "plan-x", "pane_id": "w1:p9", "agent_status": "idle",
+                 "state_change_seq": 5}]
+        delivered, reason = herdr.send_prompt(
+            "plan-x", "go", {}, run=self.run_for(rows, calls),
+            sleep=lambda s: None)
+        self.assertFalse(delivered)
+        self.assertIn("never went to work", reason)
+
     def test_a_named_row_is_prompted_by_name(self):
         calls = []
         rows = [{"name": "plan-x", "pane_id": "w1:p9",

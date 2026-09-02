@@ -89,13 +89,21 @@ def send_prompt(name: str, text: str, env: dict,
     # went to work; one Enter submits a stuck composer. A fresh session
     # initializes for tens of seconds (plugin load), so the window is
     # generous — a first prompt regularly submits near the 30s mark.
+    # "Went to work" is read two ways, because a turn can finish inside
+    # one poll interval: a settled session re-sent an order it already
+    # completed answers in two seconds (plan-willdan-blueprints: "Idle."),
+    # is idle again at every poll, and read as never prompted — so the
+    # roster's state-change counter moving since the send counts too.
+    before = row.get("state_change_seq")
     for _attempt in range(8):
         sleep(4)
         try:
             agent = herdr_agents(env, run=run).get(name, {})
         except RuntimeError as e:
             return False, str(e)
-        if agent.get("agent_status") == "working":
+        moved = (before is not None
+                 and agent.get("state_change_seq") not in (None, before))
+        if agent.get("agent_status") == "working" or moved:
             return True, ""
         run(["herdr", "agent", "send-keys", target, "enter"],
             capture_output=True, text=True, env=env)
