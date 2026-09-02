@@ -59,6 +59,14 @@ built-repo worktree with no tracker access still stops the line. The
 loop recognizes only the marker, never prose, so a report without it
 holds nothing. Stopping on a defect is expected behaviour.
 
+An OUT-OF-SCOPE REMAINDER is not an andon. When part of an item's
+change belongs in a repo or system outside your batch's scope (another
+repo's cleanup, a sibling system's half), deliver the in-scope half
+here and file the remainder as a new tracker issue — plain, no
+milestone, one paragraph naming what and where — then note the filed
+number in your item comment. The line stops for work that is WRONG,
+never for work that merely does not all fit in this worktree.
+
 THE FINDING-ROUTING RULE — a finding goes in your report and nowhere
 else: never a tracker item, never a queued discovery, whether it is
 about the work you were charged with or the machinery that charged you.

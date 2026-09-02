@@ -2944,7 +2944,8 @@ class BoltLoop:
             if proc.returncode == 0:
                 break
             output = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
-            if "conflict" in output.lower():
+            conflicted = "conflict" in output.lower()
+            if conflicted:
                 # wt merge rebases before it merges, so the conflict can
                 # strand the worktree mid-rebase on a detached HEAD — where
                 # merge --abort is a no-op and every later batch's merge
@@ -2954,23 +2955,39 @@ class BoltLoop:
                 # bolt worktree stays clean either way.
                 self.shell(["git", "rebase", "--abort"], cwd=build_worktree)
                 self.shell(["git", "merge", "--abort"], cwd=build_worktree)
-                self.pause(batch.numbers, (
-                    f"The merge of {branch} hit conflicts — a sibling moved "
-                    f"under it. The loop aborted the merge and paused the "
-                    f"batch for the operator.\n\n{output}"))
-                return StageOutcome("merge", "paused", "merge conflict",
-                                    report=output)
             if attempt >= MAX_FIX_ROUNDS:
                 self.pause(batch.numbers, (
-                    f"The merge gate stayed red after {MAX_FIX_ROUNDS} refix "
-                    f"rounds; the loop paused the batch.\n\n{output}"))
-                return StageOutcome("merge", "paused", "gate red after refix",
-                                    report=output)
-            fixed = yield from self.go_fix_gen(
-                batch, build or StageOutcome("build", "done"),
+                    (f"The merge of {branch} still conflicts after "
+                     f"{MAX_FIX_ROUNDS} resolution rounds; the loop paused "
+                     f"the batch.\n\n{output}")
+                    if conflicted else
+                    (f"The merge gate stayed red after {MAX_FIX_ROUNDS} refix "
+                     f"rounds; the loop paused the batch.\n\n{output}")))
+                return StageOutcome(
+                    "merge", "paused",
+                    ("merge conflict unresolved after refix" if conflicted
+                     else "gate red after refix"),
+                    report=output)
+            # A conflict is a fix round like a red gate, not an operator
+            # stop: a sibling landed under this branch, and resolving the
+            # rebase is exactly the work the batch's own session is warm
+            # for. Only rounds exhausted reaches the operator (the old
+            # pause-on-first-conflict stub read as "flywheel cannot
+            # merge" — operator's ruling, 2026-09-01).
+            prompt = (
+                (f"The merge of {branch} into {self.params.bolt_branch} hit "
+                 f"conflicts — a sibling landed under you. You are IN the "
+                 f"{branch} worktree: run `git rebase "
+                 f"{self.params.bolt_branch}`, resolve every conflict so "
+                 f"BOTH your change and the landed sibling's survive, then "
+                 f"`git add -- <the conflicted paths>` and `git rebase "
+                 f"--continue` until the rebase completes. Do not merge and "
+                 f"do not push — the loop merges. Then settle.\n\n{output}")
+                if conflicted else
                 (f"The merge gate is red for {branch}. Fix exactly what it "
-                 f"names — no new scope — and commit by pathspec.\n\n{output}"),
-                repo)
+                 f"names — no new scope — and commit by pathspec.\n\n{output}"))
+            fixed = yield from self.go_fix_gen(
+                batch, build or StageOutcome("build", "done"), prompt, repo)
             if not fixed.ok:
                 return fixed
         if not self.branch_merged(branch, repo):

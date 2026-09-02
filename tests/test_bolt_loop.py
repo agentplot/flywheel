@@ -1334,22 +1334,48 @@ class StageTest(unittest.TestCase):
         self.assertEqual(outcome.status, "paused")
         self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
 
-    def test_a_merge_conflict_pauses_for_the_operator(self):
-        # The agent seat for conflicts is reserved, stubbed to a pause:
-        # a conflict means a sibling moved under this branch, and nobody
-        # auto-resolves that today.
+    def test_a_merge_conflict_is_a_fix_round_to_the_build_session(self):
+        # A conflict means a sibling landed under this branch — resolving
+        # the rebase is the batch's own session's work, not an operator
+        # stop (operator's ruling, 2026-09-01: "figure out how to merge").
+        merges = {"n": 0}
+
+        def wt_merge():
+            merges["n"] += 1
+            return (Result(1, "CONFLICT (content): x") if merges["n"] == 1
+                    else Result(0))
+
+        shell = FakeShell({("wt", "merge"): wt_merge,
+                           ("git", "merge-base"): Result(0)})
+        tracker = FakeTracker()
+        runner = ScriptedRunner()
+        build = loop.StageOutcome("build", "done",
+                                  handle=sessions.SessionHandle(
+                                      name="build-x-1", runner="fake"))
+        outcome = a_loop(tracker, runner=runner, shell=shell).merge_stage(
+            self.batch(1), build=build)
+        self.assertEqual(outcome.status, "done")
+        self.assertTrue(any("git rebase" in prompt
+                            for _name, prompt in runner.sent),
+                        "the session gets the rebase-and-resolve prompt")
+        self.assertTrue(any(a[:3] == ("git", "merge", "--abort")
+                            for a, _ in shell.calls))
+        self.assertNotIn(("add_label", 1, inbox.NEEDS_OPERATOR),
+                         tracker.writes)
+
+    def test_an_unresolvable_conflict_still_pauses_after_the_rounds(self):
         shell = FakeShell({("wt", "merge"): Result(1, "CONFLICT (content): x"),
                            ("git", "merge-base"): Result(1)})
         tracker = FakeTracker()
         runner = ScriptedRunner()
+        build = loop.StageOutcome("build", "done",
+                                  handle=sessions.SessionHandle(
+                                      name="build-x-1", runner="fake"))
         outcome = a_loop(tracker, runner=runner, shell=shell).merge_stage(
-            self.batch(1))
+            self.batch(1), build=build)
         self.assertEqual(outcome.status, "paused")
-        self.assertEqual(outcome.detail, "merge conflict")
-        self.assertEqual(runner.sent, [], "no refix round on a conflict")
+        self.assertIn("conflict", outcome.detail)
         self.assertIn(("add_label", 1, inbox.NEEDS_OPERATOR), tracker.writes)
-        self.assertTrue(any(a[:3] == ("git", "merge", "--abort")
-                            for a, _ in shell.calls))
 
 
 class StageLabelTest(unittest.TestCase):
