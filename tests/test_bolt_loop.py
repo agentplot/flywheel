@@ -1474,6 +1474,42 @@ class StageLabelTest(unittest.TestCase):
         return [w[2] for w in tracker.writes
                 if w[0] == "add_label" and w[2] in inbox.STAGE_LABELS]
 
+    def test_a_merged_change_still_live_is_archived_by_re_derivation(self):
+        # Seven merged changes sat unarchived on bolt/switchboard-stage1
+        # for days: merged before archive-on-green existed, and nothing
+        # re-derived the archive the way it re-derives the label.
+        live = TREE / "openspec" / "changes" / "add-thing"
+        live.mkdir(parents=True, exist_ok=True)
+        try:
+            snapshot = Snapshot(items=[item(1, "closed:merged", state="closed",
+                                            change="add-thing")],
+                                milestone="bolt/x")
+            shell = FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                               ("git", "rev-parse"): Result(0, "abc1234\n"),
+                               ("git", "merge-base"): Result(0),
+                               ("openspec", "archive"): Result(0)})
+            program = self.worked(FakeTracker(snapshot), shell=shell)
+            actions, _ = program.guards(snapshot)
+            self.assertIn("archived add-thing on bolt/x (re-derived from "
+                          "build/add-thing)", actions)
+            argvs = [a for a, _ in shell.calls]
+            self.assertIn(("openspec", "archive", "add-thing", "--yes"), argvs)
+            self.assertIn(("git", "commit", "-m",
+                           "chore(openspec): archive add-thing"), argvs)
+        finally:
+            live.rmdir()
+
+    def test_an_archived_change_is_not_archived_again(self):
+        snapshot = Snapshot(items=[item(1, "closed:merged", state="closed",
+                                        change="add-thing")],
+                            milestone="bolt/x")
+        shell = self.reshell()
+        actions, _ = self.worked(FakeTracker(snapshot),
+                                 shell=shell).guards(snapshot)
+        self.assertEqual([a for a in actions if "archived" in a], [])
+        self.assertNotIn(("openspec", "archive"),
+                         [a[:2] for a, _ in shell.calls])
+
     def test_a_full_cycle_writes_the_four_boundaries_in_the_order_it_runs_them(self):
         snapshot = self.a_ready_item()
         tracker = FakeTracker(snapshot, comments={1: [{"body": "built it"}]})

@@ -449,6 +449,14 @@ never reverses it.
   that include merged, closed items
 - **THEN** the second cycle writes nothing
 
+#### Scenario: A merged change still live is archived
+
+- **WHEN** re-derivation finds a merged spec-path batch whose change
+  directory still exists under `openspec/changes` on the bolt branch
+- **THEN** the guard archives the change there, commits the archive, and
+  records the write; a plan-mode or direct batch, which writes no
+  change, is left alone, and an already-archived change is not touched
+
 ### Requirement: The merge boundary closes every item of the batch
 
 At the same boundary at which it writes `stage:merged` — ancestry confirmed

@@ -1721,6 +1721,8 @@ class BoltLoop:
                 target = inbox.STAGE_BUILT
             else:
                 continue                # the tree witnesses nothing; write nothing
+            if target == inbox.STAGE_MERGED:
+                self.reconcile_archive(batch, snapshot, repo, branch, actions)
             for item in batch.items:
                 current = inbox.stage_of(item.labels, inbox.CONSTRUCTION_STAGES)
                 # verified is never walked back to built: it has no witness
@@ -1757,6 +1759,46 @@ class BoltLoop:
                 if self.close_merged([item], repo):
                     actions.append(f"#{item.number} closed {inbox.CLOSED_MERGED} "
                                    f"(re-derived from {branch})")
+
+    def reconcile_archive(self, batch, snapshot, repo, branch, actions):
+        """The merge's third write, re-derived: a merged spec-path change
+        still live under `openspec/changes` is archived on the bolt branch.
+
+        Merge-on-green archives the change (`merge_stage`), but that write
+        is as tearable as the label and the close — a process killed
+        after the merge, or a merge made before the archive step existed
+        (seven changes on bolt/switchboard-stage1, merged 2026-08-30/31,
+        sat live for days) — and `openspec list` then shows a bolt full
+        of complete, unarchived changes the landing will carry to main.
+        The tree answers this one the same way it answers the others: the
+        batch is merged and its change directory exists, so archive it.
+        Plan-mode and direct batches write no change and are left alone.
+        A failed archive is noted and never retried into a red loop —
+        it stays for hand cleanup, as at merge time.
+        """
+        config = self.unit_config(batch, snapshot)
+        if config.plan or config.direct:
+            return
+        change = batch.change or batch.slug
+        worktree = self.ensure_bolt_worktree(repo)
+        if worktree is None or not (
+                Path(worktree) / "openspec" / "changes" / change).is_dir():
+            return
+        if self.dry_run:
+            actions.append(f"would archive {change} (merged on {branch})")
+            return
+        archived = self.shell(["openspec", "archive", change, "--yes"],
+                              cwd=worktree)
+        if archived.returncode != 0:
+            self.ledger.note(f"openspec archive {change} failed on "
+                             f"{self.params.bolt_branch} — left for hand "
+                             f"cleanup")
+            return
+        self.shell(["git", "add", "-A", "openspec"], cwd=worktree)
+        self.shell(["git", "commit", "-m",
+                    f"chore(openspec): archive {change}"], cwd=worktree)
+        actions.append(f"archived {change} on {self.params.bolt_branch} "
+                       f"(re-derived from {branch})")
 
     def guard_expand(self, snapshot, actions):
         """-1 — expansion: an approved plan card becomes a unit on this bolt.
