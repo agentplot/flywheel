@@ -1719,6 +1719,15 @@ class BoltLoop:
                 target = inbox.STAGE_MERGED
             elif self.branch_has_commits(branch, repo):
                 target = inbox.STAGE_BUILT
+            elif (all(i.merge_closed for i in batch.items)
+                  and self.git("rev-parse", "--verify", "--quiet", branch,
+                               cwd=repo).returncode != 0):
+                # Merged, closed, and its branch pruned since — the normal
+                # end state of a batch (`wt remove` deletes a merged
+                # branch). The close is the witness the tree no longer
+                # holds; the archive is still owed.
+                self.reconcile_archive(batch, snapshot, repo, branch, actions)
+                continue
             else:
                 continue                # the tree witnesses nothing; write nothing
             if target == inbox.STAGE_MERGED:
@@ -1787,18 +1796,57 @@ class BoltLoop:
         if self.dry_run:
             actions.append(f"would archive {change} (merged on {branch})")
             return
+        ok, output = self.archive_change(change, worktree)
+        if ok:
+            actions.append(f"archived {change} on {self.params.bolt_branch} "
+                           f"(re-derived from {branch})")
+            return
+        # An archive that will not apply is a FINDING on merged work — a
+        # delta spec that cannot land on `openspec/specs` — and a finding
+        # is an item, not a ledger line nobody reads. Queued on the
+        # milestone, it rides the findings route at STOP like any other;
+        # filed once, by title.
+        title = f"Archive of {change} fails on {self.params.bolt_branch}"
+        if any(i.title == title for i in snapshot.on(self.params.milestone)
+               if i.is_open):
+            return
+        number = self.tracker.create_item(
+            title,
+            f"`openspec archive {change} --yes` on {self.params.bolt_branch} "
+            f"does not apply:\n\n```\n{output}\n```\n\n"
+            f"The change is merged and its items are closed; what remains "
+            f"is a delta spec `openspec/specs` will not take (an `ADDED` "
+            f"requirement whose header already exists must be `MODIFIED`, "
+            f"and so on). Correct the delta under "
+            f"`openspec/changes/{change}` on {self.params.bolt_branch}; "
+            f"the loop archives it on its next cycle.",
+            labels=(inbox.QUEUED,), milestone=self.params.milestone)
+        actions.append(f"filed #{number}: {title}")
+
+    def archive_change(self, change, worktree):
+        """`openspec archive` on the bolt branch, judged by the tree.
+
+        `openspec archive` exits 0 on "Aborted. No files were changed." —
+        a delta spec that cannot apply — so the exit code alone called
+        build-model-writeback archived at merge time while its directory
+        stayed live for days. The archive happened only if the change
+        directory is gone; then, and only then, the commit follows.
+        Returns `(ok, output)`, the output being the tool's last line so
+        a note or a finding can say why.
+        """
         archived = self.shell(["openspec", "archive", change, "--yes"],
                               cwd=worktree)
-        if archived.returncode != 0:
-            self.ledger.note(f"openspec archive {change} failed on "
-                             f"{self.params.bolt_branch} — left for hand "
-                             f"cleanup")
-            return
+        live = Path(worktree) / "openspec" / "changes" / change
+        if archived.returncode != 0 or live.is_dir():
+            lines = [l for l in ((archived.stdout or "") + "\n"
+                                 + (archived.stderr or "")).splitlines()
+                     if l.strip()]
+            return False, (lines[-1].strip() if lines
+                           else f"exit {archived.returncode}")
         self.shell(["git", "add", "-A", "openspec"], cwd=worktree)
         self.shell(["git", "commit", "-m",
                     f"chore(openspec): archive {change}"], cwd=worktree)
-        actions.append(f"archived {change} on {self.params.bolt_branch} "
-                       f"(re-derived from {branch})")
+        return True, ""
 
     def guard_expand(self, snapshot, actions):
         """-1 — expansion: an approved plan card becomes a unit on this bolt.
@@ -3093,17 +3141,11 @@ class BoltLoop:
         note = ""
         if change:
             # Archive on green is a loop write now, like every other piece
-            # of bookkeeping. A failed archive never un-merges the branch.
-            archived = self.shell(["openspec", "archive", change, "--yes"],
-                                  cwd=bolt_worktree)
-            if archived.returncode == 0:
-                self.shell(["git", "add", "-A", "openspec"],
-                           cwd=bolt_worktree)
-                self.shell(["git", "commit", "-m",
-                            f"chore(openspec): archive {change}"],
-                           cwd=bolt_worktree)
-            else:
-                note = " (openspec archive failed; left for hand cleanup)"
+            # of bookkeeping. A failed archive never un-merges the branch;
+            # the re-derivation guard files it as a finding next cycle.
+            ok, output = self.archive_change(change, bolt_worktree)
+            if not ok:
+                note = f" (openspec archive failed: {output})"
         # The witness ref: rebase-merges rewrite SHAs, so ancestry alone
         # forgets this fact on the next restart (problem 6).
         self.record_merged(branch, repo)

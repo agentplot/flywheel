@@ -1487,7 +1487,9 @@ class StageLabelTest(unittest.TestCase):
             shell = FakeShell({("git", "rev-list"): Result(0, "3\n"),
                                ("git", "rev-parse"): Result(0, "abc1234\n"),
                                ("git", "merge-base"): Result(0),
-                               ("openspec", "archive"): Result(0)})
+                               # a real archive MOVES the directory
+                               ("openspec", "archive"):
+                                   lambda: (live.rmdir(), Result(0))[1]})
             program = self.worked(FakeTracker(snapshot), shell=shell)
             actions, _ = program.guards(snapshot)
             self.assertIn("archived add-thing on bolt/x (re-derived from "
@@ -1497,7 +1499,71 @@ class StageLabelTest(unittest.TestCase):
             self.assertIn(("git", "commit", "-m",
                            "chore(openspec): archive add-thing"), argvs)
         finally:
+            if live.is_dir():
+                live.rmdir()
+
+    def test_an_archive_that_aborts_at_exit_0_is_a_filed_finding(self):
+        # `openspec archive` exits 0 on "Aborted. No files were changed."
+        # — build-model-writeback read as archived at merge time and sat
+        # live for days. The tree is the judge, and the failure is an
+        # item, filed once.
+        live = TREE / "openspec" / "changes" / "add-thing"
+        live.mkdir(parents=True, exist_ok=True)
+        try:
+            snapshot = Snapshot(items=[item(1, "closed:merged", state="closed",
+                                            change="add-thing")],
+                                milestone="bolt/x")
+            aborted = Result(0, "build/x ADDED failed for header \"### "
+                                "Requirement: Y\" - already exists\n"
+                                "Aborted. No files were changed.\n")
+            shell = FakeShell({("git", "rev-list"): Result(0, "3\n"),
+                               ("git", "rev-parse"): Result(0, "abc1234\n"),
+                               ("git", "merge-base"): Result(0),
+                               ("openspec", "archive"): aborted})
+            tracker = FakeTracker(snapshot)
+            actions, _ = self.worked(tracker, shell=shell).guards(snapshot)
+            self.assertNotIn(("git", "commit", "-m",
+                              "chore(openspec): archive add-thing"),
+                             [a for a, _ in shell.calls])
+            filed = [w for w in tracker.writes if w[0] == "create_item"]
+            self.assertEqual([w[2] for w in filed],
+                             ["Archive of add-thing fails on bolt/x"])
+            self.assertTrue(any(a.startswith("filed #") for a in actions))
+            # Filed once: the open finding on the milestone is the dedupe.
+            again = Snapshot(items=[*snapshot.items,
+                                    item(2, inbox.QUEUED,
+                                         title="Archive of add-thing fails "
+                                               "on bolt/x")],
+                             milestone="bolt/x")
+            tracker2 = FakeTracker(again)
+            actions2, _ = self.worked(tracker2, shell=shell).guards(again)
+            self.assertEqual([w for w in tracker2.writes
+                              if w[0] == "create_item"], [])
+            self.assertFalse(any("filed #" in a for a in actions2))
+        finally:
             live.rmdir()
+
+    def test_a_merged_change_whose_branch_was_pruned_is_still_archived(self):
+        # commissioning-fragments-published: closed merged, its build
+        # branch deleted by the merge, its change live on the bolt branch —
+        # and a tree with no branch witnesses nothing, so nothing archived.
+        live = TREE / "openspec" / "changes" / "add-thing"
+        live.mkdir(parents=True, exist_ok=True)
+        try:
+            snapshot = Snapshot(items=[item(1, "closed:merged", state="closed",
+                                            change="add-thing")],
+                                milestone="bolt/x")
+            shell = FakeShell({("git", "rev-list"): Result(0, "0\n"),
+                               ("git", "rev-parse"): Result(1),   # no branch
+                               ("openspec", "archive"):
+                                   lambda: (live.rmdir(), Result(0))[1]})
+            actions, _ = self.worked(FakeTracker(snapshot),
+                                     shell=shell).guards(snapshot)
+            self.assertIn("archived add-thing on bolt/x (re-derived from "
+                          "build/add-thing)", actions)
+        finally:
+            if live.is_dir():
+                live.rmdir()
 
     def test_an_archived_change_is_not_archived_again(self):
         snapshot = Snapshot(items=[item(1, "closed:merged", state="closed",

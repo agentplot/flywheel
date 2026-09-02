@@ -455,7 +455,18 @@ never reverses it.
   directory still exists under `openspec/changes` on the bolt branch
 - **THEN** the guard archives the change there, commits the archive, and
   records the write; a plan-mode or direct batch, which writes no
-  change, is left alone, and an already-archived change is not touched
+  change, is left alone, and an already-archived change is not touched.
+  A merged batch whose build branch was pruned after the merge is
+  archived the same way: the close is its witness
+
+#### Scenario: An archive is judged by the tree, and a refused one is a finding
+
+- **WHEN** `openspec archive` exits 0 but leaves the change directory in
+  place (an "Aborted" delta that cannot apply to `openspec/specs`)
+- **THEN** the loop treats the archive as failed, commits nothing, and
+  files one queued item on the milestone naming the change and the
+  tool's reason, so the failure rides the findings route rather than a
+  ledger note; an open item of that title is not filed twice
 
 ### Requirement: The merge boundary closes every item of the batch
 
