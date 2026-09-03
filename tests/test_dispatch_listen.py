@@ -43,12 +43,46 @@ class ListenTest(unittest.TestCase):
     def test_every_answer_is_a_numbered_delivery_until_the_session_ends(self):
         made = ear.listen(self.plan, self.scripted(
             (0, "first"), (0, "second"),
-            (0, '{"prompt": "done", "session_ended": true}')),
+            (0, '{"status": "ended", "ended_by": "user", "prompts": []}')),
             self.deliver, log=lambda m: None)
         self.assertEqual(made, 3)
         self.assertEqual([p.name for p in sorted(
             (self.plan.parent / "feedback").iterdir())],
             ["001.md", "002.md", "003.md"])
+
+    BANNER = ("[lavish-axi] Long-polling for user feedback on plan.html. "
+              "This stays silent until the user sends feedback or ends the "
+              "session - leave it running.\n")
+
+    def test_the_banner_alone_is_not_feedback_and_does_not_end_anything(self):
+        # lavish's own boilerplate says "ends the session" on every poll.
+        made = ear.listen(self.plan, self.scripted(
+            (0, self.BANNER), (0, self.BANNER + '{"prompts": ["yes"]}'), (1, "")),
+            self.deliver, log=lambda m: None)
+        self.assertEqual(made, 1)
+
+    def test_a_lavish_error_is_retried_never_delivered(self):
+        # Live: "error: Lavish Editor poll response was interrupted /
+        # code: SERVER_ERROR" went into the pane as delivery 1, and the
+        # boilerplate after it read as the operator ending the session.
+        crash = ("error: Lavish Editor poll response was interrupted\n"
+                 "code: SERVER_ERROR\nhelp[2]: re-run the poll\n" + self.BANNER)
+        waits, logs = [], []
+        made = ear.listen(self.plan, self.scripted(
+            (0, crash), (0, crash), (0, '{"prompts": ["yes to all"]}'), (1, "")),
+            self.deliver, log=logs.append, sleep=waits.append)
+        self.assertEqual(made, 1)
+        self.assertEqual(len(self.delivered), 1)
+        self.assertEqual(waits, [15, 30])
+        self.assertTrue(any("retrying" in m for m in logs))
+
+    def test_a_lavish_error_on_a_dead_page_stops(self):
+        crash = "error: Lavish Editor poll response was interrupted\ncode: X\n"
+        made = ear.listen(self.plan, self.scripted((0, crash)), self.deliver,
+                          log=lambda m: None, alive=lambda: False,
+                          sleep=lambda s: None)
+        self.assertEqual(made, 0)
+        self.assertEqual(self.delivered, [])
 
     def test_a_refusing_poll_stops_the_listener(self):
         # lavish gone, or the page closed from the browser: no spin.
