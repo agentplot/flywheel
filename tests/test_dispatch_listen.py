@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from context import BIN  # noqa: F401 — puts bin/ on sys.path
-import _flywheel_round_listen as ear  # noqa: E402
+import _flywheel_dispatch_listen as ear  # noqa: E402
 
 
 class ListenTest(unittest.TestCase):

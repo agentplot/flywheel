@@ -942,7 +942,8 @@ def server_config(manifest: dict, host: str, interval: int):
         host=host, loops_cwd=loops_cwd, teams=manifest["teams"],
         interval=interval, bin_dir=Path(__file__).resolve().parent,
         operator=operator, books=books,
-        parallel=int(top.get("parallel", 0) or 0))
+        parallel=int(top.get("parallel", 0) or 0),
+        dispatch_host=(manifest.get("dispatch") or {}).get("host"))
 
 
 def fresh_gate(cwd: Path):

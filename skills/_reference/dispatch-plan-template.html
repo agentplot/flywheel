@@ -346,13 +346,31 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
 
   const rowSelects = {};  // row key -> its route <select>, for set-all
 
+  // A choice survives a re-render. Dispatch rewrites this file in place
+  // whenever material arrives mid-round, and the served page reloads
+  // from disk — so every dropdown the operator had already set snapped
+  // back to its seed. Choices are kept in the browser under the page's
+  // own path (the lavish session URL is stable across re-renders) and
+  // restored on load; a row that no longer exists is simply not asked.
+  const STORE = "dispatch-plan:" + location.pathname + ":";
+  function remembered(key) {
+    try { return localStorage.getItem(STORE + key); } catch (e) { return null; }
+  }
+  function remember(key, value) {
+    try { localStorage.setItem(STORE + key, value); } catch (e) {}
+  }
+
   function selectFor(key, routes) {
     const sel = document.createElement("select");
     sel.className = "select select-sm w-full";
     for (const r of routes) sel.append(new Option(r, r));
     seeded[key] = routes[0];
-    routing[key] = routes[0];
-    sel.addEventListener("change", () => { routing[key] = sel.value; preview(); });
+    const kept = remembered(key);
+    routing[key] = routes.includes(kept) ? kept : routes[0];
+    sel.value = routing[key];
+    sel.addEventListener("change", () => {
+      routing[key] = sel.value; remember(key, sel.value); preview();
+    });
     rowSelects[key] = sel;
     return sel;
   }
@@ -369,6 +387,7 @@ Derived from: book f1ddcfd · specs 38a1c1a · in flight: none
       if (!sel.value) return;
       for (const key of keys) {
         routing[key] = sel.value;
+        remember(key, sel.value);
         if (rowSelects[key]) rowSelects[key].value = sel.value;
       }
       sel.value = "";

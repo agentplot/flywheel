@@ -127,7 +127,7 @@ def pid_alive(path):
 
 def main(argv=None):
     import argparse
-    parser = argparse.ArgumentParser(prog="flywheel-round-listen")
+    parser = argparse.ArgumentParser(prog="flywheel-dispatch-listen")
     parser.add_argument("plan", help="the round's plan.html")
     parser.add_argument("--agent", default="dispatch",
                         help="the pane feedback is handed to")
@@ -136,7 +136,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     plan = Path(args.plan).resolve()
     if not plan.is_file():
-        sys.exit(f"flywheel-round-listen: {plan} is not a file")
+        sys.exit(f"flywheel-dispatch-listen: {plan} is not a file")
     pidfile = plan.parent / ".listen.pid"
     alive = pid_alive(pidfile)
     if alive:
