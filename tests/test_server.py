@@ -636,12 +636,13 @@ class DispatchLedgerTest(unittest.TestCase):
         # A server per host, one dispatch pane: every other host's relay
         # failed "absent" each pass — noise in the ledger, and with a
         # herdr remote a needless poke.
+        import dataclasses
         dispatch = FakeDispatch()
         box = a_server(tracker=FakeTracker(self.snap()), dispatch=dispatch)
-        box.config.dispatch_host = "mac-studio"      # this host: workstation
-        box.pass_once()
+        box.config = dataclasses.replace(box.config, dispatch_host="mac-studio")
+        box.pass_once()                              # this host: workstation
         self.assertEqual(dispatch.calls, [])
-        box.config.dispatch_host = "workstation"
+        box.config = dataclasses.replace(box.config, dispatch_host="workstation")
         box.pass_once()
         self.assertEqual([k for k, _ in dispatch.calls], ["relay"])
 
