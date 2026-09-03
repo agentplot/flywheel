@@ -632,17 +632,14 @@ class DispatchLedgerTest(unittest.TestCase):
         box.pass_once()                     # delivered set — silent
         self.assertEqual(len(dispatch.calls), 1)
 
-    def test_only_dispatchs_own_host_pokes_it(self):
-        # A server per host, one dispatch pane: every other host's relay
-        # failed "absent" each pass — noise in the ledger, and with a
-        # herdr remote a needless poke.
-        import dataclasses
+    def test_a_host_without_dispatch_on_its_roster_pokes_nothing(self):
+        # A server per host, one dispatch pane: presence is the rule.
         dispatch = FakeDispatch()
+        dispatch.status = lambda: {"present": False}
         box = a_server(tracker=FakeTracker(self.snap()), dispatch=dispatch)
-        box.config = dataclasses.replace(box.config, dispatch_host="mac-studio")
-        box.pass_once()                              # this host: workstation
+        box.pass_once()
         self.assertEqual(dispatch.calls, [])
-        box.config = dataclasses.replace(box.config, dispatch_host="workstation")
+        dispatch.status = lambda: {"present": True, "agent_status": "idle"}
         box.pass_once()
         self.assertEqual([k for k, _ in dispatch.calls], ["relay"])
 

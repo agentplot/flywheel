@@ -351,9 +351,6 @@ class ServerConfig:
     #: Fleet-wide bolt fan-out: batches driven concurrently per bolt loop.
     #: 0 means unset — the loop's own default rules.
     parallel: int = 0
-    #: The host dispatch is pinned to (`dispatch: host:` in fleet.yaml).
-    #: Only that host's server pokes dispatch; None means any host.
-    dispatch_host: str = None
 
     @property
     def changes_dir(self):
@@ -571,13 +568,6 @@ class Server:
         box = inbox.dispatch_inbox(snapshot)
         if not self.dispatch:
             return 0
-        # One dispatch, one poker. A fleet may run a server per host; the
-        # pane lives on one of them, and every other host's relay would
-        # fail "absent" each pass — a ledgered failure and, with a herdr
-        # remote, a needless poke. The pin in fleet.yaml settles it.
-        if (self.config.dispatch_host
-                and self.config.dispatch_host != self.config.host):
-            return 0
         if box.empty:
             self._delivered_sets.clear()
             return 0
@@ -590,6 +580,13 @@ class Server:
             return 0
         failures = 0
         with self.dispatch() as d:
+            # One dispatch, one poker: a fleet may run a server per host
+            # and the pane lives on one of them. A host whose roster does
+            # not carry dispatch has nothing to poke and says nothing —
+            # presence is the whole rule, no configuration.
+            status = getattr(d, "status", None)
+            if status and not (status() or {}).get("present", True):
+                return 0
             for kind, call, items in (("relay", d.relay, box.relay),
                                       ("triage", d.triage, box.triage),
                                       ("round", d.round, box.round)):

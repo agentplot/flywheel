@@ -880,6 +880,13 @@ def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
                   f"the channel will not connect and no digest will go "
                   f"out. Put the org bot's token there and run "
                   f"`flywheel dispatch` again.")
+    # The round's page is ONE long-running lavish session the operator
+    # opens once: lavish never opens a browser from the pane (the operator
+    # watched tabs pile up on every re-serve), and the server does not
+    # idle out under them (a link that stopped answering within the hour
+    # is how round 28 went unseen). Manifest `env:` overrides both.
+    env_map.setdefault("LAVISH_AXI_NO_OPEN", "1")
+    env_map.setdefault("LAVISH_AXI_IDLE_TIMEOUT_MS", str(7 * 24 * 3600 * 1000))
     claude_args = (("--channels", block["channels"])
                    if block.get("channels") else ())
     ok = launch_agent("dispatch", "flywheel-dispatch", block.get("model"),
@@ -942,8 +949,7 @@ def server_config(manifest: dict, host: str, interval: int):
         host=host, loops_cwd=loops_cwd, teams=manifest["teams"],
         interval=interval, bin_dir=Path(__file__).resolve().parent,
         operator=operator, books=books,
-        parallel=int(top.get("parallel", 0) or 0),
-        dispatch_host=(manifest.get("dispatch") or {}).get("host"))
+        parallel=int(top.get("parallel", 0) or 0))
 
 
 def fresh_gate(cwd: Path):

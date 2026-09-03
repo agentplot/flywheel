@@ -81,13 +81,17 @@ environment's `LAVISH_AXI_HOST` / `LAVISH_AXI_LINK_HOST` /
 `LAVISH_AXI_ALLOWED_HOSTS` (from the manifest's `dispatch:` env) make
 the served URL reachable from the operator's other devices; use the
 URL lavish prints, never a URL you compose. **One lavish session per
-round, kept alive — never a second browser.** Every `lavish-axi` start
-opens a browser tab, and the operator has watched tabs pile up. So: a
-re-render rewrites `plan.html` in place and the served page reloads it
-from disk — the operator's dropdown choices survive, the page keeps
-them itself. Before an announcement, check the URL still answers
-(`curl -sf <url> >/dev/null`); re-run `lavish-axi` ONLY when it does
-not (the server stops when idle), and say that the link changed.
+round, and you never open a browser.** Your pane runs with
+`LAVISH_AXI_NO_OPEN=1` and a week-long idle timeout: lavish serves and
+prints the URL, the operator opens it once, and it stays up. Write that
+URL to `<path>/url.txt` beside the plan. A re-render rewrites
+`plan.html` in place and the served page reloads it from disk — the
+operator's dropdown choices survive, the page keeps them itself — so a
+re-render re-runs nothing; it announces the same link with the delta.
+**On start, adopt the standing round**: the newest `<plans>/*/plan.html`
+whose `url.txt` still answers (`curl -sf`) IS the round — announce that
+link, start its listener, fold new material into it. Render a new
+round only when no served page stands.
 **Never run `lavish-axi poll` in your own turn**: the fleet's pokes
 interrupt whatever tool your pane is running, and every in-pane poll
 died within the hour (round 28). After serving, run
