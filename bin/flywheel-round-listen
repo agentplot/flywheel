@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""flywheel-round-listen — keep listening to a round's lavish page.
+
+    flywheel-round-listen <plans>/<round>/plan.html [--agent dispatch]
+
+Detaches a listener that long-polls the page and hands every answer
+into the dispatch pane as a prompt naming the feedback file, once the
+pane has settled. Idempotent per page: a second start finds the pidfile
+and does nothing. See `_flywheel_round_listen.py` for why the poll
+cannot live in the pane's own turn.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _flywheel_round_listen import main  # noqa: E402
+
+if __name__ == "__main__":
+    sys.exit(main())

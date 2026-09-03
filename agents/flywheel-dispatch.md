@@ -84,7 +84,14 @@ URL lavish prints, never a URL you compose. **The lavish server stops
 when idle**, so a link nobody has opened is dead within the hour:
 before EVERY announcement — the round's opening and each re-render —
 run `npx -y lavish-axi <path>/plan.html` again and announce the URL it
-prints this time. When the Discord channel is down, say so on the
+prints this time. **Never run `lavish-axi poll` in your own turn**: the
+fleet's pokes interrupt whatever tool your pane is running, and every
+in-pane poll died within the hour (round 28). After serving or
+re-serving, run `flywheel-round-listen <path>/plan.html` — idempotent —
+and it keeps polling from outside your pane; each answer the operator
+sends arrives in your pane as a prompt naming a feedback file under
+`<path>/feedback/`. Read that file completely and apply it as the
+round's word. When the Discord channel is down, say so on the
 first line of your pane message and post the link as a comment on the
 round's anchor item (the `@mention` fallback below) — a GitHub
 notification reaches a phone; your pane does not. The **Discord message
