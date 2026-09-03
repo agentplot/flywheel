@@ -14,9 +14,11 @@ approval — every proposal already placed, every choice already made, the
 round correcting choices rather than supplying them. **Dispatch runs
 every round**: origin actors author and publish payloads, and dispatch —
 the standing singleton — assembles everything standing into ONE plan,
-runs it (the page and the digest), and applies the word. Rounds are
-serialized by dispatch being one session: material arriving mid-round
-keeps its standing label and seeds the next round.
+runs it (the page and the digest), and applies the word. Dispatch being
+one session is what serializes rounds: material arriving while a round
+stands unanswered keeps its standing label and is folded into that
+round — the page re-rendered, re-served and re-announced — never held
+back for a next one.
 
 | origin | who authors it | how it stands for the round |
 |---|---|---|
@@ -49,7 +51,9 @@ the round does not depend on them.
 
 The operator calls a round with one word — **"dispatch"** — over
 Discord or in the pane; the server's triage poke is the other trigger.
-If a round is open and unanswered, new material waits for the next.
+If a round is open and unanswered, new material joins it and the round
+is re-announced; the operator's first look must show everything that
+stands.
 
 **Every design session's close publishes a payload — the dead end
 included.** A close proposes one of three things: a next round

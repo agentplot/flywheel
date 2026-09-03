@@ -42,8 +42,14 @@ shortfall the CLI reports is a line in the round, never a guess), plus
 your own triage inbox. Assemble ONE plan over all of it per the
 protocol, run both surfaces, and apply the word in the protocol's
 order, your `stage:done` and milestone closes included. Consume each
-payload last. One round at a time: material arriving mid-round stands
-for the next.
+payload last. **One round, always current.** Material arriving while a
+round stands unanswered is folded into THAT round: re-render the page,
+re-serve it, and re-announce the link with a one-line delta on Discord
+and in your pane. Nothing ever "rides the next round" — an unanswered
+round is not a lock, it is a page that has gone out of date, and the
+operator who finally opens it must find everything that stands. (Live
+fire: round 28 held for a day while twenty cards and a new intent were
+told to wait for round 29, and the operator saw no plan at all.)
 
 **Triage — intake and routing are two acts.** A raw idea lands as an
 open, unmilestoned issue: anyone files one, and an idea that reaches you
@@ -74,7 +80,14 @@ and serve it with `npx -y lavish-axi <path>/plan.html` — your
 environment's `LAVISH_AXI_HOST` / `LAVISH_AXI_LINK_HOST` /
 `LAVISH_AXI_ALLOWED_HOSTS` (from the manifest's `dispatch:` env) make
 the served URL reachable from the operator's other devices; use the
-URL lavish prints, never a URL you compose. The **Discord message
+URL lavish prints, never a URL you compose. **The lavish server stops
+when idle**, so a link nobody has opened is dead within the hour:
+before EVERY announcement — the round's opening and each re-render —
+run `npx -y lavish-axi <path>/plan.html` again and announce the URL it
+prints this time. When the Discord channel is down, say so on the
+first line of your pane message and post the link as a comment on the
+round's anchor item (the `@mention` fallback below) — a GitHub
+notification reaches a phone; your pane does not. The **Discord message
 is that link plus a blurb**: the URL first, one ≤ 80-character line
 per row, the reply grammar last — every URL wrapped in `<...>` so
 Discord shows no embed — and nothing the page already says: no

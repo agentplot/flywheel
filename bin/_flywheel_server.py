@@ -391,6 +391,7 @@ class Server:
         self.planner = planner      # injected: charge one planning run
         self._deliveries = {}
         self._delivered_sets = {}   # kind -> frozenset of item numbers
+        self._seen_sets = {}        # kind -> the set seen last pass, undelivered
         self._plan_charges = 0
         self._plan_charged = {}     # system -> (book, specs) heads charged at
         self._plan_spent = {}       # system -> heads a run found no work at
@@ -587,6 +588,13 @@ class Server:
                     continue
                 current = frozenset(i.number for i in items)
                 if self._delivered_sets.get(kind) == current:
+                    continue
+                # The round is delivered once its set has held still for
+                # a pass: a planner files cards one a minute, and a poke
+                # per card is a dispatch turn per card — five rounds in
+                # four minutes, measured. Escalations never wait.
+                if kind == "round" and self._seen_sets.get(kind) != current:
+                    self._seen_sets[kind] = current
                     continue
                 if self._deliver(kind, call, items):
                     failures += 1

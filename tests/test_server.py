@@ -402,6 +402,7 @@ class PassTest(unittest.TestCase):
         dispatch = FakeDispatch()
         box = a_server(tracker=FakeTracker(snap), dispatch=dispatch)
         box.pass_once()
+        box.pass_once()     # the round goes once its set has held still
         kinds = [kind for kind, _items in dispatch.calls]
         self.assertIn("round", kinds)
         round_items = next(i for k, i in dispatch.calls if k == "round")
@@ -607,6 +608,35 @@ class DispatchLedgerTest(unittest.TestCase):
         box.pass_once()
         box.pass_once()
         self.assertEqual(len(dispatch.calls), 2)
+
+    def round_snap(self, *numbers):
+        return Snapshot(
+            items=[item(n, milestone="bolt/a") for n in numbers],
+            batches=[inbox.Batch(number=n, status=inbox.STATUS_BACKLOG,
+                                 milestone="bolt/a", milestone_state="open")
+                     for n in numbers])
+
+    def test_the_round_is_delivered_once_its_set_holds_still(self):
+        # A planner filing cards one a minute poked dispatch once per card
+        # — five rounds in four minutes, each a full dispatch turn.
+        dispatch = FakeDispatch()
+        tracker = FakeTracker(self.round_snap(9))
+        box = a_server(tracker=tracker, dispatch=dispatch)
+        box.pass_once()                     # first sighting — held
+        self.assertEqual([k for k, _ in dispatch.calls], [])
+        tracker._snapshot = self.round_snap(9, 10)
+        box.pass_once()                     # moved — held again
+        self.assertEqual([k for k, _ in dispatch.calls], [])
+        box.pass_once()                     # still — delivered
+        self.assertEqual([k for k, _ in dispatch.calls], ["round"])
+        box.pass_once()                     # delivered set — silent
+        self.assertEqual(len(dispatch.calls), 1)
+
+    def test_an_escalation_never_waits_a_pass(self):
+        dispatch = FakeDispatch()
+        box = a_server(tracker=FakeTracker(self.snap()), dispatch=dispatch)
+        box.pass_once()
+        self.assertEqual([k for k, _ in dispatch.calls], ["relay"])
 
     def test_an_emptied_queue_forgets_so_the_same_numbers_are_news(self):
         dispatch = FakeDispatch()

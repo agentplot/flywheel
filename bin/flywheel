@@ -646,6 +646,17 @@ def status(manifest: dict, host: str, session: str, env: dict) -> int:
                 mark = f"  — its host is {pinned}, not this one"
         print(f"dispatch: {observed}"
               + (f"  ·  {', '.join(wanted)}" if wanted else "") + mark)
+        if block.get("channels"):
+            state_dir = Path((block.get("env") or {}).get(
+                "DISCORD_STATE_DIR") or ".flywheel/discord")
+            if not state_dir.is_absolute():
+                state_dir = (manifest["root"] / state_dir).resolve()
+            if not state_dir_token(state_dir):
+                print(f"  channel: NOT CONNECTABLE — no DISCORD_BOT_TOKEN in "
+                      f"{state_dir}/.env; rounds reach the pane and the "
+                      f"page only  ← put the org bot's token there, then "
+                      f"recycle dispatch")
+                drift = 1
     # The merge gate the loops would have to run in their checkout.
     # Reported, never acted on: status starts nothing, and an ungranted
     # repo is not drift.
@@ -858,6 +869,17 @@ def dispatch_cmd(manifest: dict, host: str, env: dict) -> int:
         token = state_dir_token(state_dir)
         if token:
             env_map.setdefault("DISCORD_BOT_TOKEN", token)
+        elif block.get("channels"):
+            # Said here and in `status`, because the failure is otherwise
+            # invisible: the channel plugin fails to connect inside the
+            # pane and every round's digest silently never goes out
+            # (measured: an empty DISCORD_BOT_TOKEN= in the org state
+            # dir since 2026-08-19; round 28 waited a day unseen).
+            print(f"dispatch: WARNING — {block['channels']} is configured "
+                  f"but {state_dir}/.env carries no DISCORD_BOT_TOKEN; "
+                  f"the channel will not connect and no digest will go "
+                  f"out. Put the org bot's token there and run "
+                  f"`flywheel dispatch` again.")
     claude_args = (("--channels", block["channels"])
                    if block.get("channels") else ())
     ok = launch_agent("dispatch", "flywheel-dispatch", block.get("model"),
