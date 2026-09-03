@@ -32,9 +32,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _flywheel_herdr as herdr         # noqa: E402
 
 SETTLED = ("idle", "done")
-#: What lavish says when the operator ended the session from the page.
-_ENDED = re.compile(r"session[_ -]?ended|\"ended\"\s*:\s*true|Send & End",
-                    re.IGNORECASE)
+#: The poll's structured reply when the operator ended the session from
+#: the page (`Send & End`): `{"status": "ended", "ended_by": "user"}`.
+#: Matched on the JSON, never on prose — lavish's own boilerplate says
+#: "ends the session" on every poll.
+_ENDED = re.compile(r"\"status\"\s*:\s*\"ended\"")
+#: The poll's error reply — a YAML-ish `error: …` / `code: …` block —
+#: lavish's server hiccuping (measured: "poll response was interrupted",
+#: SERVER_ERROR, delivered into the pane as if it were the operator's
+#: word). Retried, never delivered.
+_ERROR = re.compile(r"^\s*error:\s*\S", re.MULTILINE)
+#: The banner every poll prints before it blocks; not feedback.
+_BANNER = re.compile(r"^\[lavish-axi\] Long-polling.*$", re.MULTILINE)
+RETRY_S = (15, 30, 60, 120)
 
 
 def feedback_path(plan, n):
@@ -59,23 +69,50 @@ def session_ended(text):
     return bool(_ENDED.search(text or ""))
 
 
-def listen(plan, poll, deliver, log=print):
+def feedback_in(text):
+    """The poll's reply with the banner stripped; empty when nothing
+    but the banner came back."""
+    return _BANNER.sub("", text or "").strip()
+
+
+def poll_errored(text):
+    return bool(_ERROR.search(feedback_in(text)))
+
+
+def listen(plan, poll, deliver, log=print, alive=lambda: True,
+           sleep=time.sleep):
     """Poll until the session ends; every delivery goes into the pane.
 
-    `poll()` -> `(returncode, output)`; `deliver(text)` -> bool. Returns
-    the number of deliveries made. A poll that exits non-zero with
-    nothing to say is lavish refusing (the server gone, the session
-    closed from the page and not reopenable) — the listener stops rather
-    than spinning.
+    `poll()` -> `(returncode, output)`; `deliver(text)` -> bool;
+    `alive()` says whether the page's URL still answers. Returns the
+    number of deliveries made.
+
+    Three replies are not feedback and are never delivered: nothing but
+    the banner (poll again), an `error:` block (lavish hiccuped — wait
+    and poll again while the page still answers; stop when it does
+    not), and a non-zero exit with nothing to say (lavish refusing: the
+    session closed from the page and not reopenable — stop).
     """
-    made = 0
+    made, errors = 0, 0
     while True:
         rc, out = poll()
-        if not (out or "").strip():
+        body = feedback_in(out)
+        if not body:
             if rc != 0:
                 log(f"poll exited {rc} with nothing — stopping")
                 return made
             continue
+        if poll_errored(out):
+            errors += 1
+            if not alive():
+                log(f"poll error and the page no longer answers — stopping: "
+                    f"{body.splitlines()[0]}")
+                return made
+            wait = RETRY_S[min(errors, len(RETRY_S)) - 1]
+            log(f"poll error ({body.splitlines()[0]}) — retrying in {wait}s")
+            sleep(wait)
+            continue
+        errors = 0
         made += 1
         path = write_feedback(plan, made, out)
         if not deliver(order(plan, made, path)):
@@ -86,6 +123,22 @@ def listen(plan, poll, deliver, log=print):
         if session_ended(out) or rc != 0:
             log("the operator ended the session — stopping")
             return made
+
+
+def url_answers(plan):
+    """Does the round's recorded URL (`url.txt` beside the plan) still
+    answer? Unknown (no file) reads as alive: the listener then trusts
+    the poll alone."""
+    import urllib.request
+    try:
+        url = (plan.parent / "url.txt").read_text().strip()
+    except OSError:
+        return True
+    try:
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            return resp.status < 500
+    except Exception:  # noqa: BLE001 — any failure is "does not answer"
+        return False
 
 
 def poll_lavish(plan, run=subprocess.run):
@@ -162,7 +215,7 @@ def main(argv=None):
         listen(plan, poll=lambda: poll_lavish(plan),
                deliver=lambda text: deliver_settled(args.agent, text, env,
                                                     log=log),
-               log=log)
+               log=log, alive=lambda: url_answers(plan))
     finally:
         pidfile.unlink(missing_ok=True)
     return 0
