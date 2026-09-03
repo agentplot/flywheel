@@ -88,10 +88,14 @@ URL to `<path>/url.txt` beside the plan. A re-render rewrites
 `plan.html` in place and the served page reloads it from disk — the
 operator's dropdown choices survive, the page keeps them itself — so a
 re-render re-runs nothing; it announces the same link with the delta.
-**On start, adopt the standing round**: the newest `<plans>/*/plan.html`
-whose `url.txt` still answers (`curl -sf`) IS the round — announce that
-link, start its listener, fold new material into it. Render a new
-round only when no served page stands.
+**On start, adopt the standing round**: run
+`flywheel-dispatch-listen --standing <org>/.flywheel/plans` — it prints
+`standing <plan.html> <url>` for the newest round whose page still
+answers, or `none`. (Never `ls -t` the directory yourself: the pane's
+`ls` is aliased and errors out — a recycled dispatch once read sixty
+rounds as "no plans directory".) A standing round IS the round —
+announce that link, start its listener, fold new material into it.
+Render a new round only on `none`.
 **Never run `lavish-axi poll` in your own turn**: the fleet's pokes
 interrupt whatever tool your pane is running, and every in-pane poll
 died within the hour (round 28). After serving, run

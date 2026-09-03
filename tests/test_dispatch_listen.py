@@ -102,6 +102,49 @@ class ListenTest(unittest.TestCase):
         self.assertTrue(any("could not be handed" in m for m in logs))
 
 
+class StandingRoundTest(unittest.TestCase):
+    """The round that stands is a command's answer, never a shell
+    recipe: the pane's `ls` is aliased and a recycled dispatch read
+    sixty rounds as no directory at all."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.plans = Path(self._tmp.name) / "plans"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def a_round(self, name, url=None, mtime=None):
+        d = self.plans / name
+        d.mkdir(parents=True)
+        (d / "plan.html").write_text("<html></html>")
+        if url:
+            (d / "url.txt").write_text(url + "\n")
+        if mtime is not None:
+            import os
+            os.utime(d, (mtime, mtime))
+        return d
+
+    def test_the_newest_answering_round_stands(self):
+        self.a_round("2026-09-02-round-28", "http://x/28", mtime=1_000)
+        self.a_round("2026-09-03-round-29", "http://x/29", mtime=2_000)
+        found = ear.standing_round(self.plans, answers=lambda p: True)
+        self.assertEqual(found, (self.plans / "2026-09-03-round-29" / "plan.html",
+                                 "http://x/29"))
+
+    def test_a_dead_page_is_passed_over(self):
+        self.a_round("2026-09-02-round-28", "http://x/28", mtime=1_000)
+        self.a_round("2026-09-03-round-29", "http://x/29", mtime=2_000)
+        found = ear.standing_round(
+            self.plans, answers=lambda p: "round-28" in str(p))
+        self.assertEqual(found[1], "http://x/28")
+
+    def test_no_recorded_url_and_no_directory_are_none(self):
+        self.a_round("2026-09-03-round-29")           # served, URL never written
+        self.assertIsNone(ear.standing_round(self.plans, answers=lambda p: True))
+        self.assertIsNone(ear.standing_round(self.plans / "nope"))
+
+
 class DeliverSettledTest(unittest.TestCase):
     """A prompt into a working pane interrupts its tool — the very kill
     this listener exists to avoid — so delivery waits for settle."""

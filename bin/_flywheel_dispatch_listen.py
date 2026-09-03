@@ -169,6 +169,31 @@ def deliver_settled(agent, text, env, sleep=time.sleep, attempts=120,
     return False
 
 
+def standing_round(plans_dir, answers=None):
+    """The round that stands: the newest `<plans_dir>/*/plan.html` whose
+    recorded URL still answers, as `(plan_path, url)`, else None.
+
+    A command rather than a shell recipe on purpose: the dispatch pane's
+    `ls` is aliased (eza), `ls -t` there errors out, and a recycled
+    dispatch concluded "no plans directory" beside sixty rounds
+    (2026-09-03). Newest by the directory's own mtime, so a re-render
+    keeps the round current without renaming anything."""
+    answers = answers or url_answers
+    plans = Path(plans_dir)
+    if not plans.is_dir():
+        return None
+    candidates = sorted((p for p in plans.glob("*/plan.html")),
+                        key=lambda p: p.parent.stat().st_mtime, reverse=True)
+    for plan in candidates:
+        try:
+            url = (plan.parent / "url.txt").read_text().strip()
+        except OSError:
+            continue
+        if url and answers(plan):
+            return plan, url
+    return None
+
+
 def pid_alive(path):
     try:
         pid = int(path.read_text().strip())
@@ -181,12 +206,26 @@ def pid_alive(path):
 def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(prog="flywheel-dispatch-listen")
-    parser.add_argument("plan", help="the round's plan.html")
+    parser.add_argument("plan", nargs="?", help="the round's plan.html")
     parser.add_argument("--agent", default="dispatch",
                         help="the pane feedback is handed to")
     parser.add_argument("--foreground", action="store_true",
                         help="run the loop here (the detached child does)")
+    parser.add_argument("--standing", metavar="PLANS_DIR",
+                        help="print the round that stands under PLANS_DIR "
+                             "(newest plan.html whose url.txt answers) "
+                             "and exit")
     args = parser.parse_args(argv)
+    if args.standing:
+        found = standing_round(args.standing)
+        if not found:
+            print("none")
+            return 1
+        plan, url = found
+        print(f"standing {plan} {url}")
+        return 0
+    if not args.plan:
+        parser.error("plan.html is required unless --standing is given")
     plan = Path(args.plan).resolve()
     if not plan.is_file():
         sys.exit(f"flywheel-dispatch-listen: {plan} is not a file")
