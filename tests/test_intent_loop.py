@@ -196,13 +196,14 @@ class DryCycleTest(unittest.TestCase):
         # batch #4's Ready released everything it covered, so the consume
         # fires once...
         self.assertEqual([w.kind for w in self._guards(cycle2)],
-                         ["clear_status"],
+                         ["board"],
                          "a spent Ready is consumed, and nothing else moves")
 
-        # ...and with the status gone, the tracker is settled for good.
+        # ...and with the card at In Progress, the tracker is settled for good.
         cycle3 = Snapshot(
             items=list(cycle2.items),
-            batches=[Batch(number=4, kind="unit", status=None,
+            batches=[Batch(number=4, kind="unit",
+                           status=inbox.STATUS_IN_PROGRESS,
                            sub_issues=(1,), milestone="intent/x")],
         )
         self.assertEqual(self._guards(cycle3), (),
@@ -237,6 +238,47 @@ class BoardPlaceTest(unittest.TestCase):
         writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
         intent.apply_board_place(writer, config(apply=True), snap)
         self.assertEqual(tracker.placed, [(9, inbox.STATUS_BACKLOG)])
+
+    def test_a_spent_parent_at_backlog_goes_to_in_progress(self):
+        # #186: the operator's Ready was consumed, the status cleared, the
+        # card placed at Backlog again — read as a rejection, dragged to
+        # Ready twice. Every member released means approved and in flight.
+        snap = Snapshot(
+            items=[item(9, inbox.ELABORATION),
+                   item(1, "state:ready", parent_batch=9)],
+            batches=[inbox.Batch(number=9, kind=inbox.ELABORATION,
+                                 status=inbox.STATUS_BACKLOG, sub_issues=(1,),
+                                 milestone="intent/x")])
+        tracker = self.PlacingTracker(snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        intent.apply_board_place(writer, config(apply=True), snap)
+        self.assertEqual(tracker.placed, [(9, inbox.STATUS_IN_PROGRESS)])
+
+    def test_a_standing_parent_is_the_rounds_not_backlogs(self):
+        # A published close awaits the round; Backlog would ask the
+        # operator on the board for an approval the round already carries.
+        snap = Snapshot(
+            items=[item(9, inbox.ELABORATION, inbox.DISPATCH_STANDING),
+                   item(1, inbox.QUEUED, parent_batch=9)],
+            batches=[inbox.Batch(number=9, kind=inbox.ELABORATION,
+                                 status=None, sub_issues=(1,),
+                                 milestone="intent/x")])
+        tracker = self.PlacingTracker(snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        intent.apply_board_place(writer, config(apply=True), snap)
+        self.assertEqual(tracker.placed, [(9, inbox.STATUS_IN_PROGRESS)])
+
+    def test_an_in_progress_parent_is_settled(self):
+        snap = Snapshot(
+            items=[item(9, inbox.ELABORATION),
+                   item(1, "state:ready", parent_batch=9)],
+            batches=[inbox.Batch(number=9, kind=inbox.ELABORATION,
+                                 status=inbox.STATUS_IN_PROGRESS,
+                                 sub_issues=(1,), milestone="intent/x")])
+        tracker = self.PlacingTracker(snap)
+        writer = intent.Writer(tracker=tracker, apply=True, snapshot=snap)
+        intent.apply_board_place(writer, config(apply=True), snap)
+        self.assertEqual(tracker.placed, [])
 
     def test_a_parent_already_on_the_board_is_left_alone(self):
         for status in (inbox.STATUS_BACKLOG, inbox.STATUS_READY):

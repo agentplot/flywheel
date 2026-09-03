@@ -113,6 +113,9 @@ CLOSED_REASONS = (CLOSED_DONE, CLOSED_MERGED, CLOSED_DECLINED,
 STATUS_BACKLOG = "Backlog"
 STATUS_READY = "Ready"
 STATUS_DONE = "Done"
+#: Approved and picked up — where a consumed Ready goes, so the board
+#: reads "in flight" rather than bouncing the card back to Backlog.
+STATUS_IN_PROGRESS = "In Progress"
 
 INTENT_PREFIX = "intent/"
 BOLT_PREFIX = "bolt/"

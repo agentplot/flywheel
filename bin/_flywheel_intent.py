@@ -55,7 +55,8 @@ from _flywheel_inbox import (CLOSED_DONE, DISPATCH_STANDING, ELABORATION,  # noq
                              resolve_change_id,
                              IN_PROGRESS, NEEDS_OPERATOR, QUEUED, READY,
                              STAGE_COLLECTED, STAGE_DONE, STAGE_IN_SESSION,
-                             STATUS_BACKLOG, STATUS_DONE, Tracker,
+                             STATUS_BACKLOG, STATUS_DONE, STATUS_IN_PROGRESS,
+                             Tracker,
                              TrackerSnapshot, clear_needs_operator,
                              find_andon, intent_inbox, parse_andon,
                              set_needs_operator, set_stage, unblocked)
@@ -247,6 +248,13 @@ class Writer:
                 self.tracker, "clear_board_status"):
             self.tracker.clear_board_status(number)
 
+    def set_status(self, number, name, why=""):
+        self._record("board", f"#{number}", why or f"placed at {name}")
+        place = getattr(self.tracker, "set_board_status", None)
+        if self.apply and place is not None:
+            return bool(place(number, name))
+        return False
+
     def comment(self, number, body):
         self._record("comment", f"#{number}", body.splitlines()[0][:80])
         if self.apply and self.tracker:
@@ -306,14 +314,22 @@ class Writer:
 # ---------------------------------------------------------------------------
 
 def apply_ready_consume(writer, numbers):
-    """A spent approval leaves the Ready column.
+    """A spent approval leaves the Ready column — for In Progress.
 
     The bolt loop consumes a card's Ready at expansion; this is the intent
     side's same move, one pass after the flip. A batch still at Ready with
     its work released is how a later joiner inherits an approval the
-    operator never gave it (observed live: #265)."""
+    operator never gave it (observed live: #265).
+
+    It goes to In Progress, not to no-status: with the status cleared,
+    the placement guard put the card straight back at Backlog, and the
+    operator read their own approval as a rejection — "I approved it and
+    it went back to Backlog" (#186, #175, #130 on 2026-09-03, each
+    dragged to Ready twice). In Progress says what happened: approved,
+    picked up, in flight; the close moves it to Done."""
     for number in numbers:
-        writer.clear_status(number)
+        writer.set_status(number, STATUS_IN_PROGRESS,
+                          "board Ready consumed — in flight")
 
 
 def apply_flip_consume(writer, numbers):
@@ -441,19 +457,37 @@ def apply_board_place(writer, config, snapshot):
     (problem 12 residual, 2026-09-01). Placement is a repair, not an
     approval — Backlog is exactly where a filed-and-unapproved batch
     belongs, and the operator's flip is still the only release.
+
+    Two placements, both repairs. A never-approved parent with no Status
+    goes to Backlog, as above. A parent whose approval is SPENT — every
+    member released, or its close published and standing for the round
+    — belongs at In Progress, not Backlog: Backlog is the column that
+    asks the operator for an approval, and asking twice for one already
+    given is how three finished elaborations got dragged to Ready twice
+    each and read as bouncing (2026-09-03).
     """
     if snapshot is None or writer.tracker is None:
         return
-    place = getattr(writer.tracker, "set_board_status", None)
-    if place is None:
+    if getattr(writer.tracker, "set_board_status", None) is None:
         return
     for batch in snapshot.batches:
-        if (batch.kind == ELABORATION and batch.status is None
+        if not (batch.kind == ELABORATION
                 and batch.milestone == config.milestone
                 and batch.milestone_state == "open"):
-            if writer.apply and place(batch.number, STATUS_BACKLOG):
-                writer._record("board", f"#{batch.number}",
-                               "placed at Backlog")
+            continue
+        parent = snapshot.item(batch.number)
+        standing = parent is not None and DISPATCH_STANDING in parent.labels
+        members = [snapshot.item(n) for n in batch.sub_issues]
+        spent = bool(batch.sub_issues) and not any(
+            i is not None and i.is_open and i.queued for i in members)
+        if not writer.apply:
+            continue
+        if (spent or standing) and batch.status in (None, STATUS_BACKLOG):
+            writer.set_status(batch.number, STATUS_IN_PROGRESS,
+                              "approval spent — placed at In Progress")
+        elif batch.status is None:
+            writer.set_status(batch.number, STATUS_BACKLOG,
+                              "placed at Backlog")
 
 
 def run_guards(writer, inbox, snapshot, config):
